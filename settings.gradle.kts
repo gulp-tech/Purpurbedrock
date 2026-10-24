@@ -63,7 +63,7 @@ gradle.lifecycle.beforeProject {
     val versionString = if (purpurBuildNumber == null) {
         "$mcVersion-R0.1-SNAPSHOT"
     } else {
-        "$mcVersion.build.$purpurBuildNumber-${purpurChannel.lowercase()}"
+        "$mcVersion-R0.1-SNAPSHOT"
     }
     version = versionString
 }

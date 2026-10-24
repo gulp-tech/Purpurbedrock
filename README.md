@@ -1,104 +1,82 @@
-# Purpurbedrock 26.3
+# Purpurbedrock `26.2`
 
-Кастомное серверное ядро на базе **Purpur 26.3** (Paperweight / Paper `26.3`), специально созданное для серверов **Minecraft: Bedrock Edition** с полной поддержкой **Java-плагинов** (Bukkit / Spigot / Paper / Purpur), **боёвкой Bedrock Edition** и **сундучными менюшками как на Java Edition**.
+**Purpurbedrock `26.2`** — автономное высокопроизводительное серверное ядро на базе **Purpur `26.2` (`STABLE`)**, созданное специально для **Minecraft: Bedrock Edition (`26.30–26.52`)** с **100% нативной поддержкой всех Java-плагинов и сундучных Java-меню** — без зависимости от внешних плагинов GeyserMC или облачных API.
 
-## Готовое ядро (Скачать)
+## Скачать готовое ядро
 
-Готовый к запуску однофайловый JAR-архив (`purpurbedrock-26.3.jar`, со встроенным мостом GeyserMC 26.3 внутри самого ядра) публикуется автоматически в разделе **[Releases](../../releases/tag/v26.3.0-bedrock)**:
-
-- **`purpurbedrock-26.3.jar`** — готовое серверное ядро (просто запустите — дополнительные мосты в `plugins/` ставить не нужно).
-
----
-
-## Что реализовано в ядре
-
-### 1. Вход только с Bedrock Edition (вход с Java Edition закрыт)
-- Внутри `purpurbedrock-26.3.jar` уже встроен актуальный мост **GeyserMC 26.3** (`META-INF/purpurbedrock/Geyser-Spigot.jar`), который автоматически поднимает **UDP-порт `19132`** при старте сервера (поддерживаются клиенты Bedrock `1.21.100` – `26.52`).
-- На уровне сетевого рукопожатия (`ServerHandshakePacketListenerImpl` и `ServerLoginPacketListenerImpl`) работает фильтр **`BedrockGatekeeper`**:
-  - Игроки **Bedrock Edition** (подключающиеся через встроенный `LocalChannel` GeyserMC или внешний Floodgate) свободно заходят на сервер, включая Xbox-никнеймы с пробелами/префиксами.
-  - Любые прямые подключения с **Minecraft: Java Edition** по TCP мгновенно отклоняются на этапе логина с настраиваемым сообщением `settings.bedrock.java-kick-message` в `purpur.yml`.
-
-### 2. Настоящая боёвка Bedrock Edition (`BedrockCombatHelper`)
-Включена по умолчанию во всех мирах (`gameplay-mechanics.bedrock-combat.*` в `purpur.yml`):
-- **Отсутствие КД удара 1.9 (`attackStrengthScale = 1.0`)**: каждый удар наносит 100% урона без шкалы перезарядки.
-- **Таблица урона оружия как на Bedrock Edition**: мечи наносят на `+1` урон больше, чем в Java (алмазный меч `8`, незеритовый `9`, железный `7`, каменный `6`, деревянный/золотой `5`), топоры и лопаты пересчитаны по таблице Bedrock Edition. Кастомные атрибуты урона от Java-плагинов (`ATTRIBUTE_MODIFIERS`) полностью сохраняются.
-- **Критические удары в спринте**: в отличие от Java 1.9+, криты проходят даже во время бега при падении.
-- **Сохранение спринта и комбо**: удар по цели не сбрасывает спринт атакующего (`preserve-sprint-on-attack: true`) и настраиваемо регулирует замедление/отбрасывание.
-- **Отключён сплэш-удар мечом (Sweep AoE)**: мечи бьют строго выбранную цель, как на Bedrock Edition (`allow-sweep-attack: false`).
-- **Щиты как на Bedrock Edition**:
-  - Мгновенный блок (`0` тиков задержки вместо `5` тиков на Java).
-  - Автоматический блок щитом при приседании (**Sneak / Shift**), если щит в основной или второй руке и не на кулдауне от топора.
-- **Снежки и яйца откидывают игроков**: в PvP снежки и яйца наносят полноценное отбрасывание игрокам (в ванильной Java урон `0` пропускается для игроков).
-
-### 3. Полная поддержка Java-плагинов
-- Ядро на 100% совместимо с API **Bukkit, Spigot, Paper и Purpur 26.3** (`ServerBuildInfo` сохраняет совместимость с брендами `papermc:paper` и `purpurmc:purpur`).
-- Просто закидывайте любые стандартные `.jar` плагины Java (`LuckPerms`, `Vault`, `EssentialsX`, `PlaceholderAPI`, `WorldGuard`, `DeluxeMenus`, `Citizens` и др.) в папку **`plugins/`**.
-
-### 4. Менюшки как на Java Edition (инвентарные Chest GUI вместо форм Bedrock)
-- Все меню отображаются у игроков Bedrock как **настоящие сундучные инвентари Java** (`9x1`..`9x6` слотов, наковальни, воронки и т.д.), а не диалоговые формы Bedrock (`FormWindow`).
-- **Анти-фантомная синхронизация кликов (`instant-resync-on-cancel: true`)**: при отмене `InventoryClickEvent` любым плагином (или встроенным меню) ядро мгновенно отправляет полную синхронизацию контейнера и курсора (`sendAllDataToRemote()`), полностью устраняя визуальные баги перетаскивания предметов у клиентов Bedrock.
-- **Встроенный движок меню `menus.yml` (`JavaChestMenuManager`)**: при первом запуске в корне сервера создаётся готовый файл `menus.yml` (в формате, знакомом по `DeluxeMenus` — с поддержкой `open_command`, `size`, `items`, `slot`/`slots`, `left_click_commands` / `click_commands`, `[player]`, `[console]`, `[openmenu]`, `[message]`, `[sound]`, `[close]`, цветов MiniMessage и `&`, а также `PlaceholderAPI`). По умолчанию уже доступна команда `/menu`, а если вы установите свой плагин меню (например, `DeluxeMenus`), встроенная команда автоматически уступит приоритет плагину.
+- **Готовый JAR (`26.2`)**: [`purpurbedrock-26.2.jar`](https://github.com/gulp-tech/Purpurbedrock/releases/download/v26.2.0-bedrock/purpurbedrock-26.2.jar)
+- **Скрипт разблокировки LAN для Windows 10/11**: [`unlock-windows-lan.bat`](https://github.com/gulp-tech/Purpurbedrock/releases/download/v26.2.0-bedrock/unlock-windows-lan.bat) *(также создаётся автоматически при первом запуске ядра)*
 
 ---
 
-## Быстрый старт
+## Что реализовано внутри ядра Purpurbedrock `26.2`
 
-1. Скачайте **`purpurbedrock-26.3.jar`** в отдельную папку сервера.
-2. Примите EULA и запустите сервер на **Java 25**:
-   ```bash
-   echo "eula=true" > eula.txt
-   java -Xms4G -Xmx4G -jar purpurbedrock-26.3.jar --nogui
-   ```
-3. Откройте порт **`19132/UDP`** на хостинге/фаерволе — игроки **Minecraft: Bedrock Edition** заходят напрямую по вашему IP и порту `19132`!
-4. В `server.properties` при использовании встроенного автономного входа Bedrock установите `online-mode=false` (авторизация Xbox Live при этом проверяется самим встроенным мостом GeyserMC: `validate-bedrock-login: true` в `plugins/Geyser-Spigot/config.yml`).
-5. Загружайте любые Java-плагины в папку `plugins/` и настраивайте сундучные меню в `menus.yml` (перезагрузка без рестарта: `/purpurbedrock reload`).
+1. **Стабильная версия `26.2` (`26.2-R0.1-SNAPSHOT`) — работают все плагины**
+   - Полная совместимость с `DeluxeMenus`, `packetevents 2.13.0`, `DecentHolograms`, `VoidItems`, `VoidTab`, `AuthMe`, `WorldEdit`, `WorldGuard`, `LuckPerms`, `Vault`, `PlaceholderAPI` и любыми Bukkit/Spigot/Paper/Purpur плагинами.
+   - Встроенная защита `SimpleHelpMap` от сбоев `HelpTopicFactory` у кастомных плагинов.
 
----
+2. **Полная независимость от внешнего GeyserMC и мгновенный вход**
+   - Протокольный движок Bedrock `26.2` вшит напрямую в `purpur-server` (никаких папок `plugins/Geyser-Spigot`, никаких обращений к серверам GeyserMC/Mojang/bStats).
+   - Языковой кэш встроен прямо в JAR — **первый и последующие запуски проходят мгновенно**, а игроки заходят на сервер **сразу без зависания «Поиск сервера / Загрузка ресурсов»** (`auth-type: offline`, `above-bedrock-nether-building: false`, `forward-player-ping: true`).
+   - Прямой вход с Java Edition автоматически заблокирован на уровне `ServerHandshakePacketListenerImpl` / `ServerLoginPacketListenerImpl`.
 
-## Настройки в `purpur.yml`
+3. **100% поддержка Java-меню (`9x1`–`9x6`)**
+   - Нативная обработка кликов, отмены переноса предметов и мгновенных переходов между подменю прямо в `ServerGamePacketListenerImpl` + `JavaChestMenuManager` (`DeluxeMenus`, `ChestCommands`, любые кастомные `InventoryHolder` GUI открываются у игроков Bedrock как полноценные сундучные меню без фантомных предметов на курсоре).
+   - Проверить встроенное Java-меню прямо из коробки: `/purpurbedrock menu` (или `/pb menu`).
 
-```yaml
-settings:
-  bedrock:
-    only-allow-bedrock: true
-    allow-external-floodgate: true
-    java-kick-message: "<red><bold>Заход с Minecraft: Java Edition отключён!</bold>\n<gray>Этот сервер доступен только для игроков <aqua>Minecraft: Bedrock Edition</aqua>."
-    embedded-geyser:
-      enabled: true
-      port: 19132
-    menus:
-      instant-resync-on-cancel: true
-      built-in-menus-enabled: true
-      file: "menus.yml"
+4. **Видимость в локальной сети (LAN / вкладка «Миры») на Bedrock `26.40+`**
+   - Включён двойной транспорт `transport: both`:
+     - **UDP/TCP `19132`** — RakNet + HTTP/WebSocket сигналинг NetherNet
+     - **UDP `19133` / `19134`** — WebRTC медиа-канал NetherNet
+     - **UDP `7551`** — встроенный **`NetherNetDiscoverySignaling`**, благодаря которому новый интерфейс Bedrock (`Миры`) автоматически находит локальный сервер каждые 2 секунды!
 
-world-settings:
-  default:
-    gameplay-mechanics:
-      bedrock-combat:
-        enabled: true
-        use-bedrock-weapon-damage: true
-        allow-sprint-crits: true
-        allow-sweep-attack: false
-        preserve-sprint-on-attack: true
-        attacker-sprint-slowdown: 0.85
-        knockback-multiplier: 1.0
-        instant-shield-block: true
-        sneak-shield-blocking: true
-        projectiles-knockback-players: true
-```
+5. **Встроенный Anti-Xray специально под Bedrock (`EngineMode.HIDE`)**
+   - Автоматически включён во всех мирах (`BedrockAntiXrayHelper` + дефолты Paper `WorldConfiguration`):
+     - **Обычный мир (`Y <= 128`, `lava-obscures: true`)**: скрывает `diamond_ore`, `deepslate_diamond_ore`, `emerald_ore`, `gold_ore`, `iron_ore`, `copper_ore`, `lapis_ore`, `redstone_ore`, `coal_ore` и `raw_iron_block` / `raw_copper_block`, заменяя несоприкасающиеся с воздухом жилы на камень/глубинный сланец.
+     - **Незер (`Y <= 128`, `lava-obscures: true`)**: скрывает **`ancient_debris`** (древние обломки / незерит), `nether_gold_ore` и `nether_quartz_ore`, заменяя их на незерак.
+   - Режим `HIDE` даёт **0 фейковых руд**, поэтому **не просаживает FPS на слабых телефонах** и практически не нагружает CPU сервера.
 
-## Команды администратора
+6. **Ноль флагов движения (`BedrockMovementGuard`) и ноль фантомных блоков (`BedrockGhostBlockResync`)**
+   - Устранены ложные откаты `moved wrongly!` / `moved too quickly!` на лестницах, полублоках, коврах, воде и при спид-бриджинге Bedrock.
+   - Повышен порог `PacketLimiter` (`1500 pkt / 7s`), `checkLimit` (`24` блока в бурсте для спид-бриджинга) и `bedrockMaxFloatingTicks` (`200`), а повторные `AcceptTeleportationPacket` по UDP/WebRTC больше не кикают игрока.
+   - При любой отмене постановки или ломания блока (`WorldGuard`, спавн-протект, граница дистанции `6.75` блока, застревание `CLIPPED_INTO_BLOCK`) сервер мгновенно отправляет точную синхронизацию блока и всех 6 соседних граней + контрольный ресинк на следующем тике — **фантомных блоков нет вообще**.
 
-- `/purpurbedrock status` — проверить статус фильтра только-Bedrock, встроенного моста GeyserMC, боёвки Bedrock и загруженных Java-меню.
-- `/purpurbedrock reload` — перезагрузить `menus.yml` без перезапуска сервера.
-- `/purpurbedrock openmenu <id> [игрок]` — открыть любое сундучное Java-меню из `menus.yml` игроку.
+7. **Боёвка Bedrock Edition (`1.8` без КД) + высокая оптимизация TPS**
+   - Отключён кулдаун удара 1.9 (`attackStrengthTicker = 9999`), таблица урона мечей/топоров как на Bedrock, криты в спринте, сохранение спринта в комбо, мгновенный блок щитом + щит на шифте, откидывание снежками и яйцами.
+   - Из коробки включены **Alternate Current Redstone** (в 5–10 раз быстрее ванильного редстоуна) и **`use-alternate-keepalive: true`**.
 
 ---
 
-## Сборка из исходников
+## Быстрый запуск (Рекомендуемые флаги Aikars / G1GC)
 
-Требуется **JDK 25**:
+Удалите `Geyser-Spigot.jar` из папки `plugins/` (он больше **не нужен**!) и запустите сервер:
+
 ```bash
-./gradlew applyAllPatches
-./gradlew createMojmapPaperclipJar
+java -Xms4G -Xmx4G -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=100 \
+  -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:G1NewSizePercent=30 \
+  -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 \
+  -XX:InitiatingHeapOccupancyPercent=15 -jar purpurbedrock-26.2.jar --nogui
 ```
+
+### Как увидеть локальный сервер на том же ПК с Windows 10 / 11
+
+Windows по умолчанию блокирует локальные UDP-пакеты для UWP/GDK-приложения Minecraft Bedrock (Loopback Isolation), поэтому сервер на этом же компьютере не отображается во вкладке **«Миры»** и не пускает по `127.0.0.1`, пока не снято ограничение.
+
+**Решение в 1 клик:** нажмите правой кнопкой мыши по автоматически созданному файлу **`unlock-windows-lan.bat`** → **«Запуск от имени администратора»** (достаточно сделать **один раз**):
+
+```bat
+CheckNetIsolation LoopbackExempt -a -n="Microsoft.MinecraftUWP_8wekyb3d8bbwe"
+```
+
+После этого сервер сразу появится во вкладке **«Миры» (LAN)**, а также будет доступен напрямую по `127.0.0.1 : 19132` или локальному IP вашего ПК (`192.168.x.x : 19132`).
+
+---
+
+## Управление и конфигурация
+
+- **`bedrock.yml`** *(в корне сервера)* — порт (`19132`), `webrtc-port` (`19133`), `lan-discovery` (`true`), `motd1` / `motd2`, `max-players`.
+- **`purpur.yml`** (`settings.bedrock.*` и `world-settings.default.gameplay-mechanics.bedrock-combat.*`) — тонкая настройка гейткипера, Anti-Xray, защиты от флагов, защиты от фантомных блоков, Java-меню и боёвки.
+- **Команда `/purpurbedrock` (`/pb`)**:
+  - `/pb status` — сводка состояния ядра, TPS, защиты от флагов/фантомных блоков и протокола
+  - `/pb menu` — открыть встроенное интерактивное Java-меню диагностического центра (`27` слотов)
+  - `/pb antixray` — проверить статус Bedrock Anti-Xray по всем мирам

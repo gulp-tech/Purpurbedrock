@@ -1,0 +1,131 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Purpurbedrock <dev@purpurbedrock.org>
+Date: Sat, 24 Oct 2026 21:13:45 +0000
+Subject: [PATCH] Purpurbedrock 26.2 Paper engine optimizations, Anti-Xray,
+ movement & plugin guards
+
+
+diff --git a/src/main/java/io/papermc/paper/configuration/GlobalConfiguration.java b/src/main/java/io/papermc/paper/configuration/GlobalConfiguration.java
+index 54dffff180d045e9f1a411c351eb66a08f44f31d..d97c095a56514d4ea1a044efd03df8aceef98c56 100644
+--- a/src/main/java/io/papermc/paper/configuration/GlobalConfiguration.java
++++ b/src/main/java/io/papermc/paper/configuration/GlobalConfiguration.java
+@@ -249,7 +249,7 @@ public class GlobalConfiguration extends ConfigurationPart {
+ 
+     public class PacketLimiter extends ConfigurationPart {
+         public Component kickMessage = Component.translatable("disconnect.exceeded_packet_rate", NamedTextColor.RED);
+-        public PacketLimit allPackets = new PacketLimit(7.0, 500.0, PacketLimit.ViolateAction.KICK);
++        public PacketLimit allPackets = new PacketLimit(7.0, 1500.0, PacketLimit.ViolateAction.KICK); // Purpurbedrock - prevent false kicks during Bedrock fast-mine & GUI taps
+         public Map<@WriteKeyBack Class<? extends Packet<?>>, PacketLimit> overrides = Map.of(ServerboundPlaceRecipePacket.class, new PacketLimit(4.0, 5.0, PacketLimit.ViolateAction.DROP));
+ 
+         @ConfigSerializable
+diff --git a/src/main/java/io/papermc/paper/configuration/WorldConfiguration.java b/src/main/java/io/papermc/paper/configuration/WorldConfiguration.java
+index 86ae93a9cad3d165bbe0aec5babbe98dbf50d625..9461dc118eb49d14da4fbf665b76f95db9cfd03f 100644
+--- a/src/main/java/io/papermc/paper/configuration/WorldConfiguration.java
++++ b/src/main/java/io/papermc/paper/configuration/WorldConfiguration.java
+@@ -95,11 +95,11 @@ public class WorldConfiguration extends ConfigurationPart {
+         public AntiXray antiXray;
+ 
+         public class AntiXray extends ConfigurationPart {
+-            public boolean enabled = false;
++            public boolean enabled = true; // Purpurbedrock - Bedrock-tuned Anti-Xray enabled by default
+             public EngineMode engineMode = EngineMode.HIDE;
+-            public int maxBlockHeight = 64;
++            public int maxBlockHeight = 128; // Purpurbedrock - Cover all Overworld caves & Nether Ancient Debris
+             public int updateRadius = 2;
+-            public boolean lavaObscures = false;
++            public boolean lavaObscures = true; // Purpurbedrock - Hide ores under lava from Bedrock X-Ray packs
+             public boolean usePermission = false;
+             public List<Block> hiddenBlocks = List.of(
+                 //<editor-fold desc="Anti-Xray Hidden Blocks" defaultstate="collapsed">
+@@ -108,6 +108,7 @@ public class WorldConfiguration extends ConfigurationPart {
+                 Blocks.RAW_COPPER_BLOCK,
+                 Blocks.GOLD_ORE,
+                 Blocks.DEEPSLATE_GOLD_ORE,
++                Blocks.RAW_GOLD_BLOCK,
+                 Blocks.IRON_ORE,
+                 Blocks.DEEPSLATE_IRON_ORE,
+                 Blocks.RAW_IRON_BLOCK,
+@@ -118,6 +119,8 @@ public class WorldConfiguration extends ConfigurationPart {
+                 Blocks.MOSSY_COBBLESTONE,
+                 Blocks.OBSIDIAN,
+                 Blocks.CHEST,
++                Blocks.TRAPPED_CHEST,
++                Blocks.SPAWNER,
+                 Blocks.DIAMOND_ORE,
+                 Blocks.DEEPSLATE_DIAMOND_ORE,
+                 Blocks.REDSTONE_ORE,
+@@ -125,7 +128,12 @@ public class WorldConfiguration extends ConfigurationPart {
+                 Blocks.CLAY,
+                 Blocks.EMERALD_ORE,
+                 Blocks.DEEPSLATE_EMERALD_ORE,
+-                Blocks.ENDER_CHEST
++                Blocks.BUDDING_AMETHYST,
++                Blocks.ENDER_CHEST,
++                Blocks.ANCIENT_DEBRIS,
++                Blocks.NETHER_GOLD_ORE,
++                Blocks.NETHER_QUARTZ_ORE,
++                Blocks.GILDED_BLACKSTONE
+                 //</editor-fold>
+             );
+             public List<Block> replacementBlocks = List.of(Blocks.STONE, Blocks.OAK_PLANKS, Blocks.DEEPSLATE);
+@@ -577,7 +585,7 @@ public class WorldConfiguration extends ConfigurationPart {
+     public class Misc extends ConfigurationPart {
+         public boolean updatePathfindingOnBlockUpdate = true;
+         public boolean showSignClickCommandFailureMsgsToPlayer = false;
+-        public RedstoneImplementation redstoneImplementation = RedstoneImplementation.VANILLA;
++        public RedstoneImplementation redstoneImplementation = RedstoneImplementation.ALTERNATE_CURRENT; // Purpurbedrock - High-TPS redstone optimization
+         public AlternateCurrentUpdateOrder alternateCurrentUpdateOrder = AlternateCurrentUpdateOrder.HORIZONTAL_FIRST_OUTWARD;
+         public boolean disableEndCredits = false;
+         public DoubleOr.Default maxLeashDistance = DoubleOr.Default.USE_DEFAULT;
+diff --git a/src/main/java/org/bukkit/craftbukkit/help/SimpleHelpMap.java b/src/main/java/org/bukkit/craftbukkit/help/SimpleHelpMap.java
+index 70b45a7d41f4bafac3b9738129d74af30e36b2a8..b9cafdcf276fd97e81e30764b19e151340b43e14 100644
+--- a/src/main/java/org/bukkit/craftbukkit/help/SimpleHelpMap.java
++++ b/src/main/java/org/bukkit/craftbukkit/help/SimpleHelpMap.java
+@@ -131,15 +131,19 @@ public class SimpleHelpMap implements HelpMap {
+ 
+             // Register a topic
+             for (Class c : this.topicFactoryMap.keySet()) {
+-                if (c.isAssignableFrom(command.getClass())) {
+-                    HelpTopic t = this.topicFactoryMap.get(c).createTopic(command);
+-                    if (t != null) this.addTopic(t);
+-                    continue outer;
+-                }
+-                if (command instanceof PluginCommand && c.isAssignableFrom(((PluginCommand) command).getExecutor().getClass())) {
+-                    HelpTopic t = this.topicFactoryMap.get(c).createTopic(command);
+-                    if (t != null) this.addTopic(t);
+-                    continue outer;
++                try {
++                    if (c.isAssignableFrom(command.getClass())) {
++                        HelpTopic t = this.topicFactoryMap.get(c).createTopic(command);
++                        if (t != null) this.addTopic(t);
++                        continue outer;
++                    }
++                    if (command instanceof PluginCommand && ((PluginCommand) command).getExecutor() != null && c.isAssignableFrom(((PluginCommand) command).getExecutor().getClass())) {
++                        HelpTopic t = this.topicFactoryMap.get(c).createTopic(command);
++                        if (t != null) this.addTopic(t);
++                        continue outer;
++                    }
++                } catch (Throwable ex) {
++                    this.server.getLogger().log(java.util.logging.Level.WARNING, "[Purpurbedrock] Пропущена неисправная HelpTopicFactory для команды '" + command.getName() + "': " + ex.getMessage());
+                 }
+             }
+             this.addTopic(new GenericCommandHelpTopic(command));
+diff --git a/src/main/java/org/spigotmc/SpigotConfig.java b/src/main/java/org/spigotmc/SpigotConfig.java
+index 025ec3f3e84a3367b4d709c8c3ecd98f6dfecab4..e3d32eef95f056dfc64db247b742299afa6d3d2f 100644
+--- a/src/main/java/org/spigotmc/SpigotConfig.java
++++ b/src/main/java/org/spigotmc/SpigotConfig.java
+@@ -289,12 +289,12 @@ public class SpigotConfig {
+ 
+     public static double movedWronglyThreshold;
+     private static void movedWronglyThreshold() {
+-        SpigotConfig.movedWronglyThreshold = SpigotConfig.getDouble("settings.moved-wrongly-threshold", 0.0625);
++        SpigotConfig.movedWronglyThreshold = SpigotConfig.getDouble("settings.moved-wrongly-threshold", 1.0); // Purpurbedrock - Bedrock float/step physics leniency
+     }
+ 
+     public static double movedTooQuicklyMultiplier;
+     private static void movedTooQuicklyMultiplier() {
+-        SpigotConfig.movedTooQuicklyMultiplier = SpigotConfig.getDouble("settings.moved-too-quickly-multiplier", 10.0);
++        SpigotConfig.movedTooQuicklyMultiplier = SpigotConfig.getDouble("settings.moved-too-quickly-multiplier", 30.0); // Purpurbedrock - Bedrock mobile/WebRTC burst leniency
+     }
+ 
+     public static double maxAbsorption = 2048;

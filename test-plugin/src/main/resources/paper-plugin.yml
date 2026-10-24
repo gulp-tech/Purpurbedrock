@@ -4,7 +4,7 @@ main: org.purpurmc.testplugin.TestPlugin
 description: Purpur Test Plugin
 author: PurpurMC
 api-version: ${apiversion}
-load: STARTUP
+load: POSTWORLD
 #bootstrapper: org.purpurmc.testplugin.TestPluginBootstrap
 #loader: org.purpurmc.testplugin.TestPluginLoader
 defaultPerm: FALSE

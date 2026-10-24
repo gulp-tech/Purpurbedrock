@@ -52,7 +52,6 @@ public class PurpurCommand extends Command {
                 level.purpurConfig.init();
                 level.resetBreedingCooldowns(); // Purpur - Add adjustable breeding cooldown to config
             }
-            org.purpurmc.purpur.bedrock.menu.JavaChestMenuManager.initAfterPlugins();
             console.server.reloadCount++;
 
             Command.broadcastCommandMessage(sender, Component.text("Purpur config reload complete.", NamedTextColor.GREEN));

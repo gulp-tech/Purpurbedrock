@@ -2,59 +2,107 @@ package org.purpurmc.purpur.bedrock;
 
 import io.netty.channel.Channel;
 import io.netty.channel.local.LocalChannel;
-import io.netty.util.AttributeKey;
+import io.netty.channel.local.LocalServerChannel;
 import io.papermc.paper.adventure.PaperAdventure;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.minecraft.network.Connection;
 import net.minecraft.network.chat.Component;
-import net.minecraft.server.level.ServerPlayer;
 import org.purpurmc.purpur.PurpurConfig;
 
+import java.lang.reflect.Method;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
+import java.util.UUID;
+
 /**
- * Enforces Bedrock-only server entry while allowing Geyser's in-JVM LocalChannel
- * (and optional Floodgate proxy/plugin connections) to pass through seamlessly.
+ * Enforces Bedrock-only player access by rejecting direct Java Edition TCP clients
+ * while admitting internal LocalChannel Bedrock sessions and Floodgate/Geyser API connections.
  */
 public final class BedrockGatekeeper {
-    private static final String FLOODGATE_ATTR_NAME = "floodgate-player";
-
     private BedrockGatekeeper() {
     }
 
-    public static boolean isLocalGeyserConnection(final Connection connection) {
-        return connection != null && connection.channel instanceof LocalChannel;
-    }
-
-    public static boolean hasFloodgateAttribute(final Channel channel) {
-        if (channel == null || !AttributeKey.exists(FLOODGATE_ATTR_NAME)) {
+    public static boolean isBedrockConnection(Connection connection) {
+        if (connection == null) {
             return false;
         }
-        AttributeKey<Object> key = AttributeKey.valueOf(FLOODGATE_ATTR_NAME);
-        return channel.hasAttr(key) && channel.attr(key).get() != null;
-    }
-
-    public static boolean isBedrockConnection(final Connection connection) {
-        if (connection == null || connection.channel == null) {
-            return false;
+        Channel ch = connection.channel;
+        if (ch != null) {
+            if (ch instanceof LocalChannel || ch instanceof LocalServerChannel) {
+                return true;
+            }
+            String className = ch.getClass().getName();
+            if (className.contains("geyser") || className.contains("LocalChannel") || className.contains("floodgate")) {
+                return true;
+            }
+            if (ch.pipeline() != null && (ch.pipeline().get("floodgate_handler") != null || ch.pipeline().get("geyser") != null)) {
+                return true;
+            }
         }
-        if (connection.channel instanceof LocalChannel) {
+
+        if (connection.hostname != null && connection.hostname.contains("Floodgate")) {
             return true;
         }
-        return PurpurConfig.bedrockAllowExternalFloodgate && hasFloodgateAttribute(connection.channel);
+
+        SocketAddress remote = connection.getRemoteAddress();
+        if (remote instanceof InetSocketAddress inetSocketAddress) {
+            InetAddress addr = inetSocketAddress.getAddress();
+            if (addr != null) {
+                String ip = addr.getHostAddress();
+                if (PurpurConfig.bedrockAllowedBridgeIps.contains(ip)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
-    public static boolean isBedrockPlayer(final ServerPlayer player) {
-        return player != null && player.connection != null && isBedrockConnection(player.connection.connection);
+    public static boolean isBedrockUuid(UUID uuid) {
+        if (uuid == null) {
+            return false;
+        }
+        if (uuid.getMostSignificantBits() == 0L) {
+            return true;
+        }
+        try {
+            Class<?> geyserApiClass = Class.forName("org.geysermc.geyser.api.GeyserApi");
+            Object api = geyserApiClass.getMethod("api").invoke(null);
+            if (api != null) {
+                Method byUuid = api.getClass().getMethod("connectionByUuid", UUID.class);
+                if (byUuid.invoke(api, uuid) != null) {
+                    return true;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        try {
+            Class<?> floodgateApiClass = Class.forName("org.geysermc.floodgate.api.FloodgateApi");
+            Object api = floodgateApiClass.getMethod("getInstance").invoke(null);
+            if (api != null) {
+                Method isFg = api.getClass().getMethod("isFloodgatePlayer", UUID.class);
+                Object result = isFg.invoke(api, uuid);
+                if (Boolean.TRUE.equals(result)) {
+                    return true;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return false;
     }
 
-    public static boolean shouldRejectJavaLogin(final Connection connection) {
-        return PurpurConfig.bedrockOnlyAllowBedrock && !isBedrockConnection(connection);
+    public static boolean shouldRejectJavaLogin(Connection connection) {
+        if (!PurpurConfig.bedrockOnlyAllowBedrock) {
+            return false;
+        }
+        return !isBedrockConnection(connection);
     }
 
     public static Component getJavaRejectComponent() {
-        String raw = PurpurConfig.bedrockJavaKickMessage;
-        if (raw == null || raw.isBlank()) {
-            raw = "<red><bold>Заход с Minecraft: Java Edition отключён!</bold>\n<gray>Этот сервер доступен только для игроков <aqua>Minecraft: Bedrock Edition</aqua>.";
+        try {
+            return PaperAdventure.asVanilla(MiniMessage.miniMessage().deserialize(PurpurConfig.bedrockRejectJavaMessage));
+        } catch (Throwable t) {
+            return Component.literal("Сервер доступен только для Minecraft: Bedrock Edition! (UDP 19132)");
         }
-        return PaperAdventure.asVanilla(MiniMessage.miniMessage().deserialize(raw));
     }
 }

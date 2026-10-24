@@ -75,8 +75,8 @@ public class PurpurConfig {
         commands.put("purpur", new PurpurCommand("purpur"));
         commands.put("purpurbedrock", new org.purpurmc.purpur.bedrock.command.PurpurBedrockCommand("purpurbedrock"));
 
-        version = getInt("config-version", 50);
-        set("config-version", 50);
+        version = getInt("config-version", 49);
+        set("config-version", 49);
 
         readConfig(PurpurConfig.class, null);
 
@@ -241,7 +241,7 @@ public class PurpurConfig {
         laggingThreshold = getDouble("settings.lagging-threshold", laggingThreshold);
     }
 
-    public static boolean useAlternateKeepAlive = false;
+    public static boolean useAlternateKeepAlive = true; // Purpurbedrock - prevent Bedrock mobile/Wi-Fi timeout kicks
     private static void useAlternateKeepAlive() {
         useAlternateKeepAlive = getBoolean("settings.use-alternate-keepalive", useAlternateKeepAlive);
     }
@@ -331,6 +331,7 @@ public class PurpurConfig {
     public static boolean enderChestSixRows = false;
     public static boolean enderChestPermissionRows = false;
     public static boolean enderChestPersistHiddenRows = true;
+    public static boolean cryingObsidianValidForPortalFrame = false;
     public static int beeInsideBeeHive = 3;
     public static boolean anvilCumulativeCost = true;
     public static int smoothSnowAccumulationStep = 0;
@@ -375,6 +376,7 @@ public class PurpurConfig {
         org.bukkit.event.inventory.InventoryType.ENDER_CHEST.setDefaultSize(enderChestSixRows ? 54 : 27);
         enderChestPermissionRows = getBoolean("settings.blocks.ender_chest.use-permissions-for-rows", enderChestPermissionRows);
         enderChestPersistHiddenRows = getBoolean("settings.blocks.ender_chest.persist-hidden-rows", enderChestPersistHiddenRows);
+        cryingObsidianValidForPortalFrame = getBoolean("settings.blocks.crying_obsidian.valid-for-portal-frame", cryingObsidianValidForPortalFrame);
         beeInsideBeeHive = getInt("settings.blocks.beehive.max-bees-inside", beeInsideBeeHive);
         anvilCumulativeCost = getBoolean("settings.blocks.anvil.cumulative-cost", anvilCumulativeCost);
         smoothSnowAccumulationStep = getInt("settings.blocks.snow.smooth-accumulation-step", smoothSnowAccumulationStep);
@@ -544,9 +546,6 @@ public class PurpurConfig {
         });
     }
     private static void blockFallMultiplierSettings() {
-        if (PurpurConfig.version < 50) {
-            PurpurConfig.config.set("settings.block-fall-multipliers.minecraft:shelf_mushroom", Map.of("distance", 0.5F));
-        }
         getMap("settings.block-fall-multipliers", Map.ofEntries(
                 Map.entry("minecraft:hay_block", Map.of("damage", 0.2F)),
                 Map.entry("minecraft:white_bed", Map.of("distance", 0.5F)),
@@ -564,8 +563,7 @@ public class PurpurConfig {
                 Map.entry("minecraft:light_blue_bed", Map.of("distance", 0.5F)),
                 Map.entry("minecraft:blue_bed", Map.of("distance", 0.5F)),
                 Map.entry("minecraft:purple_bed", Map.of("distance", 0.5F)),
-                Map.entry("minecraft:magenta_bed", Map.of("distance", 0.5F)),
-                Map.entry("minecraft:shelf_mushroom", Map.of("distance", 0.5F))
+                Map.entry("minecraft:magenta_bed", Map.of("distance", 0.5F))
         )).forEach((blockId, value) -> {
             Block block = BuiltInRegistries.BLOCK.getValue(Identifier.parse(blockId));
             if (block == Blocks.AIR) {
@@ -621,27 +619,47 @@ public class PurpurConfig {
         });
     }
 
-    public static boolean generateEndVoidRings = false;
-    private static void generateEndVoidRings() {
-        generateEndVoidRings = getBoolean("settings.generate-end-void-rings", generateEndVoidRings);
-    }
-
+    // Purpurbedrock start - Native Bedrock-only 26.2 Core Settings
     public static boolean bedrockOnlyAllowBedrock = true;
-    public static boolean bedrockAllowExternalFloodgate = true;
-    public static String bedrockJavaKickMessage = "<red><bold>Заход с Minecraft: Java Edition отключён!</bold>\n<gray>Этот сервер доступен только для игроков <aqua>Minecraft: Bedrock Edition</aqua>.";
-    public static boolean bedrockEmbeddedGeyserEnabled = true;
-    public static int bedrockEmbeddedGeyserPort = 19132;
+    public static String bedrockRejectJavaMessage = "<red><bold>Сервер доступен только для Minecraft: Bedrock Edition!</bold></red>\n<gray>Подключайтесь с телефона, ПК (Bedrock) или консоли по UDP порту </gray><aqua>19132</aqua>";
+    public static List<String> bedrockAllowedBridgeIps = new ArrayList<>(List.of("127.0.0.1", "::1"));
+    public static boolean bedrockEmbeddedProtocolEnabled = true;
+    public static boolean bedrockMenusEnabled = true;
     public static boolean bedrockMenusInstantResync = true;
-    public static boolean bedrockBuiltInMenusEnabled = true;
-    public static String bedrockMenusFile = "menus.yml";
-    private static void bedrockSettings() {
-        bedrockOnlyAllowBedrock = getBoolean("settings.bedrock.only-allow-bedrock", bedrockOnlyAllowBedrock);
-        bedrockAllowExternalFloodgate = getBoolean("settings.bedrock.allow-external-floodgate", bedrockAllowExternalFloodgate);
-        bedrockJavaKickMessage = getString("settings.bedrock.java-kick-message", bedrockJavaKickMessage);
-        bedrockEmbeddedGeyserEnabled = getBoolean("settings.bedrock.embedded-geyser.enabled", bedrockEmbeddedGeyserEnabled);
-        bedrockEmbeddedGeyserPort = getInt("settings.bedrock.embedded-geyser.port", bedrockEmbeddedGeyserPort);
-        bedrockMenusInstantResync = getBoolean("settings.bedrock.menus.instant-resync-on-cancel", bedrockMenusInstantResync);
-        bedrockBuiltInMenusEnabled = getBoolean("settings.bedrock.menus.built-in-menus-enabled", bedrockBuiltInMenusEnabled);
-        bedrockMenusFile = getString("settings.bedrock.menus.file", bedrockMenusFile);
+    public static boolean bedrockMovementLeniency = true;
+    public static double bedrockMovedWronglyMaxSq = 3.25D;
+    public static int bedrockMaxFloatingTicks = 200;
+    public static boolean bedrockPreventGhostBlocks = true;
+    public static double bedrockBlockReachTolerance = 2.25D;
+    public static float bedrockInstaMineProgressThreshold = 0.65F;
+    public static boolean bedrockAntiXrayEnabled = true;
+    public static boolean bedrockAntiXrayLavaObscures = true;
+    public static int bedrockAntiXrayMaxHeight = 128;
+    public static boolean bedrockPerformanceOptimizeWorlds = true;
+
+    private static void bedrockCoreSettings() {
+        bedrockOnlyAllowBedrock = getBoolean("bedrock.only-allow-bedrock", bedrockOnlyAllowBedrock);
+        bedrockRejectJavaMessage = getString("bedrock.reject-java-message", bedrockRejectJavaMessage);
+        List<Object> configuredIps = getList("bedrock.allowed-bridge-ips", new ArrayList<>(bedrockAllowedBridgeIps));
+        bedrockAllowedBridgeIps.clear();
+        for (Object entry : configuredIps) {
+            if (entry != null) {
+                bedrockAllowedBridgeIps.add(entry.toString().trim());
+            }
+        }
+        bedrockEmbeddedProtocolEnabled = getBoolean("bedrock.embedded-protocol.enabled", bedrockEmbeddedProtocolEnabled);
+        bedrockMenusEnabled = getBoolean("bedrock.menus.enabled", bedrockMenusEnabled);
+        bedrockMenusInstantResync = getBoolean("bedrock.menus.instant-resync", bedrockMenusInstantResync);
+        bedrockMovementLeniency = getBoolean("bedrock.movement.leniency-enabled", bedrockMovementLeniency);
+        bedrockMovedWronglyMaxSq = getDouble("bedrock.movement.max-moved-wrongly-squared", bedrockMovedWronglyMaxSq);
+        bedrockMaxFloatingTicks = getInt("bedrock.movement.max-floating-ticks", bedrockMaxFloatingTicks);
+        bedrockPreventGhostBlocks = getBoolean("bedrock.anti-ghost-blocks.enabled", bedrockPreventGhostBlocks);
+        bedrockBlockReachTolerance = getDouble("bedrock.anti-ghost-blocks.reach-tolerance", bedrockBlockReachTolerance);
+        bedrockInstaMineProgressThreshold = (float) getDouble("bedrock.anti-ghost-blocks.instamine-threshold", bedrockInstaMineProgressThreshold);
+        bedrockAntiXrayEnabled = getBoolean("bedrock.anti-xray.enabled", bedrockAntiXrayEnabled);
+        bedrockAntiXrayLavaObscures = getBoolean("bedrock.anti-xray.lava-obscures", bedrockAntiXrayLavaObscures);
+        bedrockAntiXrayMaxHeight = getInt("bedrock.anti-xray.max-block-height", bedrockAntiXrayMaxHeight);
+        bedrockPerformanceOptimizeWorlds = getBoolean("bedrock.performance.optimize-worlds", bedrockPerformanceOptimizeWorlds);
     }
+    // Purpurbedrock end
 }

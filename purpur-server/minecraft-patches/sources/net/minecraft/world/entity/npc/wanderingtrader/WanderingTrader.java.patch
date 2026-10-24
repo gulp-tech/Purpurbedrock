@@ -33,4 +33,4 @@
 +                } // Purpur - Add config for villager trading
              }
  
-             return InteractionResult.SUCCESS_SERVER;
+             return InteractionResult.SUCCESS;

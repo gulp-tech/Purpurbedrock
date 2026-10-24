@@ -55,14 +55,13 @@
  
          // CraftBukkit start
          this.server.loadPlugins();
-@@ -366,6 +_,10 @@
+@@ -366,6 +_,9 @@
              MinecraftServerStatistics.registerJmxMonitoring(this);
              LOGGER.info("JMX monitoring enabled");
          }
 +
 +        org.purpurmc.purpur.task.BossBarTask.startAll(); // Purpur - Implement TPSBar
 +        if (org.purpurmc.purpur.PurpurConfig.beeCountPayload) org.purpurmc.purpur.task.BeehiveTask.instance().register(); // Purpur - Give bee counts in beehives to Purpur clients
-+        org.purpurmc.purpur.bedrock.menu.JavaChestMenuManager.initAfterPlugins(); // Purpurbedrock - Java chest menus
  
          this.saveEverything(false, true, true);
          this.notificationManager().serverStarted();

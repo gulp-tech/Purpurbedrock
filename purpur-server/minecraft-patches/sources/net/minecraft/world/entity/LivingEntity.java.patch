@@ -1,6 +1,6 @@
 --- a/net/minecraft/world/entity/LivingEntity.java
 +++ b/net/minecraft/world/entity/LivingEntity.java
-@@ -463,6 +_,12 @@
+@@ -460,6 +_,12 @@
                  if (dist < 0.0) {
                      double damagePerBlock = level.getWorldBorder().getDamagePerBlock();
                      if (damagePerBlock > 0.0) {
@@ -13,7 +13,7 @@
                          this.hurtServer(level, this.damageSources().outOfBorder(), Math.max(1, Mth.floor(-dist * damagePerBlock)));
                      }
                  }
-@@ -478,7 +_,7 @@
+@@ -475,7 +_,7 @@
                      if (this.shouldTakeDrowningDamage()) {
                          this.setAirSupply(0);
                          level.broadcastEntityEvent(this, EntityEvent.DROWN_PARTICLES);
@@ -22,7 +22,7 @@
                      }
                  } else if (this.getAirSupply() < this.getMaxAirSupply() && MobEffectUtil.shouldEffectsRefillAirsupply(this)) {
                      this.setAirSupply(this.increaseAirSupply(this.getAirSupply()));
-@@ -536,7 +_,7 @@
+@@ -535,7 +_,7 @@
      }
  
      protected boolean shouldTakeDrowningDamage() {
@@ -31,10 +31,34 @@
      }
  
      @Override
-@@ -1055,6 +_,17 @@
-             }
-         }
+@@ -1046,14 +_,32 @@
  
+         if (targetingEntity != null) {
+             ItemStack itemStack = this.getItemBySlot(EquipmentSlot.HEAD);
+-            if (targetingEntity.is(EntityTypes.SKELETON) && itemStack.is(Items.SKELETON_SKULL)
+-                || targetingEntity.is(EntityTypes.ZOMBIE) && itemStack.is(Items.ZOMBIE_HEAD)
+-                || targetingEntity.is(EntityTypes.PIGLIN) && itemStack.is(Items.PIGLIN_HEAD)
+-                || targetingEntity.is(EntityTypes.PIGLIN_BRUTE) && itemStack.is(Items.PIGLIN_HEAD)
+-                || targetingEntity.is(EntityTypes.CREEPER) && itemStack.is(Items.CREEPER_HEAD)) {
+-                visibilityPercent *= 0.5;
+-            }
+-        }
++            // Purpur start - Mob head visibility percent
++            if (targetingEntity.is(EntityTypes.SKELETON) && itemStack.is(Items.SKELETON_SKULL)) {
++                visibilityPercent *= targetingEntity.level().purpurConfig.skeletonHeadVisibilityPercent;
++            }
++            else if (targetingEntity.is(EntityTypes.ZOMBIE) && itemStack.is(Items.ZOMBIE_HEAD)) {
++                visibilityPercent *= targetingEntity.level().purpurConfig.zombieHeadVisibilityPercent;
++            }
++            else if ((targetingEntity.is(EntityTypes.PIGLIN) || targetingEntity.is(EntityTypes.PIGLIN_BRUTE)) && itemStack.is(Items.PIGLIN_HEAD)) {
++                visibilityPercent *= targetingEntity.level().purpurConfig.piglinHeadVisibilityPercent;
++            }
++            else if (targetingEntity.is(EntityTypes.CREEPER) && itemStack.is(Items.CREEPER_HEAD)) {
++                visibilityPercent *= targetingEntity.level().purpurConfig.creeperHeadVisibilityPercent;
++            }
++            // Purpur end - Mob head visibility percent
++        }
++
 +        // Purpur start - Configurable mob blindness
 +        if (targetingEntity instanceof LivingEntity entityliving) {
 +            if (entityliving.hasEffect(MobEffects.BLINDNESS)) {
@@ -45,10 +69,9 @@
 +            }
 +        }
 +        // Purpur end - Configurable mob blindness
-+
-         return Mth.clamp(visibilityPercent, 0.0, 10.0);
-     }
  
+         return visibilityPercent;
+     }
 @@ -1103,6 +_,7 @@
          Iterator<MobEffectInstance> iterator = this.activeEffects.values().iterator();
          while (iterator.hasNext()) {
@@ -57,7 +80,7 @@
              EntityPotionEffectEvent event = CraftEventFactory.callEntityPotionEffectChangeEvent(this, effect, null, cause, EntityPotionEffectEvent.Action.CLEARED);
              if (event.isCancelled()) {
                  continue;
-@@ -1445,7 +_,23 @@
+@@ -1441,7 +_,23 @@
              this.stopSleeping();
          }
  
@@ -82,80 +105,7 @@
          if (damage < 0.0F) {
              damage = 0.0F;
          }
-@@ -1485,18 +_,18 @@
-             if (!this.actuallyHurt(level, source, (float)event.getFinalDamage(), event)) { // Paper - fix invulnerability reduction in EntityDamageEvent - no longer subtract lastHurt, that is part of the damage event calc now
-                 return false;
-             }
--            if (this instanceof ServerPlayer && event.getDamage() == 0 && originalDamage == 0) return false; // Paper - revert to vanilla damage - players are not affected by damage that is 0 - skip damage if the vanilla damage is 0 and was not modified by plugins in the event.
-+            if (this instanceof ServerPlayer && event.getDamage() == 0 && originalDamage == 0 && !(this.level().purpurConfig.bedrockCombatEnabled && this.level().purpurConfig.bedrockProjectilesKnockbackPlayers && source.is(DamageTypeTags.IS_PROJECTILE))) return false; // Paper // Purpurbedrock - Snowballs & eggs knockback players
-             // CraftBukkit end
-             this.lastHurt = damage;
-             tookFullDamage = false;
-         } else {
-             // Paper start - only call damage event when actuallyHurt will be called - move call logic down
-             event = this.handleEntityDamage(source, damage, 0); // Paper - fix invulnerability reduction in EntityDamageEvent - pass lastDamage reduction (none in this branch)
-             damage = this.computeAmountFromEntityDamageEvent(event);
-             // Paper end - only call damage event when actuallyHurt will be called - move call logic down
-             // CraftBukkit start
-             if (!this.actuallyHurt(level, source, (float)event.getFinalDamage(), event)) {
-                 return false;
-             }
--            if (this instanceof ServerPlayer && event.getDamage() == 0 && originalDamage == 0) return false; // Paper - revert to vanilla damage - players are not affected by damage that is 0 - skip damage if the vanilla damage is 0 and was not modified by plugins in the event.
-+            if (this instanceof ServerPlayer && event.getDamage() == 0 && originalDamage == 0 && !(this.level().purpurConfig.bedrockCombatEnabled && this.level().purpurConfig.bedrockProjectilesKnockbackPlayers && source.is(DamageTypeTags.IS_PROJECTILE))) return false; // Paper // Purpurbedrock - Snowballs & eggs knockback players
-             this.lastHurt = damage;
-@@ -1599,5 +_,14 @@
-     public float applyItemBlocking(final ServerLevel level, final DamageSource source, final float damage, final boolean dryRun) {
-         // Paper end
-+        // Purpurbedrock start - Instant & sneak shield blocking
-+        if (this.level().purpurConfig.bedrockCombatEnabled && this.canBlockAttack(source, damage)) {
-+            float damageBlocked = this.resolveBlockedDamage(source, damage);
-+            if (!dryRun) {
-+                this.blockingItemEffects(level, source, damage, damageBlocked);
-+            }
-+            return damageBlocked;
-+        }
-+        // Purpurbedrock end
-         if (damage <= 0.0F) {
-             return 0.0F;
-         }
-@@ -1644,10 +_,10 @@
-             return false;
-         }
- 
--        ItemStack blockingWith = this.getItemBlockingWith();
-+        ItemStack blockingWith = org.purpurmc.purpur.bedrock.BedrockCombatHelper.getEffectiveBlockingItem(this); // Purpurbedrock - Instant & sneak shield block
-         if (blockingWith == null) {
-             return false;
-         }
- 
-         BlocksAttacks blocksAttacks = blockingWith.get(DataComponents.BLOCKS_ATTACKS);
-         if (blocksAttacks != null && !blocksAttacks.bypassedBy().map(t -> t.contains(source.typeHolder())).orElse(false)) {
-@@ -1673,18 +_,21 @@
-             angle = (float) Math.PI;
-         }
- 
--        BlocksAttacks blocksAttacks = this.getItemBlockingWith().get(DataComponents.BLOCKS_ATTACKS);
-+        ItemStack blockingItem = org.purpurmc.purpur.bedrock.BedrockCombatHelper.getEffectiveBlockingItem(this); // Purpurbedrock
-+        if (blockingItem == null) return 0.0F;
-+        BlocksAttacks blocksAttacks = blockingItem.get(DataComponents.BLOCKS_ATTACKS);
-+        if (blocksAttacks == null) return 0.0F;
-         return blocksAttacks.resolveBlockedDamage(source, damage, angle);
-     }
- 
-     public void blockingItemEffects(ServerLevel level, DamageSource source, final float damage, float damageBlocked) {
--        ItemStack blockingWith = this.getItemBlockingWith();
-+        ItemStack blockingWith = org.purpurmc.purpur.bedrock.BedrockCombatHelper.getEffectiveBlockingItem(this); // Purpurbedrock
-         if (blockingWith == null) return;
- 
-         BlocksAttacks blocksAttacks = blockingWith.get(DataComponents.BLOCKS_ATTACKS);
-         if (blocksAttacks == null) return;
- 
--        blocksAttacks.hurtBlockingItem(this.level(), blockingWith, this, this.getUsedItemHand(), damageBlocked);
-+        blocksAttacks.hurtBlockingItem(this.level(), blockingWith, this, org.purpurmc.purpur.bedrock.BedrockCombatHelper.getEffectiveBlockingHand(this, blockingWith), damageBlocked); // Purpurbedrock
-         if (damageBlocked > 0.0F && !source.is(DamageTypeTags.IS_PROJECTILE) && source.getDirectEntity() instanceof LivingEntity livingEntity && livingEntity.distanceToSqr(this) <= Mth.square(200.0)) { // Paper - Fix shield disable inconsistency & Check distance in entity interactions
-             this.blockUsingItem(level, livingEntity, source, damage, damageBlocked >= damage);
-         }
-@@ -1709,10 +_,10 @@
+@@ -1704,10 +_,10 @@
      protected @Nullable Player resolvePlayerResponsibleForDamage(final DamageSource source) {
          Entity sourceEntity = source.getEntity();
          if (sourceEntity instanceof Player playerSource) {
@@ -168,7 +118,7 @@
              } else {
                  this.lastHurtByPlayer = null;
                  this.lastHurtByPlayerMemoryTime = 0;
-@@ -1768,6 +_,18 @@
+@@ -1759,6 +_,17 @@
              }
          }
  
@@ -183,11 +133,10 @@
 +            }
 +        }
 +        // Purpur end - Totems work in inventory
-+
          final org.bukkit.inventory.EquipmentSlot handSlot = (usedHand != null) ? org.bukkit.craftbukkit.CraftEquipmentSlot.getHand(usedHand) : null;
-         final EntityResurrectEvent event = new EntityResurrectEvent(this.getBukkitEntity(), handSlot);
+         final EntityResurrectEvent event = new EntityResurrectEvent((org.bukkit.entity.LivingEntity) this.getBukkitEntity(), handSlot);
          event.setCancelled(protectionItem == null);
-@@ -1920,8 +_,10 @@
+@@ -1912,8 +_,10 @@
      protected void dropAllDeathLoot(final ServerLevel level, final DamageSource source) {
          boolean playerKilled = this.lastHurtByPlayerMemoryTime > 0;
          if (this.shouldDropLoot(level)) {
@@ -198,7 +147,7 @@
          }
  
          this.dropEquipment(level);
-@@ -3256,6 +_,7 @@
+@@ -3261,6 +_,7 @@
              float dmg = (float)(diff * 10.0 - 3.0);
              if (dmg > 0.0F) {
                  this.playSound(this.getFallDamageSound((int)dmg), 1.0F, 1.0F);
@@ -206,7 +155,7 @@
                  this.hurt(this.damageSources().flyIntoWall(), dmg);
              }
          }
-@@ -4815,6 +_,12 @@
+@@ -4754,6 +_,12 @@
              ? slot == EquipmentSlot.MAINHAND && this.canUseSlot(EquipmentSlot.MAINHAND)
              : slot == equippable.slot() && this.canUseSlot(equippable.slot()) && equippable.canBeEquippedBy(this.typeHolder());
      }

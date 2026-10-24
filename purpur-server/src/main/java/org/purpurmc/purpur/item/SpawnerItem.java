@@ -14,7 +14,6 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.SpawnerBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
-import org.jspecify.annotations.Nullable;
 
 public class SpawnerItem extends BlockItem {
 
@@ -23,12 +22,12 @@ public class SpawnerItem extends BlockItem {
     }
 
     @Override
-    protected boolean updateCustomBlockEntityTag(final BlockPos pos, final Level level, final @Nullable Player player, final ItemStack itemStack, final BlockState placedState) {
-        boolean handled = super.updateCustomBlockEntityTag(pos, level, player, itemStack, placedState);
+    protected boolean updateCustomBlockEntityTag(BlockPos pos, Level level, Player player, ItemStack stack, BlockState state) {
+        boolean handled = super.updateCustomBlockEntityTag(pos, level, player, stack, state);
         if (level.purpurConfig.silkTouchEnabled && player.getBukkitEntity().hasPermission("purpur.place.spawners")) {
             BlockEntity blockEntity = level.getBlockEntity(pos);
             if (blockEntity instanceof SpawnerBlockEntity spawner) {
-                CompoundTag customData = itemStack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag();
+                CompoundTag customData = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag();
                 Optional<String> mobTypeStringOptional = customData.getString("Purpur.mob_type");
                 if (mobTypeStringOptional.isPresent()) {
                     EntityType.byString(mobTypeStringOptional.get()).ifPresent(type -> spawner.getSpawner().setEntityId(type, level, level.getRandom(), pos));

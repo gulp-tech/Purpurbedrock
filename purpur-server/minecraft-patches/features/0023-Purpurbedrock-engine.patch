@@ -1,0 +1,383 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Purpurbedrock <dev@purpurbedrock.org>
+Date: Sat, 24 Oct 2026 21:15:00 +0300
+Subject: [PATCH] Purpurbedrock 26.2 engine: Bedrock-only gatekeeper, 1.8 PvP,
+ Anti-Xray, zero movement flags, zero ghost blocks & Java chest menus
+
+
+diff --git a/net/minecraft/server/dedicated/DedicatedServer.java b/net/minecraft/server/dedicated/DedicatedServer.java
+index 0000000000000000000000000000000000000000..0000000000000000000000000000000000000000 100644
+--- a/net/minecraft/server/dedicated/DedicatedServer.java
++++ b/net/minecraft/server/dedicated/DedicatedServer.java
+@@ -320,6 +320,7 @@
+         // Purpur end - UPnP Port Forwarding
+ 
+         // CraftBukkit start
++        org.purpurmc.purpur.bedrock.BedrockBridgeBootstrap.initialize(this); // Purpurbedrock - Self-contained Bedrock 26.2 protocol & LAN engine
+         this.server.loadPlugins();
+         this.server.enablePlugins(org.bukkit.plugin.PluginLoadOrder.STARTUP);
+         // CraftBukkit end
+@@ -405,5 +405,6 @@
+         org.purpurmc.purpur.task.BossBarTask.startAll(); // Purpur - Implement TPSBar
+         if (org.purpurmc.purpur.PurpurConfig.beeCountPayload) org.purpurmc.purpur.task.BeehiveTask.instance().register(); // Purpur - Give bee counts in beehives to Purpur clients
++        org.purpurmc.purpur.bedrock.menu.JavaChestMenuManager.initAfterPlugins(); // Purpurbedrock - Native Java chest & GUI menus for Bedrock
+ 
+         this.saveEverything(false, true, true);
+         this.notificationManager().serverStarted();
+diff --git a/net/minecraft/server/network/ServerHandshakePacketListenerImpl.java b/net/minecraft/server/network/ServerHandshakePacketListenerImpl.java
+index 0000000000000000000000000000000000000000..0000000000000000000000000000000000000000 100644
+--- a/net/minecraft/server/network/ServerHandshakePacketListenerImpl.java
++++ b/net/minecraft/server/network/ServerHandshakePacketListenerImpl.java
+@@ -72,5 +72,13 @@
+     private void beginLogin(ClientIntentionPacket packet, final boolean transfer) { // Paper - remove packet final
+         this.connection.setupOutboundProtocol(LoginProtocols.CLIENTBOUND);
++        // Purpurbedrock start - Reject direct Java Edition logins, allow Bedrock only
++        if (org.purpurmc.purpur.bedrock.BedrockGatekeeper.shouldRejectJavaLogin(this.connection)) {
++            Component rejectReason = org.purpurmc.purpur.bedrock.BedrockGatekeeper.getJavaRejectComponent();
++            this.connection.send(new ClientboundLoginDisconnectPacket(rejectReason));
++            this.connection.disconnect(rejectReason);
++            return;
++        }
++        // Purpurbedrock end
+         // Paper start - Connection throttle
+         try {
+             final long connectionThrottle = this.server.server.getConnectionThrottle();
+diff --git a/net/minecraft/server/network/ServerLoginPacketListenerImpl.java b/net/minecraft/server/network/ServerLoginPacketListenerImpl.java
+index 0000000000000000000000000000000000000000..0000000000000000000000000000000000000000 100644
+--- a/net/minecraft/server/network/ServerLoginPacketListenerImpl.java
++++ b/net/minecraft/server/network/ServerLoginPacketListenerImpl.java
+@@ -155,6 +155,15 @@
+     @Override
+     public void handleHello(final ServerboundHelloPacket packet) {
+         Validate.validState(this.state == ServerLoginPacketListenerImpl.State.HELLO, "Unexpected hello packet");
++        // Purpurbedrock start - Bedrock-only gatekeeper & Xbox Gamertag validation bypass
++        if (org.purpurmc.purpur.bedrock.BedrockGatekeeper.shouldRejectJavaLogin(this.connection)) {
++            this.disconnect(org.purpurmc.purpur.bedrock.BedrockGatekeeper.getJavaRejectComponent());
++            return;
++        }
++        if (org.purpurmc.purpur.bedrock.BedrockGatekeeper.isBedrockConnection(this.connection)) {
++            this.iKnowThisMayNotBeTheBestIdeaButPleaseDisableUsernameValidation = true;
++        }
++        // Purpurbedrock end
+         // Paper start - Validate usernames
+         if (io.papermc.paper.configuration.GlobalConfiguration.get().proxies.isProxyOnlineMode()
+             && io.papermc.paper.configuration.GlobalConfiguration.get().unsupportedSettings.performUsernameValidation
+diff --git a/net/minecraft/world/level/Level.java b/net/minecraft/world/level/Level.java
+index 0000000000000000000000000000000000000000..0000000000000000000000000000000000000000 100644
+--- a/net/minecraft/world/level/Level.java
++++ b/net/minecraft/world/level/Level.java
+@@ -900,6 +900,7 @@
+         this.paperConfig = paperWorldConfigCreator.apply(this.spigotConfig); // Paper - create paper world config
+         this.purpurConfig = new org.purpurmc.purpur.PurpurWorldConfig(bukkitName, environment, worldKey); // Purpur - Purpur config files
+         this.playerBreedingCooldowns = this.getNewBreedingCooldownCache(); // Purpur - Add adjustable breeding cooldown to config
++        org.purpurmc.purpur.bedrock.BedrockAntiXrayHelper.applyWorldProfile(this.paperConfig, this.purpurConfig, environment); // Purpurbedrock - Bedrock Anti-Xray & TPS profile
+         this.generator = generator;
+         this.world = new CraftWorld((ServerLevel) this, worldKey, biomeProvider, environment);
+ 
+diff --git a/net/minecraft/world/entity/player/Player.java b/net/minecraft/world/entity/player/Player.java
+index 0000000000000000000000000000000000000000..0000000000000000000000000000000000000000 100644
+--- a/net/minecraft/world/entity/player/Player.java
++++ b/net/minecraft/world/entity/player/Player.java
+@@ -330,7 +330,8 @@
+                 this.addEffect(new MobEffectInstance(MobEffects.FIRE_RESISTANCE, this.level().purpurConfig.playerNetheriteFireResistanceDuration, this.level().purpurConfig.playerNetheriteFireResistanceAmplifier, this.level().purpurConfig.playerNetheriteFireResistanceAmbient, this.level().purpurConfig.playerNetheriteFireResistanceShowParticles, this.level().purpurConfig.playerNetheriteFireResistanceShowIcon), org.bukkit.event.entity.EntityPotionEffectEvent.Cause.NETHERITE_ARMOR);
+             }
+         }
+         // Purpur end - Full netherite armor grants fire resistance
++        if (this.level().purpurConfig.bedrockCombatEnabled) this.attackStrengthTicker = 9999; // Purpurbedrock - Bedrock zero attack cooldown
+ 
+         this.cooldowns.tick();
+         this.updatePlayerPose();
+@@ -1040,9 +1040,10 @@
+             float baseDamage = this.isAutoSpinAttack() ? this.autoSpinAttackDmg : (float)this.getAttributeValue(Attributes.ATTACK_DAMAGE);
+             ItemStack attackingItemStack = this.getWeaponItem();
++            baseDamage = org.purpurmc.purpur.bedrock.BedrockCombatHelper.adjustBaseDamage(this, attackingItemStack, baseDamage); // Purpurbedrock - Bedrock weapon damage table
+             DamageSource damageSource = this.createAttackSource(attackingItemStack); final DamageSource dmgSourceFinal = damageSource; // Paper - damage events
+-            float attackStrengthScale = this.getAttackStrengthScale(0.5F);
++            float attackStrengthScale = this.level().purpurConfig.bedrockCombatEnabled ? 1.0F : this.getAttackStrengthScale(0.5F); // Purpurbedrock - No 1.9 attack cooldown
+             float magicBoost = attackStrengthScale * (this.getEnchantedDamage(entity, baseDamage, damageSource) - baseDamage);
+-            baseDamage *= this.baseDamageScaleFactor();
++            if (!this.level().purpurConfig.bedrockCombatEnabled) baseDamage *= this.baseDamageScaleFactor(); // Purpurbedrock - Full base damage on every swing
+             this.onAttack(entity); // Paper
+             final float dmgFinal = magicBoost; // Paper - damage events
+             if (!this.deflectProjectile(entity, () -> !org.bukkit.craftbukkit.event.CraftEventFactory.handleNonLivingEntityDamageEvent(entity, dmgSourceFinal, dmgFinal, false))) {
+@@ -1062,5 +1062,5 @@
+                     baseDamage += attackingItemStack.getItem().getAttackDamageBonus(entity, baseDamage, damageSource);
+-                    boolean criticalAttack = fullStrengthAttack && this.canCriticalAttack(entity);
++                    boolean criticalAttack = fullStrengthAttack && (this.level().purpurConfig.bedrockCombatEnabled && this.level().purpurConfig.bedrockAllowSprintCrits ? org.purpurmc.purpur.bedrock.BedrockCombatHelper.canBedrockCriticalAttack(this, entity) : this.canCriticalAttack(entity)); // Purpurbedrock - Allow crits while sprinting
+                     criticalAttack = criticalAttack && !this.level().paperConfig().entities.behavior.disablePlayerCrits; // Paper - Toggleable player crits
+                     if (criticalAttack) {
+                         damageSource = damageSource.critical(); // Paper - critical damage API
+@@ -1220,15 +1220,17 @@
+         if (knockbackAmount > 0.0F) {
++            float effectiveKnockback = this.level().purpurConfig.bedrockCombatEnabled ? knockbackAmount * (float) this.level().purpurConfig.bedrockKnockbackMultiplier : knockbackAmount; // Purpurbedrock
+             if (entity instanceof LivingEntity livingTarget) {
+                 livingTarget.knockback(
+-                    knockbackAmount, Mth.sin(this.getYRot() * Mth.DEG_TO_RAD), -Mth.cos(this.getYRot() * Mth.DEG_TO_RAD), damageSource, damage, comesFromEffect, this, io.papermc.paper.event.entity.EntityKnockbackEvent.Cause.ENTITY_ATTACK // Paper - knockback events
++                    effectiveKnockback, Mth.sin(this.getYRot() * Mth.DEG_TO_RAD), -Mth.cos(this.getYRot() * Mth.DEG_TO_RAD), damageSource, damage, comesFromEffect, this, io.papermc.paper.event.entity.EntityKnockbackEvent.Cause.ENTITY_ATTACK // Paper - knockback events // Purpurbedrock
+                 );
+             } else {
+-                entity.push(-Mth.sin(this.getYRot() * Mth.DEG_TO_RAD) * knockbackAmount, 0.1, Mth.cos(this.getYRot() * Mth.DEG_TO_RAD) * knockbackAmount, this); // Paper - Add EntityKnockbackByEntityEvent and EntityPushedByEntityAttackEvent
++                entity.push(-Mth.sin(this.getYRot() * Mth.DEG_TO_RAD) * effectiveKnockback, 0.1, Mth.cos(this.getYRot() * Mth.DEG_TO_RAD) * effectiveKnockback, this); // Paper - Add EntityKnockbackByEntityEvent and EntityPushedByEntityAttackEvent // Purpurbedrock
+             }
+ 
+-            this.setDeltaMovement(this.getDeltaMovement().multiply(0.6, 1.0, 0.6));
++            double sprintSlowdown = (this.level().purpurConfig.bedrockCombatEnabled && this.level().purpurConfig.bedrockPreserveSprintOnAttack) ? this.level().purpurConfig.bedrockAttackerSprintSlowdown : 0.6D; // Purpurbedrock
++            this.setDeltaMovement(this.getDeltaMovement().multiply(sprintSlowdown, 1.0, sprintSlowdown));
+             // Paper start - Configurable sprint interruption on attack
+-            if (!this.level().paperConfig().misc.disableSprintInterruptionOnAttack) {
++            if (!this.level().paperConfig().misc.disableSprintInterruptionOnAttack && !(this.level().purpurConfig.bedrockCombatEnabled && this.level().purpurConfig.bedrockPreserveSprintOnAttack)) { // Purpurbedrock
+             this.setSprinting(false);
+             }
+             // Paper end - Configurable sprint interruption on attack
+@@ -1275,3 +1275,4 @@
+                     && !(nearby instanceof ArmorStand armorStand && armorStand.isMarker())
++                    && (!this.level().purpurConfig.bedrockCombatEnabled || this.level().purpurConfig.bedrockAllowSweepAttack) // Purpurbedrock - Disable Java sweep AoE in Bedrock combat
+                     && this.distanceToSqr(nearby) < 9.0) {
+                     float enchantedDamage = this.getEnchantedDamage(nearby, var12, damageSource) * attackStrengthScale;
+@@ -1985,5 +1985,10 @@
+     // Paper start
+     public void onAttack(@Nullable Entity entity) {
++        if (this.level().purpurConfig.bedrockCombatEnabled) { // Purpurbedrock - Bedrock zero attack cooldown
++            this.attackStrengthTicker = 9999;
++            super.onAttack(entity);
++            return;
++        }
+         if (entity != null) {
+             if (new com.destroystokyo.paper.event.player.PlayerAttackEntityCooldownResetEvent((org.bukkit.entity.Player) this.getBukkitEntity(), entity.getBukkitEntity(), this.getAttackStrengthScale(0F)).callEvent()) {
+                 this.resetOnlyAttackStrengthTicker();
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index 0000000000000000000000000000000000000000..0000000000000000000000000000000000000000 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -1490,18 +1490,18 @@
+             if (!this.actuallyHurt(level, source, (float)event.getFinalDamage(), event)) { // Paper - fix invulnerability reduction in EntityDamageEvent - no longer subtract lastHurt, that is part of the damage event calc now
+                 return false;
+             }
+-            if (this instanceof ServerPlayer && event.getDamage() == 0 && originalDamage == 0) return false; // Paper - revert to vanilla damage - players are not affected by damage that is 0 - skip damage if the vanilla damage is 0 and was not modified by plugins in the event.
++            if (this instanceof ServerPlayer && event.getDamage() == 0 && originalDamage == 0 && !(this.level().purpurConfig.bedrockCombatEnabled && this.level().purpurConfig.bedrockProjectilesKnockbackPlayers && source.is(DamageTypeTags.IS_PROJECTILE))) return false; // Paper // Purpurbedrock - Snowballs & eggs knockback players
+             // CraftBukkit end
+             this.lastHurt = damage;
+             tookFullDamage = false;
+         } else {
+             // Paper start - only call damage event when actuallyHurt will be called - move call logic down
+             event = this.handleEntityDamage(source, damage, 0); // Paper - fix invulnerability reduction in EntityDamageEvent - pass lastDamage reduction (none in this branch)
+             damage = this.computeAmountFromEntityDamageEvent(event);
+             // Paper end - only call damage event when actuallyHurt will be called - move call logic down
+             // CraftBukkit start
+             if (!this.actuallyHurt(level, source, (float)event.getFinalDamage(), event)) {
+                 return false;
+             }
+-            if (this instanceof ServerPlayer && event.getDamage() == 0 && originalDamage == 0) return false; // Paper - revert to vanilla damage - players are not affected by damage that is 0 - skip damage if the vanilla damage is 0 and was not modified by plugins in the event.
++            if (this instanceof ServerPlayer && event.getDamage() == 0 && originalDamage == 0 && !(this.level().purpurConfig.bedrockCombatEnabled && this.level().purpurConfig.bedrockProjectilesKnockbackPlayers && source.is(DamageTypeTags.IS_PROJECTILE))) return false; // Paper // Purpurbedrock - Snowballs & eggs knockback players
+             this.lastHurt = damage;
+@@ -1605,5 +1605,14 @@
+     public float applyItemBlocking(final ServerLevel level, final DamageSource source, final float damage, final boolean dryRun) {
+         // Paper end
++        // Purpurbedrock start - Instant & sneak shield blocking
++        if (this.level().purpurConfig.bedrockCombatEnabled && this.canBlockAttack(source, damage)) {
++            float damageBlocked = this.resolveBlockedDamage(source, damage);
++            if (!dryRun) {
++                this.blockingItemEffects(level, source, damage, damageBlocked);
++            }
++            return damageBlocked;
++        }
++        // Purpurbedrock end
+         if (damage <= 0.0F) {
+             return 0.0F;
+         }
+@@ -1655,8 +1655,8 @@
+         if (damage <= 0.0F) {
+             return false;
+         }
+ 
+-        ItemStack blockingWith = this.getItemBlockingWith();
++        ItemStack blockingWith = org.purpurmc.purpur.bedrock.BedrockCombatHelper.getEffectiveBlockingItem(this); // Purpurbedrock - Instant & sneak shield block
+         if (blockingWith == null) {
+             return false;
+         }
+@@ -1685,19 +1685,22 @@
+         } else {
+             angle = (float) Math.PI;
+         }
+ 
+-        BlocksAttacks blocksAttacks = this.getItemBlockingWith().get(DataComponents.BLOCKS_ATTACKS);
++        ItemStack blockingItem = org.purpurmc.purpur.bedrock.BedrockCombatHelper.getEffectiveBlockingItem(this); // Purpurbedrock
++        if (blockingItem == null) return 0.0F;
++        BlocksAttacks blocksAttacks = blockingItem.get(DataComponents.BLOCKS_ATTACKS);
++        if (blocksAttacks == null) return 0.0F;
+         return blocksAttacks.resolveBlockedDamage(source, damage, angle);
+     }
+ 
+     public void blockingItemEffects(ServerLevel level, DamageSource source, final float damage, float damageBlocked) {
+-        ItemStack blockingWith = this.getItemBlockingWith();
++        ItemStack blockingWith = org.purpurmc.purpur.bedrock.BedrockCombatHelper.getEffectiveBlockingItem(this); // Purpurbedrock
+         if (blockingWith == null) return;
+ 
+         BlocksAttacks blocksAttacks = blockingWith.get(DataComponents.BLOCKS_ATTACKS);
+         if (blocksAttacks == null) return;
+ 
+-        blocksAttacks.hurtBlockingItem(this.level(), blockingWith, this, this.getUsedItemHand(), damageBlocked);
++        blocksAttacks.hurtBlockingItem(this.level(), blockingWith, this, org.purpurmc.purpur.bedrock.BedrockCombatHelper.getEffectiveBlockingHand(this, blockingWith), damageBlocked); // Purpurbedrock
+         if (damageBlocked > 0.0F && !source.is(DamageTypeTags.IS_PROJECTILE) && source.getDirectEntity() instanceof LivingEntity livingEntity && livingEntity.distanceToSqr(this) <= Mth.square(200.0)) { // Paper - Fix shield disable inconsistency & Check distance in entity interactions
+             this.blockUsingItem(level, livingEntity, source, damage);
+         }
+diff --git a/net/minecraft/world/item/ItemStack.java b/net/minecraft/world/item/ItemStack.java
+index 0000000000000000000000000000000000000000..0000000000000000000000000000000000000000 100644
+--- a/net/minecraft/world/item/ItemStack.java
++++ b/net/minecraft/world/item/ItemStack.java
+@@ -455,7 +455,8 @@
+                 // revert back all captured blocks
+                 for (org.bukkit.craftbukkit.block.CraftBlockState snapshot : capturedBlockStates) {
+                     snapshot.revertPlace(true); // poi updates needs to be skipped since the poi were never registered as part of the capture
+                     snapshot.getBlock().getBlockState().getBlock().forgetPlacer(); // Purpur - Store placer on Block when placed
++                    if (player instanceof net.minecraft.server.level.ServerPlayer sp) { org.purpurmc.purpur.bedrock.BedrockGhostBlockResync.resyncNeighborhood(sp, sp.level(), snapshot.getPosition()); } // Purpurbedrock - Zero ghost blocks on cancelled place
+                 }
+             } else {
+                 // Change the stack to its new contents if it hasn't been tampered with.
+diff --git a/net/minecraft/server/level/ServerPlayerGameMode.java b/net/minecraft/server/level/ServerPlayerGameMode.java
+index 0000000000000000000000000000000000000000..0000000000000000000000000000000000000000 100644
+--- a/net/minecraft/server/level/ServerPlayerGameMode.java
++++ b/net/minecraft/server/level/ServerPlayerGameMode.java
+@@ -176,7 +176,9 @@
+         final BlockPos pos, final ServerboundPlayerActionPacket.Action action, final Direction direction, final int maxY, final int sequence
+     ) {
+-        if (!this.player.isWithinBlockInteractionRange(pos, 1.0)) {
+-            if (true) return; // Paper - Don't allow digging into unloaded chunks; Don't notify if unreasonably far away
++        double reachAllowance = (org.purpurmc.purpur.PurpurConfig.bedrockPreventGhostBlocks && org.purpurmc.purpur.bedrock.BedrockCombatHelper.isBedrockPlayer(this.player)) ? org.purpurmc.purpur.PurpurConfig.bedrockBlockReachTolerance : 1.0; // Purpurbedrock
++        if (!this.player.isWithinBlockInteractionRange(pos, reachAllowance)) {
++            org.purpurmc.purpur.bedrock.BedrockGhostBlockResync.resyncNeighborhood(this.player, this.level, pos); // Purpurbedrock - Prevent out-of-range ghost blocks
++            if (true) return; // Paper - Don't allow digging into unloaded chunks; Don't notify if unreasonably far away
+             this.debugLogging(pos, false, sequence, "too far");
+         } else if (pos.getY() > maxY) {
+             this.player.connection.send(new ClientboundBlockUpdatePacket(pos, this.level.getBlockState(pos)));
+@@ -200,6 +200,7 @@
+                 // CraftBukkit start
+                 org.bukkit.event.player.PlayerInteractEvent event = org.bukkit.craftbukkit.event.CraftEventFactory.callPlayerInteractEvent(this.player, org.bukkit.event.block.Action.LEFT_CLICK_BLOCK, pos, direction, this.player.getInventory().getSelectedItem(), InteractionHand.MAIN_HAND);
+                 if (event.isCancelled()) {
++                    org.purpurmc.purpur.bedrock.BedrockGhostBlockResync.resyncNeighborhood(this.player, this.level, pos); // Purpurbedrock - Resync cancelled interact
+                     this.capturedBlockEntity = true; // Paper - Send block entities after destroy prediction
+                     return;
+                 }
+@@ -240,5 +240,6 @@
+                 org.bukkit.event.block.BlockDamageEvent blockEvent = org.bukkit.craftbukkit.event.CraftEventFactory.callBlockDamageEvent(this.player, pos, direction, this.player.getInventory().getSelectedItem(), progress >= 1.0f); // Paper - Add BlockFace to BlockDamageEvent
+ 
+                 if (blockEvent.isCancelled()) {
++                    org.purpurmc.purpur.bedrock.BedrockGhostBlockResync.resyncNeighborhood(this.player, this.level, pos); // Purpurbedrock - Resync cancelled BlockDamageEvent
+                     return;
+                 }
+@@ -365,6 +365,7 @@
+                 } else {
+                     this.capturedBlockEntity = true;
+                 }
++                org.purpurmc.purpur.bedrock.BedrockGhostBlockResync.resyncNeighborhood(this.player, this.level, pos); // Purpurbedrock - Zero ghost blocks on cancelled BlockBreakEvent
+                 return false;
+             }
+             if (this.player.level().purpurConfig.slabHalfBreak && this.player.isShiftKeyDown() && state.getBlock() instanceof net.minecraft.world.level.block.SlabBlock && ((net.minecraft.world.level.block.SlabBlock) state.getBlock()).halfBreak(state, pos, this.player)) return true; // Purpur - Break individual slabs when sneaking
+diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+index 0000000000000000000000000000000000000000..0000000000000000000000000000000000000000 100644
+--- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
++++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+@@ -405,6 +405,7 @@
+         this.knownMovePacketCount = this.receivedMovePacketCount;
+         if (this.clientIsFloating && !this.player.isSleeping() && !this.player.isPassenger() && !this.player.isDeadOrDying()) {
+-            if (++this.aboveGroundTickCount > this.getMaximumFlyingTicks(this.player)) {
++            int maxFlyingTicks = (org.purpurmc.purpur.PurpurConfig.bedrockMovementLeniency && org.purpurmc.purpur.bedrock.BedrockCombatHelper.isBedrockPlayer(this.player)) ? Math.max(this.getMaximumFlyingTicks(this.player), org.purpurmc.purpur.PurpurConfig.bedrockMaxFloatingTicks) : this.getMaximumFlyingTicks(this.player); // Purpurbedrock
++            if (++this.aboveGroundTickCount > maxFlyingTicks) {
+                 // LOGGER.warn("{} was kicked for floating too long!", this.player.getPlainTextName()); // Paper - Logging moved to net.minecraft.server.network.ServerCommonPacketListenerImpl.disconnect()
+                 this.disconnect(io.papermc.paper.configuration.GlobalConfiguration.get().messages.kick.flyingPlayer, org.bukkit.event.player.PlayerKickEvent.Cause.FLYING_PLAYER); // Paper - use configurable kick message & kick event cause
+                 return true;
+@@ -780,6 +780,7 @@
+         PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
+         if (packet.getId() == this.awaitingTeleport) {
+             if (this.awaitingPositionFromClient == null) {
++                if (org.purpurmc.purpur.PurpurConfig.bedrockMovementLeniency && org.purpurmc.purpur.bedrock.BedrockCombatHelper.isBedrockPlayer(this.player)) return; // Purpurbedrock - Ignore duplicate UDP/WebRTC teleport acks instead of kicking
+                 ServerGamePacketListenerImpl.LOGGER.warn("Disconnected on accept teleport packet. Was not expecting position data from client at this time"); // Purpur - Add more logger output for invalid movement kicks
+                 this.disconnect(Component.translatable("multiplayer.disconnect.invalid_player_movement"), org.bukkit.event.player.PlayerKickEvent.Cause.INVALID_PLAYER_MOVEMENT); // Paper - kick event cause
+                 return;
+@@ -2080,8 +2080,10 @@
+                 case START_DESTROY_BLOCK:
+                 case ABORT_DESTROY_BLOCK:
+                 case STOP_DESTROY_BLOCK:
+                     // Paper start - Don't allow digging into unloaded chunks
+-                    if (this.player.level().getChunkIfLoadedImmediately(pos.getX() >> 4, pos.getZ() >> 4) == null || !this.player.isWithinBlockInteractionRange(pos, 1.0)) {
++                    double digReach = (org.purpurmc.purpur.PurpurConfig.bedrockPreventGhostBlocks && org.purpurmc.purpur.bedrock.BedrockCombatHelper.isBedrockPlayer(this.player)) ? org.purpurmc.purpur.PurpurConfig.bedrockBlockReachTolerance : 1.0; // Purpurbedrock
++                    if (this.player.level().getChunkIfLoadedImmediately(pos.getX() >> 4, pos.getZ() >> 4) == null || !this.player.isWithinBlockInteractionRange(pos, digReach)) {
++                        org.purpurmc.purpur.bedrock.BedrockGhostBlockResync.resyncNeighborhood(this.player, this.player.level(), pos); // Purpurbedrock - Prevent ghost blocks when stepping back while mining
+                         this.player.connection.ackBlockChangesUpTo(packet.getSequence());
+                         return;
+                     }
+@@ -2140,24 +2140,25 @@
+         final int threshold = io.papermc.paper.configuration.GlobalConfiguration.get().spamLimiter.incomingPacketThreshold.intValue();
+ 
+-        if (this.lastLimitedPacket != -1 && timestamp - this.lastLimitedPacket < threshold && this.limitedPackets++ >= 8) {
++        int maxBurst = (org.purpurmc.purpur.PurpurConfig.bedrockPreventGhostBlocks && org.purpurmc.purpur.bedrock.BedrockCombatHelper.isBedrockPlayer(this.player)) ? 24 : 8; // Purpurbedrock - Allow Bedrock speed-bridging without dropping placements
++        if (this.lastLimitedPacket != -1 && timestamp - this.lastLimitedPacket < threshold && this.limitedPackets++ >= maxBurst) {
+             return false;
+         }
+ 
+         if (this.lastLimitedPacket == -1 || timestamp - this.lastLimitedPacket >= threshold) {
+             this.lastLimitedPacket = timestamp;
+             this.limitedPackets = 0;
+             return true;
+         }
+ 
+         return true;
+     }
+     // Paper end - limit place/interactions
+ 
+     @Override
+     public void handleUseItemOn(final ServerboundUseItemOnPacket packet) {
+         PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
+-        if (this.player.isImmobile()) return; // CraftBukkit
+-        if (!this.checkLimit(packet.timestamp)) return; // Spigot - check limit
++        if (this.player.isImmobile()) { org.purpurmc.purpur.bedrock.BedrockGhostBlockResync.resyncPlacement(this.player, packet); return; } // CraftBukkit // Purpurbedrock
++        if (!this.checkLimit(packet.timestamp)) { org.purpurmc.purpur.bedrock.BedrockGhostBlockResync.resyncPlacement(this.player, packet); return; } // Spigot - check limit // Purpurbedrock
+         if (this.hasClientLoaded()) {
+             this.ackBlockChangesUpTo(packet.getSequence());
+             ServerLevel level = this.player.level();
+@@ -2180,4 +2180,5 @@
+                 // Paper end - improve distance check
+                 BlockPos pos = blockHit.getBlockPos();
+-                if (this.player.isWithinBlockInteractionRange(pos, 1.0)) {
++                double placeReach = (org.purpurmc.purpur.PurpurConfig.bedrockPreventGhostBlocks && org.purpurmc.purpur.bedrock.BedrockCombatHelper.isBedrockPlayer(this.player)) ? org.purpurmc.purpur.PurpurConfig.bedrockBlockReachTolerance : 1.0; // Purpurbedrock
++                if (this.player.isWithinBlockInteractionRange(pos, placeReach)) {
+                     Vec3 distance = location.subtract(Vec3.atCenterOf(pos));
+@@ -2245,6 +2245,10 @@
+                         if (io.papermc.paper.configuration.GlobalConfiguration.get().unsupportedSettings.updateEquipmentOnPlayerActions) this.player.detectEquipmentUpdates(); // Paper - Force update attributes.
+                         // Paper - Remove unused warning
++                    } else {
++                        org.purpurmc.purpur.bedrock.BedrockGhostBlockResync.resyncPlacement(this.player, packet); // Purpurbedrock - Resync rejected hit offset
+                     }
++                } else {
++                    org.purpurmc.purpur.bedrock.BedrockGhostBlockResync.resyncPlacement(this.player, packet); // Purpurbedrock - Resync out-of-range block placement
+                 }
+             }
+         }
+@@ -3360,14 +3360,18 @@
+                         event.setCancelled(cancelled);
+                         net.minecraft.world.inventory.AbstractContainerMenu oldContainer = this.player.containerMenu; // SPIGOT-1224
++                        org.purpurmc.purpur.bedrock.menu.JavaChestMenuManager.handleMenuClick(this.player, event); // Purpurbedrock - Built-in Java chest menus
+                         this.cserver.getPluginManager().callEvent(event);
+                         if (this.player.containerMenu != oldContainer) {
+                             this.player.containerMenu.resumeRemoteUpdates();
+                             this.player.containerMenu.broadcastFullState();
++                            org.purpurmc.purpur.bedrock.menu.JavaChestMenuManager.onSubmenuTransition(this.player, this.player.containerMenu); // Purpurbedrock - Reliable Bedrock submenu transitions
+                             return;
+                         }
+ 
+                         if (event.getResult() != org.bukkit.event.Event.Result.DENY) { // if denied, synchronizing is fully handled by broadcastChanges at the end
+                             this.player.containerMenu.clicked(slotIndex, packet.buttonNum(), packet.containerInput(), this.player);
++                        } else if (org.purpurmc.purpur.PurpurConfig.bedrockMenusInstantResync) { // Purpurbedrock - Instant slot & cursor resync for cancelled Java menus
++                            this.player.containerMenu.sendAllDataToRemote();
+                         }
+ 
+                         if (event instanceof CraftItemEvent || event instanceof SmithItemEvent) {
+@@ -3720,7 +3720,8 @@
+         Location from = new Location(player.getWorld(), this.lastPosX, this.lastPosY, this.lastPosZ, this.lastYRot, this.lastXRot);
+         Location to = new Location(player.getWorld(), targetX, targetY, targetZ, targetYRot, targetXRot);
+         io.papermc.paper.event.player.PlayerFailMoveEvent event = new io.papermc.paper.event.player.PlayerFailMoveEvent(player, failReason,
+             false, logWarning, from, to);
++        org.purpurmc.purpur.bedrock.BedrockMovementGuard.preHandleFailMove(this.player, event, targetX, targetY, targetZ); // Purpurbedrock - Anti-flag & ghost-block self-heal
+         event.callEvent();
+         return event;
+     }

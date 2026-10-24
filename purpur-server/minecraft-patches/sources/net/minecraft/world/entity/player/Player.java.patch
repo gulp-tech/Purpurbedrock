@@ -34,7 +34,7 @@
          this.noPhysics = this.isSpectator();
          if (this.isSpectator() || this.isPassenger()) {
              this.setOnGround(false);
-@@ -301,6 +_,18 @@
+@@ -300,6 +_,17 @@
              this.turtleHelmetTick();
          }
  
@@ -48,7 +48,6 @@
 +            }
 +        }
 +        // Purpur end - Full netherite armor grants fire resistance
-+        if (this.level().purpurConfig.bedrockCombatEnabled) this.attackStrengthTicker = 9999; // Purpurbedrock - Bedrock zero attack cooldown
 +
          this.cooldowns.tick();
          this.updatePlayerPose();
@@ -62,23 +61,7 @@
                      orbs.add(entity);
                  } else if (!entity.isRemoved()) {
                      this.touch(entity);
-@@ -1031,9 +_,10 @@
-             float baseDamage = this.isAutoSpinAttack() ? this.autoSpinAttackDmg : (float)this.getAttributeValue(Attributes.ATTACK_DAMAGE);
-             ItemStack attackingItemStack = this.getWeaponItem();
-+            baseDamage = org.purpurmc.purpur.bedrock.BedrockCombatHelper.adjustBaseDamage(this, attackingItemStack, baseDamage); // Purpurbedrock - Bedrock weapon damage table
-             DamageSource damageSource = this.createAttackSource(attackingItemStack); final DamageSource dmgSourceFinal = damageSource; // Paper - damage events
--            float attackStrengthScale = this.getAttackStrengthScale(0.5F);
-+            float attackStrengthScale = this.level().purpurConfig.bedrockCombatEnabled ? 1.0F : this.getAttackStrengthScale(0.5F); // Purpurbedrock - No 1.9 attack cooldown
-             float magicBoost = attackStrengthScale * (this.getEnchantedDamage(entity, baseDamage, damageSource) - baseDamage);
--            baseDamage *= this.baseDamageScaleFactor();
-+            if (!this.level().purpurConfig.bedrockCombatEnabled) baseDamage *= this.baseDamageScaleFactor(); // Purpurbedrock - Full base damage on every swing
-             this.onAttack(entity); // Paper
-             final float dmgFinal = magicBoost; // Paper - damage events
-             if (!this.deflectProjectile(entity, () -> !org.bukkit.craftbukkit.event.CraftEventFactory.handleNonLivingEntityDamageEvent(entity, dmgSourceFinal, dmgFinal, false))) {
-@@ -1050,9 +_,9 @@
-                     baseDamage += attackingItemStack.getItem().getAttackDamageBonus(entity, baseDamage, damageSource);
--                    boolean criticalAttack = fullStrengthAttack && this.canCriticalAttack(entity);
-+                    boolean criticalAttack = fullStrengthAttack && (this.level().purpurConfig.bedrockCombatEnabled && this.level().purpurConfig.bedrockAllowSprintCrits ? org.purpurmc.purpur.bedrock.BedrockCombatHelper.canBedrockCriticalAttack(this, entity) : this.canCriticalAttack(entity)); // Purpurbedrock - Allow crits while sprinting
+@@ -1053,7 +_,7 @@
                      criticalAttack = criticalAttack && !this.level().paperConfig().entities.behavior.disablePlayerCrits; // Paper - Toggleable player crits
                      if (criticalAttack) {
                          damageSource = damageSource.critical(); // Paper - critical damage API
@@ -87,36 +70,7 @@
                      }
  
                      float totalDamage = baseDamage + magicBoost;
-@@ -1212,16 +_,18 @@
-         if (knockbackAmount > 0.0F) {
-+            float effectiveKnockback = this.level().purpurConfig.bedrockCombatEnabled ? knockbackAmount * (float) this.level().purpurConfig.bedrockKnockbackMultiplier : knockbackAmount; // Purpurbedrock
-             if (entity instanceof LivingEntity livingTarget) {
-                 livingTarget.knockback(
--                    knockbackAmount, Mth.sin(this.getYRot() * Mth.DEG_TO_RAD), -Mth.cos(this.getYRot() * Mth.DEG_TO_RAD), damageSource, damage, comesFromEffect, this, io.papermc.paper.event.entity.EntityKnockbackEvent.Cause.ENTITY_ATTACK // Paper - knockback events
-+                    effectiveKnockback, Mth.sin(this.getYRot() * Mth.DEG_TO_RAD), -Mth.cos(this.getYRot() * Mth.DEG_TO_RAD), damageSource, damage, comesFromEffect, this, io.papermc.paper.event.entity.EntityKnockbackEvent.Cause.ENTITY_ATTACK // Paper - knockback events // Purpurbedrock
-                 );
-             } else {
--                entity.push(-Mth.sin(this.getYRot() * Mth.DEG_TO_RAD) * knockbackAmount, 0.1, Mth.cos(this.getYRot() * Mth.DEG_TO_RAD) * knockbackAmount, this); // Paper - Add EntityKnockbackByEntityEvent and EntityPushedByEntityAttackEvent
-+                entity.push(-Mth.sin(this.getYRot() * Mth.DEG_TO_RAD) * effectiveKnockback, 0.1, Mth.cos(this.getYRot() * Mth.DEG_TO_RAD) * effectiveKnockback, this); // Paper - Add EntityKnockbackByEntityEvent and EntityPushedByEntityAttackEvent // Purpurbedrock
-             }
- 
--            this.setDeltaMovement(this.getDeltaMovement().multiply(0.6, 1.0, 0.6));
-+            double sprintSlowdown = (this.level().purpurConfig.bedrockCombatEnabled && this.level().purpurConfig.bedrockPreserveSprintOnAttack) ? this.level().purpurConfig.bedrockAttackerSprintSlowdown : 0.6D; // Purpurbedrock
-+            this.setDeltaMovement(this.getDeltaMovement().multiply(sprintSlowdown, 1.0, sprintSlowdown));
-             // Paper start - Configurable sprint interruption on attack
--            if (!this.level().paperConfig().misc.disableSprintInterruptionOnAttack) {
-+            if (!this.level().paperConfig().misc.disableSprintInterruptionOnAttack && !(this.level().purpurConfig.bedrockCombatEnabled && this.level().purpurConfig.bedrockPreserveSprintOnAttack)) { // Purpurbedrock
-             this.setSprinting(false);
-             }
-             // Paper end - Configurable sprint interruption on attack
-         }
-@@ -1267,4 +_,5 @@
-                     && !(nearby instanceof ArmorStand armorStand && armorStand.isMarker())
-+                    && (!this.level().purpurConfig.bedrockCombatEnabled || this.level().purpurConfig.bedrockAllowSweepAttack) // Purpurbedrock - Disable Java sweep AoE in Bedrock combat
-                     && this.distanceToSqr(nearby) < 9.0) {
-                     float enchantedDamage = this.getEnchantedDamage(nearby, var12, damageSource) * attackStrengthScale;
-                     // Paper start - Only apply knockback if the event is not canceled
-@@ -1758,7 +_,23 @@
+@@ -1763,7 +_,23 @@
  
      @Override
      protected int getBaseExperienceReward(final ServerLevel level) {
@@ -141,7 +95,7 @@
      }
  
      @Override
-@@ -1801,6 +_,13 @@
+@@ -1806,6 +_,13 @@
      public boolean addItem(final ItemStack itemStack) {
          return this.inventory.add(itemStack);
      }
@@ -155,21 +109,3 @@
  
      public abstract @Nullable GameType gameMode();
  
-@@ -1973,12 +_,17 @@
-     // Paper start
-     public void onAttack(@Nullable Entity entity) {
-+        if (this.level().purpurConfig.bedrockCombatEnabled) { // Purpurbedrock - Bedrock zero attack cooldown
-+            this.attackStrengthTicker = 9999;
-+            super.onAttack(entity);
-+            return;
-+        }
-         if (entity != null) {
-             if (new com.destroystokyo.paper.event.player.PlayerAttackEntityCooldownResetEvent((org.bukkit.entity.Player) this.getBukkitEntity(), entity.getBukkitEntity(), this.getAttackStrengthScale(0F)).callEvent()) {
-                 this.resetOnlyAttackStrengthTicker();
-             }
-         } else {
-             this.resetOnlyAttackStrengthTicker();
-         }
-         super.onAttack(entity);
-     // Paper end
-     }
