@@ -124,7 +124,6 @@ public final class BedrockBridgeBootstrap {
 
                 Plugin loaded = Bukkit.getPluginManager().loadPlugin(extractedJar.toFile());
                 if (loaded != null) {
-                    loaded.onLoad();
                     protocolActive = true;
                     Bukkit.getLogger().info(String.format(
                         "[Purpurbedrock] Встроенный протокол Bedrock 26.2 активен! RakNet/Signaling: %s:%d | NetherNet WebRTC: UDP %d | LAN Discovery (Миры): %s | Auth: %s",

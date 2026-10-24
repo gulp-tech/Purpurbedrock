@@ -18,6 +18,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 22
     if: "!contains(github.event.commits[0].message, '[ci-skip]')"
     steps:
       - name: Checkout repository
@@ -94,15 +95,13 @@ jobs:
         id: smoke_test
         run: |
           set -euo pipefail
-          {
-            TEST_PLUGIN_JAR=$(find test-plugin/build/libs -maxdepth 1 -name "test-plugin-*.jar" | head -n 1)
-            echo "Using compiled Java 26.2 plugin: $TEST_PLUGIN_JAR"
-
-            mkdir -p /tmp/smoke-server/plugins
-            cp purpurbedrock-26.2.jar /tmp/smoke-server/purpurbedrock-26.2.jar
-            cp "$TEST_PLUGIN_JAR" /tmp/smoke-server/plugins/SmokeJavaPlugin.jar
-            echo "eula=true" > /tmp/smoke-server/eula.txt
-            cat > /tmp/smoke-server/server.properties << 'EOF'
+          TEST_PLUGIN_JAR=$(find test-plugin/build/libs -maxdepth 1 -name "test-plugin-*.jar" | head -n 1)
+          echo "Using compiled Java 26.2 plugin: $TEST_PLUGIN_JAR"
+          mkdir -p /tmp/smoke-server/plugins
+          cp purpurbedrock-26.2.jar /tmp/smoke-server/purpurbedrock-26.2.jar
+          cp "$TEST_PLUGIN_JAR" /tmp/smoke-server/plugins/SmokeJavaPlugin.jar
+          echo "eula=true" > /tmp/smoke-server/eula.txt
+          cat > /tmp/smoke-server/server.properties << 'EOF'
           online-mode=false
           server-port=25565
           level-type=minecraft\:flat
@@ -112,42 +111,8 @@ jobs:
           enforce-secure-profile=false
           EOF
 
-            mkfifo /tmp/server_in
-            exec 3<>/tmp/server_in
-            (
-              cd /tmp/smoke-server
-              java -Xms1G -Xmx3G -jar purpurbedrock-26.2.jar --nogui <&3 > /tmp/server_out.log 2>&1
-            ) &
-            SERVER_PID=$!
-
-            echo "Waiting for Purpurbedrock 26.2 server to finish booting..."
-            BOOTED=0
-            for i in $(seq 1 180); do
-              if grep -q "Done (" /tmp/server_out.log 2>/dev/null; then
-                BOOTED=1
-                break
-              fi
-              if ! kill -0 "$SERVER_PID" 2>/dev/null; then
-                echo "Server exited prematurely!"
-                cat /tmp/server_out.log
-                exit 1
-              fi
-              sleep 1
-            done
-
-            if [ "$BOOTED" -ne 1 ]; then
-              echo "Timed out waiting for server boot!"
-              cat /tmp/server_out.log
-              kill -9 "$SERVER_PID" || true
-              exit 1
-            fi
-
-            echo "purpurbedrock status" >&3
-            echo "purpurbedrock antixray" >&3
-            sleep 3
-
-            python3 - << 'PY'
-          import socket, struct, time
+          python3 -u - << 'PY'
+          import os, pathlib, shutil, signal, socket, struct, subprocess, time
 
           def pack_varint(val):
               out = bytearray()
@@ -178,79 +143,115 @@ jobs:
               raw = s.encode("utf-8")
               return pack_varint(len(raw)) + raw
 
-          # 1. Test Java Edition TCP Login Rejection on 127.0.0.1:25565
-          with socket.create_connection(("127.0.0.1", 25565), timeout=5.0) as s:
-              hs_payload = pack_varint(0x00) + pack_varint(775) + pack_mc_str("127.0.0.1") + struct.pack(">H", 25565) + pack_varint(2)
-              hello_payload = pack_varint(0x00) + pack_mc_str("JavaTester") + (b"\x00" * 16)
-              s.sendall(pack_varint(len(hs_payload)) + hs_payload + pack_varint(len(hello_payload)) + hello_payload)
-
-              pkt_len = read_varint(s)
-              pkt = b""
-              while len(pkt) < pkt_len:
-                  chunk = s.recv(pkt_len - len(pkt))
-                  if not chunk:
+          log_path = pathlib.Path("/tmp/server_out.log")
+          out_f = log_path.open("w", encoding="utf-8")
+          proc = subprocess.Popen(
+              ["java", "-Xms1G", "-Xmx3G", "-jar", "purpurbedrock-26.2.jar", "--nogui"],
+              cwd="/tmp/smoke-server",
+              stdin=subprocess.PIPE,
+              stdout=out_f,
+              stderr=subprocess.STDOUT,
+              text=True,
+              close_fds=True,
+              start_new_session=True,
+          )
+          try:
+              print("Waiting for Purpurbedrock 26.2 server to finish booting...")
+              booted = False
+              for _ in range(150):
+                  if proc.poll() is not None:
+                      raise RuntimeError(f"Server exited early with code {proc.returncode}")
+                  txt = log_path.read_text(encoding="utf-8", errors="replace")
+                  if "Done (" in txt:
+                      booted = True
                       break
-                  pkt += chunk
-              assert pkt[0] == 0x00, f"Expected LoginDisconnect packet 0x00, got 0x{pkt[0]:02x}"
-              disconnect_text = pkt[1:].decode("utf-8", errors="replace")
-              print("JAVA_LOGIN_REJECT_OK:", disconnect_text)
-              assert "Bedrock" in disconnect_text or "Java" in disconnect_text
-
-          # 2. Test Bedrock Edition UDP RakNet Unconnected Ping on 127.0.0.1:19132
-          magic = bytes.fromhex("00ffff00fefefefefdfdfdfd12345678")
-          ping = b"\x01" + struct.pack(">Q", int(time.time() * 1000)) + magic + struct.pack(">Q", 0x123456789ABCDEF0)
-          usock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-          usock.settimeout(5.0)
-          pong_ok = False
-          for attempt in range(5):
-              usock.sendto(ping, ("127.0.0.1", 19132))
-              try:
-                  data, _ = usock.recvfrom(4096)
-                  if data and data[0] == 0x1C and b"MCPE;" in data:
-                      idx = data.index(b"MCPE;")
-                      print("BEDROCK_UDP_PONG_OK:", data[idx:].decode("utf-8", errors="replace"))
-                      pong_ok = True
-                      break
-              except socket.timeout:
                   time.sleep(1)
-          assert pong_ok, "Did not receive RakNet Unconnected Pong on UDP 19132!"
+              if not booted:
+                  raise RuntimeError("Timed out waiting for Purpurbedrock 26.2 boot!")
 
-          # 3. Test NetherNet HTTP/WebSocket Signaling TCP listener on 127.0.0.1:19132
-          with socket.create_connection(("127.0.0.1", 19132), timeout=5.0) as ns:
-              print("NETHERNET_TCP_SIGNALING_OK: connected to 127.0.0.1:19132")
+              proc.stdin.write("purpurbedrock status\npurpurbedrock antixray\n")
+              proc.stdin.flush()
+              time.sleep(3)
+
+              # 1. Test Java Edition TCP Login Rejection on 127.0.0.1:25565
+              with socket.create_connection(("127.0.0.1", 25565), timeout=5.0) as s:
+                  hs_payload = pack_varint(0x00) + pack_varint(775) + pack_mc_str("127.0.0.1") + struct.pack(">H", 25565) + pack_varint(2)
+                  hello_payload = pack_varint(0x00) + pack_mc_str("JavaTester") + (b"\x00" * 16)
+                  s.sendall(pack_varint(len(hs_payload)) + hs_payload + pack_varint(len(hello_payload)) + hello_payload)
+
+                  pkt_len = read_varint(s)
+                  pkt = b""
+                  while len(pkt) < pkt_len:
+                      chunk = s.recv(pkt_len - len(pkt))
+                      if not chunk:
+                          break
+                      pkt += chunk
+                  assert pkt[0] == 0x00, f"Expected LoginDisconnect packet 0x00, got 0x{pkt[0]:02x}"
+                  disconnect_text = pkt[1:].decode("utf-8", errors="replace")
+                  print("JAVA_LOGIN_REJECT_OK:", disconnect_text)
+                  assert "Bedrock" in disconnect_text or "Java" in disconnect_text
+
+              # 2. Test Bedrock Edition UDP RakNet Unconnected Ping on 127.0.0.1:19132
+              magic = bytes.fromhex("00ffff00fefefefefdfdfdfd12345678")
+              ping = b"\x01" + struct.pack(">Q", int(time.time() * 1000)) + magic + struct.pack(">Q", 0x123456789ABCDEF0)
+              usock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+              usock.settimeout(4.0)
+              pong_ok = False
+              for _ in range(6):
+                  usock.sendto(ping, ("127.0.0.1", 19132))
+                  try:
+                      data, _ = usock.recvfrom(4096)
+                      if data and data[0] == 0x1C and b"MCPE;" in data:
+                          idx = data.index(b"MCPE;")
+                          print("BEDROCK_UDP_PONG_OK:", data[idx:].decode("utf-8", errors="replace"))
+                          pong_ok = True
+                          break
+                  except socket.timeout:
+                      time.sleep(1)
+              usock.close()
+              assert pong_ok, "Did not receive RakNet Unconnected Pong on UDP 19132!"
+
+              # 3. Test NetherNet HTTP/WebSocket Signaling TCP listener on 127.0.0.1:19132
+              with socket.create_connection(("127.0.0.1", 19132), timeout=5.0):
+                  print("NETHERNET_TCP_SIGNALING_OK: connected to 127.0.0.1:19132")
+
+              proc.stdin.write("stop\n")
+              proc.stdin.flush()
+              proc.stdin.close()
+              try:
+                  proc.wait(timeout=15)
+                  print("CLEAN_SERVER_EXIT_OK:", proc.returncode)
+              except subprocess.TimeoutExpired:
+                  print("Forcing server exit after timeout")
+          finally:
+              try:
+                  os.killpg(proc.pid, signal.SIGKILL)
+              except ProcessLookupError:
+                  pass
+              out_f.close()
+
+          server_log = log_path.read_text(encoding="utf-8", errors="replace")
+          print("=== SERVER LOG TAIL ===")
+          print("\n".join(server_log.splitlines()[-65:]))
+
+          assert not pathlib.Path("/tmp/smoke-server/plugins/Geyser-Spigot").exists(), "plugins/Geyser-Spigot must NOT exist!"
+          assert pathlib.Path("/tmp/smoke-server/bedrock.yml").is_file(), "bedrock.yml missing!"
+          assert pathlib.Path("/tmp/smoke-server/unlock-windows-lan.bat").is_file(), "unlock-windows-lan.bat missing!"
+          shutil.copyfile("/tmp/smoke-server/unlock-windows-lan.bat", "unlock-windows-lan.bat")
+
+          required_lines = [
+              "SMOKE_JAVA_PLUGIN_26_2_OK server=Purpurbedrock mc=26.2 invSize=27",
+              "NetherNet LAN Discovery active on UDP",
+              "Вход только с Bedrock (блок Java): ВКЛЮЧЁН",
+              "Anti-Xray под Bedrock (Алмазы + Незерит): ВКЛЮЧЁН",
+              "Защита от флагов движения и фантомных блоков: ВКЛЮЧЕНА",
+              "Java-меню (DeluxeMenus / Chest GUI): ВКЛЮЧЕНЫ",
+          ]
+          for req in required_lines:
+              assert req in server_log, f"Missing expected log line: {req!r}"
+
+          print("ALL PURPURBEDROCK 26.2 LIVE SMOKE TESTS PASSED!")
           PY
-
-            echo "stop" >&3
-            exec 3>&-
-            for i in $(seq 1 25); do
-              if ! kill -0 "$SERVER_PID" 2>/dev/null; then
-                break
-              fi
-              sleep 1
-            done
-            kill -9 "$SERVER_PID" 2>/dev/null || true
-            wait "$SERVER_PID" 2>/dev/null || true
-
-            echo "=== Server Output Tail ==="
-            tail -n 60 /tmp/server_out.log || true
-
-            # Verify zero external Geyser-Spigot folder in plugins/
-            if [ -d /tmp/smoke-server/plugins/Geyser-Spigot ]; then
-              echo "ERROR: plugins/Geyser-Spigot should NOT exist!"
-              exit 1
-            fi
-            test -f /tmp/smoke-server/bedrock.yml
-            test -f /tmp/smoke-server/unlock-windows-lan.bat
-            cp /tmp/smoke-server/unlock-windows-lan.bat unlock-windows-lan.bat
-
-            grep -q "SMOKE_JAVA_PLUGIN_26_2_OK server=Purpurbedrock mc=26.2 invSize=27" /tmp/server_out.log
-            grep -q "NetherNet LAN Discovery active on UDP" /tmp/server_out.log
-            grep -q "Вход только с Bedrock (блок Java): ВКЛЮЧЁН" /tmp/server_out.log
-            grep -q "Anti-Xray под Bedrock (Алмазы + Незерит): ВКЛЮЧЁН" /tmp/server_out.log
-            grep -q "Защита от флагов движения и фантомных блоков: ВКЛЮЧЕНА" /tmp/server_out.log
-            grep -q "Java-меню (DeluxeMenus / Chest GUI): ВКЛЮЧЕНЫ" /tmp/server_out.log
-            echo "ALL PURPURBEDROCK 26.2 LIVE SMOKE TESTS PASSED!"
-          } 2>&1 | tee -a /tmp/build.log
 
       - name: Upload Purpurbedrock 26.2 Core Artifact
         uses: actions/upload-artifact@v4
