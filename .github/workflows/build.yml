@@ -43,8 +43,7 @@ jobs:
           set -o pipefail
           {
             gradle applyAllPatches --stacktrace
-            gradle createMojmapPaperclipJar --stacktrace || gradle createPaperclipJar --stacktrace
-            gradle :purpur-api:jar --stacktrace
+            gradle createPaperclipJar :purpur-api:jar --stacktrace
           } 2>&1 | tee /tmp/build.log
 
       - name: Bundle embedded GeyserMC 26.3 into Purpurbedrock JAR

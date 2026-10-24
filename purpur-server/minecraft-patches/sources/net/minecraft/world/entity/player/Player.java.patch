@@ -87,17 +87,17 @@
                      }
  
                      float totalDamage = baseDamage + magicBoost;
-@@ -1212,16 +_,20 @@
+@@ -1212,16 +_,18 @@
          if (knockbackAmount > 0.0F) {
-+            if (this.level().purpurConfig.bedrockCombatEnabled) {
-+                knockbackAmount *= (float) this.level().purpurConfig.bedrockKnockbackMultiplier;
-+            }
++            float effectiveKnockback = this.level().purpurConfig.bedrockCombatEnabled ? knockbackAmount * (float) this.level().purpurConfig.bedrockKnockbackMultiplier : knockbackAmount; // Purpurbedrock
              if (entity instanceof LivingEntity livingTarget) {
                  livingTarget.knockback(
-                     knockbackAmount, Mth.sin(this.getYRot() * Mth.DEG_TO_RAD), -Mth.cos(this.getYRot() * Mth.DEG_TO_RAD), damageSource, damage, comesFromEffect, this, io.papermc.paper.event.entity.EntityKnockbackEvent.Cause.ENTITY_ATTACK // Paper - knockback events
+-                    knockbackAmount, Mth.sin(this.getYRot() * Mth.DEG_TO_RAD), -Mth.cos(this.getYRot() * Mth.DEG_TO_RAD), damageSource, damage, comesFromEffect, this, io.papermc.paper.event.entity.EntityKnockbackEvent.Cause.ENTITY_ATTACK // Paper - knockback events
++                    effectiveKnockback, Mth.sin(this.getYRot() * Mth.DEG_TO_RAD), -Mth.cos(this.getYRot() * Mth.DEG_TO_RAD), damageSource, damage, comesFromEffect, this, io.papermc.paper.event.entity.EntityKnockbackEvent.Cause.ENTITY_ATTACK // Paper - knockback events // Purpurbedrock
                  );
              } else {
-                 entity.push(-Mth.sin(this.getYRot() * Mth.DEG_TO_RAD) * knockbackAmount, 0.1, Mth.cos(this.getYRot() * Mth.DEG_TO_RAD) * knockbackAmount, this); // Paper - Add EntityKnockbackByEntityEvent and EntityPushedByEntityAttackEvent
+-                entity.push(-Mth.sin(this.getYRot() * Mth.DEG_TO_RAD) * knockbackAmount, 0.1, Mth.cos(this.getYRot() * Mth.DEG_TO_RAD) * knockbackAmount, this); // Paper - Add EntityKnockbackByEntityEvent and EntityPushedByEntityAttackEvent
++                entity.push(-Mth.sin(this.getYRot() * Mth.DEG_TO_RAD) * effectiveKnockback, 0.1, Mth.cos(this.getYRot() * Mth.DEG_TO_RAD) * effectiveKnockback, this); // Paper - Add EntityKnockbackByEntityEvent and EntityPushedByEntityAttackEvent // Purpurbedrock
              }
  
 -            this.setDeltaMovement(this.getDeltaMovement().multiply(0.6, 1.0, 0.6));
