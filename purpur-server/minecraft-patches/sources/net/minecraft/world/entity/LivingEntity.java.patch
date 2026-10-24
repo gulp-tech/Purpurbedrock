@@ -82,64 +82,79 @@
          if (damage < 0.0F) {
              damage = 0.0F;
          }
-@@ -1486,19 +_,19 @@
-                 if (!this.actuallyHurt(level, source, (float)event.getFinalDamage(), event)) { // Paper - fix invulnerability reduction in EntityDamageEvent - no longer subtract lastHurt, that is part of the damage event calc now
-                     return false;
-                 }
--                if (this instanceof ServerPlayer && event.getDamage() == 0 && originalDamage == 0) return false; // Paper - revert to vanilla damage - players are not affected by damage that is 0 - skip damage if the vanilla damage is 0 and was not modified by plugins in the event.
-+                if (this instanceof ServerPlayer && event.getDamage() == 0 && originalDamage == 0 && !(this.level().purpurConfig.bedrockCombatEnabled && this.level().purpurConfig.bedrockProjectilesKnockbackPlayers && source.is(DamageTypeTags.IS_PROJECTILE))) return false; // Paper // Purpurbedrock - Snowballs & eggs knockback players
-                 // CraftBukkit end
-                 this.lastHurt = damage;
-                 tookFullDamage = false;
-             } else {
-                 // Paper start - only call damage event when actuallyHurt will be called - move call logic down
-                 event = this.handleEntityDamage(source, damage, 0); // Paper - fix invulnerability reduction in EntityDamageEvent - pass lastDamage reduction (none in this branch)
-                 damage = this.computeAmountFromEntityDamageEvent(event);
-                 // Paper end - only call damage event when actuallyHurt will be called - move call logic down
-                 // CraftBukkit start
-                 if (!this.actuallyHurt(level, source, (float)event.getFinalDamage(), event)) {
-                     return false;
-                 }
--                if (this instanceof ServerPlayer && event.getDamage() == 0 && originalDamage == 0) return false; // Paper - revert to vanilla damage - players are not affected by damage that is 0 - skip damage if the vanilla damage is 0 and was not modified by plugins in the event.
-+                if (this instanceof ServerPlayer && event.getDamage() == 0 && originalDamage == 0 && !(this.level().purpurConfig.bedrockCombatEnabled && this.level().purpurConfig.bedrockProjectilesKnockbackPlayers && source.is(DamageTypeTags.IS_PROJECTILE))) return false; // Paper // Purpurbedrock - Snowballs & eggs knockback players
-                 this.lastHurt = damage;
+@@ -1485,18 +_,18 @@
+             if (!this.actuallyHurt(level, source, (float)event.getFinalDamage(), event)) { // Paper - fix invulnerability reduction in EntityDamageEvent - no longer subtract lastHurt, that is part of the damage event calc now
+                 return false;
              }
-@@ -1645,10 +_,10 @@
-     // Paper start - Check for itemstack instead of item
-     public final boolean canBlockAttack(DamageSource damageSource) {
-         Entity directEntity = damageSource.getDirectEntity();
-         boolean hasPiercing = directEntity instanceof AbstractArrow abstractArrow && abstractArrow.getPierceLevel() > 0;
+-            if (this instanceof ServerPlayer && event.getDamage() == 0 && originalDamage == 0) return false; // Paper - revert to vanilla damage - players are not affected by damage that is 0 - skip damage if the vanilla damage is 0 and was not modified by plugins in the event.
++            if (this instanceof ServerPlayer && event.getDamage() == 0 && originalDamage == 0 && !(this.level().purpurConfig.bedrockCombatEnabled && this.level().purpurConfig.bedrockProjectilesKnockbackPlayers && source.is(DamageTypeTags.IS_PROJECTILE))) return false; // Paper // Purpurbedrock - Snowballs & eggs knockback players
+             // CraftBukkit end
+             this.lastHurt = damage;
+             tookFullDamage = false;
+         } else {
+             // Paper start - only call damage event when actuallyHurt will be called - move call logic down
+             event = this.handleEntityDamage(source, damage, 0); // Paper - fix invulnerability reduction in EntityDamageEvent - pass lastDamage reduction (none in this branch)
+             damage = this.computeAmountFromEntityDamageEvent(event);
+             // Paper end - only call damage event when actuallyHurt will be called - move call logic down
+             // CraftBukkit start
+             if (!this.actuallyHurt(level, source, (float)event.getFinalDamage(), event)) {
+                 return false;
+             }
+-            if (this instanceof ServerPlayer && event.getDamage() == 0 && originalDamage == 0) return false; // Paper - revert to vanilla damage - players are not affected by damage that is 0 - skip damage if the vanilla damage is 0 and was not modified by plugins in the event.
++            if (this instanceof ServerPlayer && event.getDamage() == 0 && originalDamage == 0 && !(this.level().purpurConfig.bedrockCombatEnabled && this.level().purpurConfig.bedrockProjectilesKnockbackPlayers && source.is(DamageTypeTags.IS_PROJECTILE))) return false; // Paper // Purpurbedrock - Snowballs & eggs knockback players
+             this.lastHurt = damage;
+@@ -1599,5 +_,14 @@
+     public float applyItemBlocking(final ServerLevel level, final DamageSource source, final float damage, final boolean dryRun) {
+         // Paper end
++        // Purpurbedrock start - Instant & sneak shield blocking
++        if (this.level().purpurConfig.bedrockCombatEnabled && this.canBlockAttack(source, damage)) {
++            float damageBlocked = this.resolveBlockedDamage(source, damage);
++            if (!dryRun) {
++                this.blockingItemEffects(level, source, damage, damageBlocked);
++            }
++            return damageBlocked;
++        }
++        // Purpurbedrock end
+         if (damage <= 0.0F) {
+             return 0.0F;
+         }
+@@ -1644,10 +_,10 @@
+             return false;
+         }
+ 
 -        ItemStack blockingWith = this.getItemBlockingWith();
 +        ItemStack blockingWith = org.purpurmc.purpur.bedrock.BedrockCombatHelper.getEffectiveBlockingItem(this); // Purpurbedrock - Instant & sneak shield block
          if (blockingWith == null) {
              return false;
          }
+ 
          BlocksAttacks blocksAttacks = blockingWith.get(DataComponents.BLOCKS_ATTACKS);
-         if (blocksAttacks == null) {
-@@ -1674,16 +_,20 @@
-         // Paper start
-         if (!canBlockAttack(damageSource)) return 0.0F;
+         if (blocksAttacks != null && !blocksAttacks.bypassedBy().map(t -> t.contains(source.typeHolder())).orElse(false)) {
+@@ -1673,18 +_,21 @@
+             angle = (float) Math.PI;
+         }
+ 
 -        BlocksAttacks blocksAttacks = this.getItemBlockingWith().get(DataComponents.BLOCKS_ATTACKS);
 +        ItemStack blockingItem = org.purpurmc.purpur.bedrock.BedrockCombatHelper.getEffectiveBlockingItem(this); // Purpurbedrock
 +        if (blockingItem == null) return 0.0F;
 +        BlocksAttacks blocksAttacks = blockingItem.get(DataComponents.BLOCKS_ATTACKS);
 +        if (blocksAttacks == null) return 0.0F;
-         return blocksAttacks.resolveBlockedDamage(damageSource, amount, getBlockingAngle(damageSource));
+         return blocksAttacks.resolveBlockedDamage(source, damage, angle);
      }
-     public void blockingItemEffects(ServerLevel level, DamageSource damageSource, float damageBlocked) {
-         Entity directEntity = damageSource.getDirectEntity();
+ 
+     public void blockingItemEffects(ServerLevel level, DamageSource source, final float damage, float damageBlocked) {
 -        ItemStack blockingWith = this.getItemBlockingWith();
 +        ItemStack blockingWith = org.purpurmc.purpur.bedrock.BedrockCombatHelper.getEffectiveBlockingItem(this); // Purpurbedrock
          if (blockingWith == null) return;
-         BlocksAttacks blocksAttacks = blockingWith.get(DataComponents.BLOCKS_ATTACKS);
-+        if (blocksAttacks == null) return;
-         if (damageBlocked > 0.0F) {
-             // Paper end
--            blocksAttacks.hurtBlockingItem(this.level(), blockingWith, this, this.getUsedItemHand(), damageBlocked);
-+            blocksAttacks.hurtBlockingItem(this.level(), blockingWith, this, org.purpurmc.purpur.bedrock.BedrockCombatHelper.getEffectiveBlockingHand(this, blockingWith), damageBlocked); // Purpurbedrock
-         }
  
-         if (!damageSource.is(DamageTypeTags.IS_PROJECTILE) && directEntity instanceof LivingEntity livingAttacker) {
+         BlocksAttacks blocksAttacks = blockingWith.get(DataComponents.BLOCKS_ATTACKS);
+         if (blocksAttacks == null) return;
+ 
+-        blocksAttacks.hurtBlockingItem(this.level(), blockingWith, this, this.getUsedItemHand(), damageBlocked);
++        blocksAttacks.hurtBlockingItem(this.level(), blockingWith, this, org.purpurmc.purpur.bedrock.BedrockCombatHelper.getEffectiveBlockingHand(this, blockingWith), damageBlocked); // Purpurbedrock
+         if (damageBlocked > 0.0F && !source.is(DamageTypeTags.IS_PROJECTILE) && source.getDirectEntity() instanceof LivingEntity livingEntity && livingEntity.distanceToSqr(this) <= Mth.square(200.0)) { // Paper - Fix shield disable inconsistency & Check distance in entity interactions
+             this.blockUsingItem(level, livingEntity, source, damage, damageBlocked >= damage);
+         }
 @@ -1709,10 +_,10 @@
      protected @Nullable Player resolvePlayerResponsibleForDamage(final DamageSource source) {
          Entity sourceEntity = source.getEntity();
