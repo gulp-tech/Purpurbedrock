@@ -70,7 +70,7 @@ public final class PurpurBedrockCommand extends Command {
         if ("antixray".equals(sub)) {
             sender.sendMessage(Component.text("=== Статус Bedrock Anti-Xray по мирам ===", NamedTextColor.GOLD));
             for (World world : Bukkit.getWorlds()) {
-                var xray = world.getHandle().paperConfig().anticheat.antiXray;
+                var xray = ((org.bukkit.craftbukkit.CraftWorld) world).getHandle().paperConfig().anticheat.antiXray;
                 sender.sendMessage(Component.text(String.format(
                     " • %s (%s): %s | Режим: %s | Высота: <= %d | Под лавой: %s | Руд скрыто: %d",
                     world.getName(),
@@ -86,7 +86,7 @@ public final class PurpurBedrockCommand extends Command {
         }
 
         boolean combatEnabled = !Bukkit.getWorlds().isEmpty()
-            && Bukkit.getWorlds().getFirst().getHandle().purpurConfig.bedrockCombatEnabled;
+            && ((org.bukkit.craftbukkit.CraftWorld) Bukkit.getWorlds().getFirst()).getHandle().purpurConfig.bedrockCombatEnabled;
         double tps1m = Math.min(20.0, Bukkit.getTPS()[0]);
 
         sender.sendMessage(Component.text("=== Статус ядра Purpurbedrock 26.2 (STABLE) ===", NamedTextColor.LIGHT_PURPLE));

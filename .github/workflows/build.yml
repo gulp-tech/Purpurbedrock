@@ -232,10 +232,9 @@ jobs:
             grep -q "SMOKE_JAVA_PLUGIN_26_2_OK server=Purpurbedrock mc=26.2 invSize=27" /tmp/server_out.log
             grep -q "NetherNet LAN Discovery active on UDP" /tmp/server_out.log
             grep -q "Вход только с Bedrock (блок Java): ВКЛЮЧЁН" /tmp/server_out.log
-            grep -q "Встроенное меню /menu: АКТИВНО" /tmp/server_out.log
-            grep -q "Анти-Флаг (движение/полёт/ТП): ВКЛЮЧЁН" /tmp/server_out.log
-            grep -q "Защита от фантомных блоков: ВКЛЮЧЕНА" /tmp/server_out.log
-            grep -q "Алмазы + Незерит" /tmp/server_out.log
+            grep -q "Anti-Xray под Bedrock (Алмазы + Незерит): ВКЛЮЧЁН" /tmp/server_out.log
+            grep -q "Защита от флагов движения и фантомных блоков: ВКЛЮЧЕНА" /tmp/server_out.log
+            grep -q "Java-меню (DeluxeMenus / Chest GUI): ВКЛЮЧЕНЫ" /tmp/server_out.log
             echo "ALL PURPURBEDROCK 26.2 LIVE SMOKE TESTS PASSED!"
           } 2>&1 | tee -a /tmp/build.log
 

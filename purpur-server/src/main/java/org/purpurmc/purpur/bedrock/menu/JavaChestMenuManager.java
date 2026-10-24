@@ -103,7 +103,7 @@ public final class JavaChestMenuManager {
             )
         ));
 
-        boolean combat = player.getWorld().getHandle().purpurConfig.bedrockCombatEnabled;
+        boolean combat = ((org.bukkit.craftbukkit.CraftWorld) player.getWorld()).getHandle().purpurConfig.bedrockCombatEnabled;
         inv.setItem(12, createIcon(
             Material.DIAMOND_SWORD,
             Component.text("Боевая система Bedrock (1.8 PvP)", NamedTextColor.GOLD, TextDecoration.BOLD),
@@ -166,7 +166,7 @@ public final class JavaChestMenuManager {
         int slot = 10;
         for (World world : Bukkit.getWorlds()) {
             if (slot > 16) break;
-            boolean active = world.getHandle().paperConfig().anticheat.antiXray.enabled;
+            boolean active = ((org.bukkit.craftbukkit.CraftWorld) world).getHandle().paperConfig().anticheat.antiXray.enabled;
             Material icon = world.getEnvironment() == World.Environment.NETHER ? Material.ANCIENT_DEBRIS
                 : (world.getEnvironment() == World.Environment.THE_END ? Material.END_STONE : Material.DEEPSLATE_DIAMOND_ORE);
             inv.setItem(slot++, createIcon(

@@ -640,7 +640,7 @@ public class PurpurConfig {
     private static void bedrockCoreSettings() {
         bedrockOnlyAllowBedrock = getBoolean("bedrock.only-allow-bedrock", bedrockOnlyAllowBedrock);
         bedrockRejectJavaMessage = getString("bedrock.reject-java-message", bedrockRejectJavaMessage);
-        List<Object> configuredIps = getList("bedrock.allowed-bridge-ips", new ArrayList<>(bedrockAllowedBridgeIps));
+        List<?> configuredIps = getList("bedrock.allowed-bridge-ips", new ArrayList<>(bedrockAllowedBridgeIps));
         bedrockAllowedBridgeIps.clear();
         for (Object entry : configuredIps) {
             if (entry != null) {
