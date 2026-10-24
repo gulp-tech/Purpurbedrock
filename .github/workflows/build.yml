@@ -200,9 +200,9 @@ jobs:
             exec 3>&-
             wait "$SERVER_PID" || true
 
-            grep -q "SMOKE_JAVA_PLUGIN_OK" /tmp/server_out.log
-            grep -q "Bedrock-only mode: ENABLED" /tmp/server_out.log
-            grep -q "Bedrock combat (overworld): ENABLED" /tmp/server_out.log
+            grep -q "SMOKE_JAVA_PLUGIN_OK server=Purpurbedrock invSize=27" /tmp/server_out.log
+            grep -q "Вход только с Bedrock (блок Java): ВКЛЮЧЁН" /tmp/server_out.log
+            grep -q "Боёвка Bedrock" /tmp/server_out.log
             grep -q "Java-style chest menu" /tmp/server_out.log
             test -f /tmp/smoke-server/menus.yml
             echo "ALL LIVE SMOKE TESTS PASSED!"
