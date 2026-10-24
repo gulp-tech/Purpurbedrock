@@ -43,7 +43,7 @@ jobs:
           set -o pipefail
           {
             gradle applyAllPatches --stacktrace
-            gradle createPaperclipJar :purpur-api:jar --stacktrace
+            gradle createPaperclipJar :test-plugin:jar --stacktrace
           } 2>&1 | tee /tmp/build.log
 
       - name: Bundle embedded GeyserMC 26.3 into Purpurbedrock JAR
@@ -73,34 +73,12 @@ jobs:
         run: |
           set -euo pipefail
           {
-            API_JAR=$(find purpur-api/build/libs -maxdepth 1 -name "purpur-api-*.jar" ! -name "*-sources.jar" ! -name "*-javadoc.jar" | head -n 1)
-            echo "Compiling test Java plugin against $API_JAR..."
-            mkdir -p /tmp/smoketest-plugin/src/testplugin /tmp/smoketest-plugin/classes
-            cat > /tmp/smoketest-plugin/src/testplugin/SmokePlugin.java << 'EOF'
-          package testplugin;
-          import org.bukkit.Bukkit;
-          import org.bukkit.inventory.Inventory;
-          import org.bukkit.plugin.java.JavaPlugin;
-          public class SmokePlugin extends JavaPlugin {
-              @Override
-              public void onEnable() {
-                  Inventory inv = Bukkit.createInventory(null, 27, "JavaPluginChestTest");
-                  getLogger().info("SMOKE_JAVA_PLUGIN_OK server=" + Bukkit.getName() + " invSize=" + inv.getSize());
-              }
-          }
-          EOF
-            cat > /tmp/smoketest-plugin/classes/plugin.yml << 'EOF'
-          name: SmokeJavaPlugin
-          version: 1.0.0
-          main: testplugin.SmokePlugin
-          api-version: '1.21'
-          EOF
-            javac -cp "$API_JAR" -d /tmp/smoketest-plugin/classes /tmp/smoketest-plugin/src/testplugin/SmokePlugin.java
-            jar cf /tmp/SmokeJavaPlugin.jar -C /tmp/smoketest-plugin/classes .
+            TEST_PLUGIN_JAR=$(find test-plugin/build/libs -maxdepth 1 -name "test-plugin-*.jar" | head -n 1)
+            echo "Using compiled Java plugin: $TEST_PLUGIN_JAR"
 
             mkdir -p /tmp/smoke-server/plugins
             cp purpurbedrock-26.3.jar /tmp/smoke-server/purpurbedrock-26.3.jar
-            cp /tmp/SmokeJavaPlugin.jar /tmp/smoke-server/plugins/SmokeJavaPlugin.jar
+            cp "$TEST_PLUGIN_JAR" /tmp/smoke-server/plugins/SmokeJavaPlugin.jar
             echo "eula=true" > /tmp/smoke-server/eula.txt
             cat > /tmp/smoke-server/server.properties << 'EOF'
           online-mode=false
