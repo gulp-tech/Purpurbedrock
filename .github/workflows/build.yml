@@ -1,0 +1,276 @@
+name: Build Purpurbedrock Core
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - "ver/**"
+      - "arena/**"
+      - "main"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    if: "!contains(github.event.commits[0].message, '[ci-skip]')"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+          cache: 'gradle'
+
+      - name: Configure Git identity for Paperweight
+        run: |
+          git config --global user.email "no-reply@github.com"
+          git config --global user.name "GitHub Actions"
+
+      - name: Apply patches & build Paperclip JAR
+        id: gradle_build
+        run: |
+          set -o pipefail
+          {
+            ./gradlew applyAllPatches --stacktrace
+            ./gradlew createMojmapPaperclipJar --stacktrace || ./gradlew createPaperclipJar --stacktrace
+            ./gradlew :purpur-api:jar --stacktrace
+          } 2>&1 | tee /tmp/build.log
+
+      - name: Bundle embedded GeyserMC 26.3 into Purpurbedrock JAR
+        id: bundle_jar
+        run: |
+          set -euo pipefail
+          ls -la purpur-server/build/libs/ | tee -a /tmp/build.log
+          PAPERCLIP_JAR=$(find purpur-server/build/libs -maxdepth 1 -name "*paperclip*.jar" | head -n 1)
+          if [ -z "$PAPERCLIP_JAR" ]; then
+            echo "No paperclip jar found!" | tee -a /tmp/build.log
+            exit 1
+          fi
+          echo "Using base Paperclip JAR: $PAPERCLIP_JAR" | tee -a /tmp/build.log
+          cp "$PAPERCLIP_JAR" purpurbedrock-26.3.jar
+
+          echo "Downloading GeyserMC 26.3 (gulp-tech/GeyserMC fork-latest)..." | tee -a /tmp/build.log
+          curl -fsSL -L "https://github.com/gulp-tech/GeyserMC/releases/download/fork-latest/Geyser-Spigot.jar" -o /tmp/Geyser-Spigot.jar
+
+          mkdir -p /tmp/embed/META-INF/purpurbedrock
+          cp /tmp/Geyser-Spigot.jar /tmp/embed/META-INF/purpurbedrock/Geyser-Spigot.jar
+          jar uf purpurbedrock-26.3.jar -C /tmp/embed META-INF/purpurbedrock/Geyser-Spigot.jar
+          sha256sum purpurbedrock-26.3.jar > purpurbedrock-26.3.jar.sha256
+          ls -lh purpurbedrock-26.3.jar purpurbedrock-26.3.jar.sha256 | tee -a /tmp/build.log
+
+      - name: Live End-to-End Smoke Test (Boot + Java Plugin + Java Reject + Bedrock RakNet Pong + Menus)
+        id: smoke_test
+        run: |
+          set -euo pipefail
+          {
+            API_JAR=$(find purpur-api/build/libs -maxdepth 1 -name "purpur-api-*.jar" ! -name "*-sources.jar" ! -name "*-javadoc.jar" | head -n 1)
+            echo "Compiling test Java plugin against $API_JAR..."
+            mkdir -p /tmp/smoketest-plugin/src/testplugin /tmp/smoketest-plugin/classes
+            cat > /tmp/smoketest-plugin/src/testplugin/SmokePlugin.java << 'EOF'
+          package testplugin;
+          import org.bukkit.Bukkit;
+          import org.bukkit.inventory.Inventory;
+          import org.bukkit.plugin.java.JavaPlugin;
+          public class SmokePlugin extends JavaPlugin {
+              @Override
+              public void onEnable() {
+                  Inventory inv = Bukkit.createInventory(null, 27, "JavaPluginChestTest");
+                  getLogger().info("SMOKE_JAVA_PLUGIN_OK server=" + Bukkit.getName() + " invSize=" + inv.getSize());
+              }
+          }
+          EOF
+            cat > /tmp/smoketest-plugin/classes/plugin.yml << 'EOF'
+          name: SmokeJavaPlugin
+          version: 1.0.0
+          main: testplugin.SmokePlugin
+          api-version: '1.21'
+          EOF
+            javac -cp "$API_JAR" -d /tmp/smoketest-plugin/classes /tmp/smoketest-plugin/src/testplugin/SmokePlugin.java
+            jar cf /tmp/SmokeJavaPlugin.jar -C /tmp/smoketest-plugin/classes .
+
+            mkdir -p /tmp/smoke-server/plugins
+            cp purpurbedrock-26.3.jar /tmp/smoke-server/purpurbedrock-26.3.jar
+            cp /tmp/SmokeJavaPlugin.jar /tmp/smoke-server/plugins/SmokeJavaPlugin.jar
+            echo "eula=true" > /tmp/smoke-server/eula.txt
+            cat > /tmp/smoke-server/server.properties << 'EOF'
+          online-mode=false
+          server-port=25565
+          level-type=minecraft\:flat
+          generate-structures=false
+          spawn-protection=0
+          max-players=20
+          enforce-secure-profile=false
+          EOF
+
+            mkfifo /tmp/server_in
+            exec 3<>/tmp/server_in
+            (
+              cd /tmp/smoke-server
+              java -Xms1G -Xmx3G -jar purpurbedrock-26.3.jar --nogui <&3 > /tmp/server_out.log 2>&1
+            ) &
+            SERVER_PID=$!
+
+            echo "Waiting for Purpurbedrock server to finish booting..."
+            BOOTED=0
+            for i in $(seq 1 180); do
+              if grep -q "Done (" /tmp/server_out.log 2>/dev/null; then
+                BOOTED=1
+                break
+              fi
+              if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+                echo "Server exited prematurely!"
+                cat /tmp/server_out.log
+                exit 1
+              fi
+              sleep 1
+            done
+
+            if [ "$BOOTED" -ne 1 ]; then
+              echo "Timed out waiting for server boot!"
+              cat /tmp/server_out.log
+              kill -9 "$SERVER_PID" || true
+              exit 1
+            fi
+
+            echo "purpurbedrock status" >&3
+            sleep 3
+
+            python3 - << 'PY'
+          import socket, struct, time
+
+          def pack_varint(val):
+              out = bytearray()
+              while True:
+                  b = val & 0x7F
+                  val >>= 7
+                  if val:
+                      out.append(b | 0x80)
+                  else:
+                      out.append(b)
+                      break
+              return bytes(out)
+
+          def read_varint(sock):
+              val = 0
+              shift = 0
+              while True:
+                  b = sock.recv(1)
+                  if not b:
+                      raise EOFError("Socket closed while reading varint")
+                  byte = b[0]
+                  val |= (byte & 0x7F) << shift
+                  if not (byte & 0x80):
+                      return val
+                  shift += 7
+
+          def pack_mc_str(s):
+              raw = s.encode("utf-8")
+              return pack_varint(len(raw)) + raw
+
+          # 1. Test Java Edition TCP Login Rejection on 127.0.0.1:25565
+          with socket.create_connection(("127.0.0.1", 25565), timeout=5.0) as s:
+              # Handshake packet (id=0x00, protocol=775, host="127.0.0.1", port=25565, nextState=2 Login)
+              hs_payload = pack_varint(0x00) + pack_varint(775) + pack_mc_str("127.0.0.1") + struct.pack(">H", 25565) + pack_varint(2)
+              # Login Hello packet (id=0x00, name="JavaTester", uuid=16 zero bytes)
+              hello_payload = pack_varint(0x00) + pack_mc_str("JavaTester") + (b"\x00" * 16)
+              s.sendall(pack_varint(len(hs_payload)) + hs_payload + pack_varint(len(hello_payload)) + hello_payload)
+
+              pkt_len = read_varint(s)
+              pkt = b""
+              while len(pkt) < pkt_len:
+                  chunk = s.recv(pkt_len - len(pkt))
+                  if not chunk:
+                      break
+                  pkt += chunk
+              assert pkt[0] == 0x00, f"Expected LoginDisconnect packet 0x00, got 0x{pkt[0]:02x}"
+              disconnect_text = pkt[1:].decode("utf-8", errors="replace")
+              print("JAVA_LOGIN_REJECT_OK:", disconnect_text)
+              assert "Bedrock" in disconnect_text or "Java" in disconnect_text
+
+          # 2. Test Bedrock Edition UDP RakNet Unconnected Ping on 127.0.0.1:19132
+          magic = bytes.fromhex("00ffff00fefefefefdfdfdfd12345678")
+          ping = b"\x01" + struct.pack(">Q", int(time.time() * 1000)) + magic + struct.pack(">Q", 0x123456789ABCDEF0)
+          usock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+          usock.settimeout(5.0)
+          pong_ok = False
+          for attempt in range(5):
+              usock.sendto(ping, ("127.0.0.1", 19132))
+              try:
+                  data, _ = usock.recvfrom(4096)
+                  if data and data[0] == 0x1C and b"MCPE;" in data:
+                      idx = data.index(b"MCPE;")
+                      print("BEDROCK_UDP_PONG_OK:", data[idx:].decode("utf-8", errors="replace"))
+                      pong_ok = True
+                      break
+              except socket.timeout:
+                  time.sleep(1)
+          assert pong_ok, "Did not receive RakNet Unconnected Pong from embedded Geyser on UDP 19132!"
+          PY
+
+            echo "stop" >&3
+            exec 3>&-
+            wait "$SERVER_PID" || true
+
+            grep -q "SMOKE_JAVA_PLUGIN_OK" /tmp/server_out.log
+            grep -q "Bedrock-only mode: ENABLED" /tmp/server_out.log
+            grep -q "Bedrock combat (overworld): ENABLED" /tmp/server_out.log
+            grep -q "Java-style chest menu" /tmp/server_out.log
+            test -f /tmp/smoke-server/menus.yml
+            echo "ALL LIVE SMOKE TESTS PASSED!"
+          } 2>&1 | tee -a /tmp/build.log
+
+      - name: Upload Purpurbedrock Core Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: purpurbedrock-26.3
+          path: |
+            purpurbedrock-26.3.jar
+            purpurbedrock-26.3.jar.sha256
+
+      - name: Publish Ready Core to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v26.3.0-bedrock
+          name: "Purpurbedrock 26.3 — Ready Server Core (Bedrock-Only + Bedrock PvP + Java Plugins + Java Chest Menus)"
+          body: |
+            ## Purpurbedrock 26.3 (`purpurbedrock-26.3.jar`)
+            Готовое серверное ядро на базе **Purpur 26.3**:
+            - **Вход только с Minecraft: Bedrock Edition** (UDP порт `19132`, встроенный мост GeyserMC 26.3 внутри ядра; заход с Java Edition автоматически заблокирован).
+            - **Боёвка Bedrock Edition** (нет КД удара 1.9, таблица урона оружия как на Bedrock, криты в спринте, сохранение спринта при комбо, нет сплэш-удара мечом, мгновенный щит + щит на шифте, откидывание снежками и яйцами).
+            - **Поддержка всех Java-плагинов** (Bukkit / Spigot / Paper / Purpur плагины загружаются из папки `plugins/`).
+            - **Менюшки как на Java Edition** (сундучные инвентарные GUI `9x1`–`9x6` вместо форм Bedrock, мгновенная синхронизация слотов против фантомных предметов + встроенный конфиг `menus.yml` и команда `/menu`).
+          files: |
+            purpurbedrock-26.3.jar
+            purpurbedrock-26.3.jar.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Post Diagnostic Summary on Failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 - << 'PY'
+          import os, subprocess, json
+          log = ""
+          if os.path.exists("/tmp/build.log"):
+              with open("/tmp/build.log", "r", errors="replace") as f:
+                  log = f.read()[-18000:]
+          if os.path.exists("/tmp/server_out.log"):
+              with open("/tmp/server_out.log", "r", errors="replace") as f:
+                  log += "\n=== SERVER LOG ===\n" + f.read()[-8000:]
+          body = "### CI Build Failure Log Tail\n```\n" + log + "\n```"
+          sha = os.environ["GITHUB_SHA"]
+          repo = os.environ["GITHUB_REPOSITORY"]
+          subprocess.run(
+              ["gh", "api", f"repos/{repo}/commits/{sha}/comments", "-f", f"body={body}"],
+              check=False
+          )
+          PY
