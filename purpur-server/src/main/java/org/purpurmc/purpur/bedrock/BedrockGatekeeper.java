@@ -36,7 +36,9 @@ public final class BedrockGatekeeper {
             if (className.contains("geyser") || className.contains("LocalChannel") || className.contains("floodgate")) {
                 return true;
             }
-            if (ch.pipeline() != null && (ch.pipeline().get("floodgate_handler") != null || ch.pipeline().get("geyser") != null)) {
+            if (ch.pipeline() != null && (ch.pipeline().get("floodgate_handler") != null
+                || ch.pipeline().get("geyser") != null
+                || ch.pipeline().get("geyser-compression-disabler") != null)) {
                 return true;
             }
         }

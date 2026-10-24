@@ -622,7 +622,7 @@ public class PurpurConfig {
     // Purpurbedrock start - Native Bedrock-only 26.2 Core Settings
     public static boolean bedrockOnlyAllowBedrock = true;
     public static String bedrockRejectJavaMessage = "<red><bold>Сервер доступен только для Minecraft: Bedrock Edition!</bold></red>\n<gray>Подключайтесь с телефона, ПК (Bedrock) или консоли по UDP порту </gray><aqua>19132</aqua>";
-    public static List<String> bedrockAllowedBridgeIps = new ArrayList<>(List.of("127.0.0.1", "::1"));
+    public static List<String> bedrockAllowedBridgeIps = new ArrayList<>();
     public static boolean bedrockEmbeddedProtocolEnabled = true;
     public static boolean bedrockMenusEnabled = true;
     public static boolean bedrockMenusInstantResync = true;
