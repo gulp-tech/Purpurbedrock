@@ -61,7 +61,7 @@ gradle.lifecycle.beforeProject {
     val purpurChannel = providers.gradleProperty("channel").get().trim()
     val purpurBuildNumber = providers.environmentVariable("BUILD_NUMBER").orNull?.trim()?.toInt()
     val versionString = if (purpurBuildNumber == null) {
-        "$mcVersion.local-SNAPSHOT"
+        "$mcVersion-R0.1-SNAPSHOT"
     } else {
         "$mcVersion.build.$purpurBuildNumber-${purpurChannel.lowercase()}"
     }

@@ -1,0 +1,26 @@
+--- a/src/main/java/org/bukkit/craftbukkit/help/SimpleHelpMap.java
++++ b/src/main/java/org/bukkit/craftbukkit/help/SimpleHelpMap.java
+@@ -130,19 +_,23 @@
+             }
+ 
+             // Register a topic
++            try { // Purpurbedrock - Do not crash entire server if a disabled plugin's HelpTopicFactory throws
+             for (Class c : this.topicFactoryMap.keySet()) {
+                 if (c.isAssignableFrom(command.getClass())) {
+                     HelpTopic t = this.topicFactoryMap.get(c).createTopic(command);
+                     if (t != null) this.addTopic(t);
+                     continue outer;
+                 }
+                 if (command instanceof PluginCommand && c.isAssignableFrom(((PluginCommand) command).getExecutor().getClass())) {
+                     HelpTopic t = this.topicFactoryMap.get(c).createTopic(command);
+                     if (t != null) this.addTopic(t);
+                     continue outer;
+                 }
+             }
+             this.addTopic(new GenericCommandHelpTopic(command));
++            } catch (Throwable ex) {
++                this.server.getLogger().log(java.util.logging.Level.WARNING, "[Purpurbedrock] Skipping broken help topic for command '" + command.getName() + "': " + ex.getMessage());
++            } // Purpurbedrock end
+         }
+ 
+         // Initialize command alias help topics

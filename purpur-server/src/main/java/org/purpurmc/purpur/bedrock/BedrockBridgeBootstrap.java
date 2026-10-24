@@ -83,6 +83,7 @@ public final class BedrockBridgeBootstrap {
         }
 
         AtomicBoolean userGeyserPresent = new AtomicBoolean(false);
+        AtomicBoolean floodgatePresent = new AtomicBoolean(false);
         LaunchEntryPointHandler.INSTANCE.getStorage().forEach((entrypoint, storage) -> {
             storage.getRegisteredProviders().forEach(provider -> {
                 String name = null;
@@ -91,8 +92,13 @@ public final class BedrockBridgeBootstrap {
                 } else if (provider instanceof PaperPluginParent.PaperServerPluginProvider paper) {
                     name = paper.getMeta().getName();
                 }
-                if (name != null && name.toLowerCase(Locale.ROOT).startsWith("geyser")) {
-                    userGeyserPresent.set(true);
+                if (name != null) {
+                    String lower = name.toLowerCase(Locale.ROOT);
+                    if (lower.equals("geyser-spigot") || lower.equals("geyser-paper") || lower.equals("geyser")) {
+                        userGeyserPresent.set(true);
+                    } else if (lower.equals("floodgate")) {
+                        floodgatePresent.set(true);
+                    }
                 }
             });
         });
@@ -128,11 +134,16 @@ public final class BedrockBridgeBootstrap {
                 LOGGER.info("[Purpurbedrock] Extracted embedded Bedrock bridge to {}", targetJar);
             }
 
-            ensureDefaultGeyserConfig(pluginsDir.resolve("Geyser-Spigot").resolve("config.yml"), defaultBedrockPort);
+            ensureDefaultGeyserConfig(
+                pluginsDir.resolve("Geyser-Spigot").resolve("config.yml"),
+                defaultBedrockPort,
+                floodgatePresent.get()
+            );
 
             EntrypointUtil.registerProvidersFromSource(PluginFlagProviderSource.INSTANCE, List.of(targetJar));
             embeddedBridgeActive = true;
-            LOGGER.info("[Purpurbedrock] Embedded Bedrock bridge (Geyser 1.21.100 - 26.52) registered on UDP port {}.", defaultBedrockPort);
+            LOGGER.info("[Purpurbedrock] Embedded Bedrock bridge (Geyser 1.21.100 - 26.52) registered on UDP port {} (Floodgate integration: {}).",
+                defaultBedrockPort, floodgatePresent.get() ? "ENABLED" : "standalone");
         } catch (Exception ex) {
             LOGGER.error("[Purpurbedrock] Failed to initialize embedded Bedrock bridge", ex);
         }
@@ -146,11 +157,23 @@ public final class BedrockBridgeBootstrap {
         return BedrockBridgeBootstrap.class.getClassLoader().getResource(EMBEDDED_RESOURCE);
     }
 
-    private static void ensureDefaultGeyserConfig(final Path configPath, final int bedrockPort) throws IOException {
+    private static void ensureDefaultGeyserConfig(final Path configPath, final int bedrockPort, final boolean useFloodgate) throws IOException {
         if (Files.exists(configPath)) {
+            if (useFloodgate) {
+                String existing = Files.readString(configPath, StandardCharsets.UTF_8);
+                if (existing.contains("Purpurbedrock") && existing.contains("auth-type: offline")) {
+                    String updated = existing
+                        .replace("auth-type: offline", "auth-type: floodgate")
+                        .replace("floodgate-key-file: key.pem", "floodgate-key-file: ../floodgate/key.pem");
+                    Files.writeString(configPath, updated, StandardCharsets.UTF_8);
+                    LOGGER.info("[Purpurbedrock] Automatically linked embedded Geyser config with Floodgate (auth-type: floodgate).");
+                }
+            }
             return;
         }
         Files.createDirectories(configPath.getParent());
+        String authType = useFloodgate ? "floodgate" : "offline";
+        String floodgateKeyPath = useFloodgate ? "../floodgate/key.pem" : "key.pem";
         String defaultConfig = """
             # ------------------------------------------------------------
             # Purpurbedrock — автоматическая конфигурация Bedrock-моста (Geyser)
@@ -179,10 +202,9 @@ public final class BedrockBridgeBootstrap {
                   endpoint: https://agent.warden.cloud
 
             java:
-              # Вход с Java Edition заблокирован на уровне ядра Purpurbedrock (BedrockGatekeeper),
-              # а подлинность Xbox Live проверяется самим Geyser (validate-bedrock-login: true),
-              # поэтому auth-type: offline безопасен и не требует ключей Floodgate.
-              auth-type: offline
+              # Вход с Java Edition заблокирован на уровне ядра Purpurbedrock (BedrockGatekeeper).
+              # Если установлен плагин Floodgate — автоматически используется auth-type: floodgate.
+              auth-type: %s
 
             motd:
               primary-motd: §b✦ §fPurpur§dbedrock §b✦
@@ -226,7 +248,7 @@ public final class BedrockBridgeBootstrap {
               scoreboard-packet-threshold: 20
               add-team-suggestions: true
               resource-pack-urls: []
-              floodgate-key-file: key.pem
+              floodgate-key-file: %s
               java:
                 use-haproxy-protocol: false
                 use-direct-connection: true
@@ -249,7 +271,7 @@ public final class BedrockBridgeBootstrap {
 
             debug-mode: false
             config-version: 11
-            """.formatted(bedrockPort);
+            """.formatted(bedrockPort, authType, floodgateKeyPath);
         Files.writeString(configPath, defaultConfig, StandardCharsets.UTF_8);
     }
 }
