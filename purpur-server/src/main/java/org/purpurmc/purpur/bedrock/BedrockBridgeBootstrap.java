@@ -213,12 +213,7 @@ public final class BedrockBridgeBootstrap {
     }
 
     private static void checkWindowsLanLoopback() {
-        String osName = System.getProperty("os.name", "");
-        if (!osName.toLowerCase(Locale.ROOT).contains("win")) {
-            return;
-        }
-
-        // Always generate unlock-windows-lan.bat on Windows so same-PC Bedrock LAN works in 1 click
+        // Generate unlock-windows-lan.bat (helpful on native Windows 10/11 and WSL2)
         Path helperBat = Path.of("unlock-windows-lan.bat");
         if (!Files.exists(helperBat)) {
             String batContent = String.join("\r\n",
@@ -245,6 +240,11 @@ public final class BedrockBridgeBootstrap {
                 Files.writeString(helperBat, batContent, StandardCharsets.UTF_8);
             } catch (IOException ignored) {
             }
+        }
+
+        String osName = System.getProperty("os.name", "");
+        if (!osName.toLowerCase(Locale.ROOT).contains("win")) {
+            return;
         }
 
         try {

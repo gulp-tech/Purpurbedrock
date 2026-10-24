@@ -161,8 +161,8 @@ project(":spigot").projectDir = file("bootstrap/spigot")""",
                         try (InputStream in = classpathStream) {
                             task.ifNewDownload.accept(in);
                         }
+                        task.whenDone.run();
                     }
-                    task.whenDone.run();
                 } catch (Exception ignored) {
                 }
             }
