@@ -13,17 +13,25 @@ index 0000000000000000000000000000000000000000..00000000000000000000000000000000
          // Purpur end - UPnP Port Forwarding
  
          // CraftBukkit start
-+        org.purpurmc.purpur.bedrock.BedrockBridgeBootstrap.initialize(this); // Purpurbedrock - Self-contained Bedrock 26.2 protocol & LAN engine
          this.server.loadPlugins();
++        org.purpurmc.purpur.bedrock.BedrockBridgeBootstrap.initialize(this); // Purpurbedrock - Self-contained Bedrock 26.2 protocol & LAN engine
          this.server.enablePlugins(org.bukkit.plugin.PluginLoadOrder.STARTUP);
          // CraftBukkit end
-@@ -405,5 +405,6 @@
+@@ -405,5 +406,6 @@
          org.purpurmc.purpur.task.BossBarTask.startAll(); // Purpur - Implement TPSBar
          if (org.purpurmc.purpur.PurpurConfig.beeCountPayload) org.purpurmc.purpur.task.BeehiveTask.instance().register(); // Purpur - Give bee counts in beehives to Purpur clients
 +        org.purpurmc.purpur.bedrock.menu.JavaChestMenuManager.initAfterPlugins(); // Purpurbedrock - Native Java chest & GUI menus for Bedrock
  
          this.saveEverything(false, true, true);
          this.notificationManager().serverStarted();
+@@ -780,6 +782,7 @@
+     protected void stopServer() {
+         this.notificationManager().serverShuttingDown();
+         super.stopServer();
+         //Util.shutdownExecutors(); // Paper - Improved watchdog support; moved into super
++        org.purpurmc.purpur.bedrock.BedrockBridgeBootstrap.onServerStopped(); // Purpurbedrock - Clean native WebRTC/NetherNet JVM exit
+     }
+ 
 diff --git a/net/minecraft/server/network/ServerHandshakePacketListenerImpl.java b/net/minecraft/server/network/ServerHandshakePacketListenerImpl.java
 index 0000000000000000000000000000000000000000..0000000000000000000000000000000000000000 100644
 --- a/net/minecraft/server/network/ServerHandshakePacketListenerImpl.java

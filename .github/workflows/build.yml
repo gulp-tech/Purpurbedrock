@@ -11,6 +11,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -218,7 +222,17 @@ jobs:
 
             echo "stop" >&3
             exec 3>&-
-            wait "$SERVER_PID" || true
+            for i in $(seq 1 25); do
+              if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+                break
+              fi
+              sleep 1
+            done
+            kill -9 "$SERVER_PID" 2>/dev/null || true
+            wait "$SERVER_PID" 2>/dev/null || true
+
+            echo "=== Server Output Tail ==="
+            tail -n 60 /tmp/server_out.log || true
 
             # Verify zero external Geyser-Spigot folder in plugins/
             if [ -d /tmp/smoke-server/plugins/Geyser-Spigot ]; then

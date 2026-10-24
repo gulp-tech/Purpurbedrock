@@ -141,6 +141,25 @@ public final class BedrockBridgeBootstrap {
         }
     }
 
+    /**
+     * Ensures native C++ libdatachannel / NetherNet threads never hang the JVM process
+     * after DedicatedServer.stopServer() has saved all worlds and disabled all plugins.
+     */
+    public static void onServerStopped() {
+        if (!protocolActive) {
+            return;
+        }
+        Thread exitFinisher = new Thread(() -> {
+            try {
+                Thread.sleep(1500L);
+            } catch (InterruptedException ignored) {
+            }
+            Runtime.getRuntime().halt(0);
+        }, "Purpurbedrock-Shutdown-Finisher");
+        exitFinisher.setDaemon(true);
+        exitFinisher.start();
+    }
+
     private static boolean hasStandaloneGeyserSpigotJar(File pluginsDir) {
         if (!pluginsDir.isDirectory()) {
             return false;

@@ -274,11 +274,11 @@ import org.cloudburstmc.netty.channel.nethernet.signaling.NetherNetServerSignali
             lanDiscoverySignaling = null;
         }
         if (lanDiscoveryEventLoopGroup != null) {
-            lanDiscoveryEventLoopGroup.shutdownGracefully();
+            lanDiscoveryEventLoopGroup.shutdownGracefully(0, 1, TimeUnit.SECONDS);
             lanDiscoveryEventLoopGroup = null;
         }
         if (lanDiscoveryInitialiser != null) {
-            lanDiscoveryInitialiser.getEventLoopGroup().shutdownGracefully();
+            lanDiscoveryInitialiser.getEventLoopGroup().shutdownGracefully(0, 1, TimeUnit.SECONDS);
             lanDiscoveryInitialiser = null;
         }
     }""",
@@ -295,8 +295,8 @@ import org.cloudburstmc.netty.channel.nethernet.signaling.NetherNetServerSignali
         """    private void closeInbuiltResources() {
         if (inbuiltChannel != null) inbuiltChannel.close();
         if (signaling != null) signaling.close();
-        if (inbuiltEventLoopGroup != null) inbuiltEventLoopGroup.shutdownGracefully();
-        if (inbuiltInitialiser != null) inbuiltInitialiser.getEventLoopGroup().shutdownGracefully();
+        if (inbuiltEventLoopGroup != null) inbuiltEventLoopGroup.shutdownGracefully(0, 1, TimeUnit.SECONDS);
+        if (inbuiltInitialiser != null) inbuiltInitialiser.getEventLoopGroup().shutdownGracefully(0, 1, TimeUnit.SECONDS);
         closeLanDiscoveryResources();
     }""",
         "NetherNetServer.closeInbuiltResources",
