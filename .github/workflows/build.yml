@@ -26,7 +26,11 @@ jobs:
         with:
           distribution: temurin
           java-version: 25
-          cache: 'gradle'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: wrapper
 
       - name: Configure Git identity for Paperweight
         run: |
@@ -38,9 +42,9 @@ jobs:
         run: |
           set -o pipefail
           {
-            ./gradlew applyAllPatches --stacktrace
-            ./gradlew createMojmapPaperclipJar --stacktrace || ./gradlew createPaperclipJar --stacktrace
-            ./gradlew :purpur-api:jar --stacktrace
+            gradle applyAllPatches --stacktrace
+            gradle createMojmapPaperclipJar --stacktrace || gradle createPaperclipJar --stacktrace
+            gradle :purpur-api:jar --stacktrace
           } 2>&1 | tee /tmp/build.log
 
       - name: Bundle embedded GeyserMC 26.3 into Purpurbedrock JAR
