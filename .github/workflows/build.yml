@@ -43,6 +43,7 @@ jobs:
           set -o pipefail
           {
             gradle applyAllPatches --stacktrace
+            echo 'include(":test-plugin")' > test-plugin.settings.gradle.kts
             gradle createPaperclipJar :test-plugin:jar --stacktrace
           } 2>&1 | tee /tmp/build.log
 
