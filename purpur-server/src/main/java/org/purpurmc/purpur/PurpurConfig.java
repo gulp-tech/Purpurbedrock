@@ -567,6 +567,9 @@ public class PurpurConfig {
         )).forEach((blockId, value) -> {
             Block block = BuiltInRegistries.BLOCK.getValue(Identifier.parse(blockId));
             if (block == Blocks.AIR) {
+                if ("minecraft:shelf_mushroom".equals(blockId)) {
+                    return; // Purpurbedrock - ignore 26.3 shelf_mushroom entry in purpur.yml
+                }
                 log(Level.SEVERE, "Invalid block for `settings.block-fall-multipliers`: " + blockId);
                 return;
             }
@@ -636,6 +639,8 @@ public class PurpurConfig {
     public static boolean bedrockAntiXrayLavaObscures = true;
     public static int bedrockAntiXrayMaxHeight = 128;
     public static boolean bedrockPerformanceOptimizeWorlds = true;
+    public static boolean bedrockAllowNewerChunkDataVersion = true;
+    public static boolean bedrockAllowNewerMinorPluginApi = true;
 
     private static void bedrockCoreSettings() {
         bedrockOnlyAllowBedrock = getBoolean("bedrock.only-allow-bedrock", bedrockOnlyAllowBedrock);
@@ -660,6 +665,8 @@ public class PurpurConfig {
         bedrockAntiXrayLavaObscures = getBoolean("bedrock.anti-xray.lava-obscures", bedrockAntiXrayLavaObscures);
         bedrockAntiXrayMaxHeight = getInt("bedrock.anti-xray.max-block-height", bedrockAntiXrayMaxHeight);
         bedrockPerformanceOptimizeWorlds = getBoolean("bedrock.performance.optimize-worlds", bedrockPerformanceOptimizeWorlds);
+        bedrockAllowNewerChunkDataVersion = getBoolean("bedrock.compatibility.allow-newer-chunk-data-version", bedrockAllowNewerChunkDataVersion);
+        bedrockAllowNewerMinorPluginApi = getBoolean("bedrock.compatibility.allow-newer-26x-plugin-api", bedrockAllowNewerMinorPluginApi);
     }
     // Purpurbedrock end
 }

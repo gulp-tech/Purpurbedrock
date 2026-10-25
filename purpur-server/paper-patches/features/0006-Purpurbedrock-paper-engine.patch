@@ -110,6 +110,39 @@ index 70b45a7d41f4bafac3b9738129d74af30e36b2a8..b9cafdcf276fd97e81e30764b19e1513
                  }
              }
              this.addTopic(new GenericCommandHelpTopic(command));
+diff --git a/src/main/java/org/bukkit/craftbukkit/util/CraftMagicNumbers.java b/src/main/java/org/bukkit/craftbukkit/util/CraftMagicNumbers.java
+index 80317dc41f85b91d7219f370d6f51e79496b09c4..d6a526cc71c25dffd2d9dc761072f4668f1611d1 100644
+--- a/src/main/java/org/bukkit/craftbukkit/util/CraftMagicNumbers.java
++++ b/src/main/java/org/bukkit/craftbukkit/util/CraftMagicNumbers.java
+@@ -390,8 +390,14 @@ public final class CraftMagicNumbers implements UnsafeValues {
+         ApiVersion minimumVersion = MinecraftServer.getServer().server.minimumAPI;
+ 
+         if (toCheck.isNewerThan(ApiVersion.CURRENT)) {
+-            // Newer than supported
+-            throw new InvalidPluginException("Unsupported API version " + descriptionFile.getAPIVersion());
++            // Purpurbedrock start - allow 26.x minor API plugins (e.g. WorldGuard 7.0.20 built against 26.3) on 26.2
++            if (org.purpurmc.purpur.PurpurConfig.bedrockAllowNewerMinorPluginApi && descriptionFile.getAPIVersion() != null && descriptionFile.getAPIVersion().startsWith("26.")) {
++                Bukkit.getLogger().info("[Purpurbedrock] Плагин " + descriptionFile.getFullName() + " (api-version " + descriptionFile.getAPIVersion() + ") загружен в режиме совместимости с 26.2.");
++            } else {
++                // Newer than supported
++                throw new InvalidPluginException("Unsupported API version " + descriptionFile.getAPIVersion());
++            }
++            // Purpurbedrock end
+         }
+ 
+         if (toCheck.isOlderThan(minimumVersion)) {
+@@ -434,6 +440,11 @@ public final class CraftMagicNumbers implements UnsafeValues {
+         final ApiVersion toCheck = ApiVersion.getOrCreateVersion(apiVersion);
+         final ApiVersion minimumVersion = MinecraftServer.getServer().server.minimumAPI;
+ 
++        // Purpurbedrock start - allow 26.x minor API plugins on 26.2
++        if (toCheck.isNewerThan(ApiVersion.CURRENT) && org.purpurmc.purpur.PurpurConfig.bedrockAllowNewerMinorPluginApi && apiVersion.startsWith("26.")) {
++            return !toCheck.isOlderThan(minimumVersion);
++        }
++        // Purpurbedrock end
+         return !toCheck.isNewerThan(ApiVersion.CURRENT) && !toCheck.isOlderThan(minimumVersion);
+     }
+ 
 diff --git a/src/main/java/org/spigotmc/SpigotConfig.java b/src/main/java/org/spigotmc/SpigotConfig.java
 index 025ec3f3e84a3367b4d709c8c3ecd98f6dfecab4..e3d32eef95f056dfc64db247b742299afa6d3d2f 100644
 --- a/src/main/java/org/spigotmc/SpigotConfig.java

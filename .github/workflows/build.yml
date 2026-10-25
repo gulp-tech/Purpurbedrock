@@ -100,6 +100,21 @@ jobs:
           mkdir -p /tmp/smoke-server/plugins
           cp purpurbedrock-26.2.jar /tmp/smoke-server/purpurbedrock-26.2.jar
           cp "$TEST_PLUGIN_JAR" /tmp/smoke-server/plugins/SmokeJavaPlugin.jar
+          python3 - "$TEST_PLUGIN_JAR" << 'PY2'
+          import sys, zipfile
+          src = sys.argv[1]
+          dst = "/tmp/smoke-server/plugins/SmokeApi263Plugin.jar"
+          with zipfile.ZipFile(src, "r") as zin, zipfile.ZipFile(dst, "w") as zout:
+              for item in zin.infolist():
+                  if item.filename in ("paper-plugin.yml", "plugin.yml"):
+                      continue
+                  if item.filename.endswith("Compat263Plugin.class") or item.filename.startswith("META-INF/"):
+                      zout.writestr(item, zin.read(item.filename))
+              zout.writestr(
+                  "plugin.yml",
+                  "name: SmokeApi263Plugin\nversion: 1.0.0\nmain: org.purpurmc.testplugin.Compat263Plugin\napi-version: '26.3'\n",
+              )
+          PY2
           echo "eula=true" > /tmp/smoke-server/eula.txt
           cat > /tmp/smoke-server/server.properties << 'EOF'
           online-mode=false
@@ -241,6 +256,8 @@ jobs:
 
           required_lines = [
               "SMOKE_JAVA_PLUGIN_26_2_OK server=Purpurbedrock mc=26.2 invSize=27",
+              "SMOKE_API_26_3_PLUGIN_OK",
+              "загружен в режиме совместимости с 26.2",
               "NetherNet LAN Discovery active on UDP",
               "Вход только с Bedrock (блок Java): ВКЛЮЧЁН",
               "Anti-Xray под Bedrock (Алмазы + Незерит): ВКЛЮЧЁН",
