@@ -1,0 +1,256 @@
+# ============================================================================
+# PurpurBedrockAC 26.2 — Нативный адаптивный античит под ядро Purpurbedrock
+# Разработан специально с учётом физики Bedrock (1.21.0 — 26.52), Сенсора,
+# Клавиатуры+Мыши, Геймпада и реального RakNet / NetherNet WebRTC RTT пинга.
+# ============================================================================
+
+permissions:
+  alerts: "purpurac.alerts"
+  hologram: "purpurac.hologram"
+  menu: "purpurac.menu"
+  bypass: "purpurac.bypass"
+  admin: "purpurac.admin"
+  # Если false — даже администраторы с правом bypass проверяются (удобно для тестов)
+  enable-bypass-permission: false
+
+# ============================================================================
+# Адаптивный «Спящий» движок (Ультра-оптимизация CPU / 0% лишней нагрузки)
+# Когда на сервере всё спокойно — античит буквально спит (редкий лёгкий пульс).
+# При появлении подозрительных паттернов он плавно и не спеша просыпается
+# ТОЛЬКО для конкретного подозрительного игрока, не нагружая сервер!
+# ============================================================================
+adaptive-engine:
+  # Интервал лёгкого фонового пульса в спящем режиме (в пакетах движения: 4 = проверяется 1 из 4)
+  sleep-sample-interval: 4
+  # Интервал в режиме плавного пробуждения (2 = проверяется 1 из 2)
+  waking-sample-interval: 2
+  # Насколько плавно растёт уровень пробуждения за одну аномалию (0.0 .. 1.0)
+  wake-up-step: 0.22
+  # Скорость засыпания обратно в тишину за секунду чистой игры
+  cool-down-per-second: 0.08
+  # Порог перехода из SLEEPING -> WAKING и из WAKING -> AWAKE
+  waking-threshold: 0.20
+  awake-threshold: 0.58
+  # Минимальный TPS сервера: если TPS упал ниже этого порога, строгие проверки засыпают (0 ложных флагов)
+  min-server-tps: 18.0
+  # Максимальный пинг (мс), выше которого включается расширенная компенсация задержки
+  high-ping-leniency-ms: 260
+  # Периодическая запись «зелёных» чистых срезов в историю активных в бою/движении игроков (сек)
+  clean-history-sample-seconds: 25
+
+# ============================================================================
+# Настройка и кастомизация Алертов в чат (поддержка & и HEX &#RRGGBB)
+# ============================================================================
+alerts:
+  auto-enable-on-join: true
+  console-alerts: true
+  min-interval-ms: 650
+  play-sound: true
+  prefix: "&#A855F7&lP&#EC4899&lA&#F43F5E&lC &8» "
+  format: "{prefix}&f{player} &7флагнул {severity_color}{check} &8(&7VL: {severity_color}{vl}&8, &7AVG: {avg_color}{avg}&8) &8[&7{details}&8] &8(&7{device} &8| &7{ping}мс&8)"
+  hover:
+    - "&#A855F7&lPurpurBedrockAC • Детали срабатывания"
+    - "&7Игрок: &f{player} &8(&7{version}&8)"
+    - "&7Устройство: &f{device} &8| &7Ввод: &f{input}"
+    - "&7Проверка: {severity_color}{check} &8(&7{details}&8)"
+    - "&7Пинг: &a{ping} мс &8| &7TPS: &a{tps} &8| &7Режим: &e{stage}"
+    - ""
+    - "&e▶ Нажмите, чтобы открыть историю игрока!"
+  click-command: "/pac history {player}"
+
+# ============================================================================
+# Небольшая голограмма AVG над игроком (включается по праву purpurac.hologram)
+# Работает через пакетно-изолированный TextDisplay без хитбокса:
+# - Обычные игроки её НЕ видят вообще;
+# - Не мешает ударам в PvP и не сохраняется в чанках мира;
+# - Если ни у одного модератора голограмма не включена — 0 сущностей в мире!
+# ============================================================================
+hologram:
+  enabled: true
+  auto-enable-on-join: false
+  height-offset: 2.38
+  view-distance-blocks: 28.0
+  update-interval-ticks: 10
+  # Настройка внешнего вида небольшой голограммы над головой игрока
+  format: "&8[&7AVG {avg_color}{avg} &8| &7VL {vl_color}{vl} &8| &7{ping}мс&8]"
+  green-max-avg: 2.4
+  orange-max-avg: 6.4
+
+# ============================================================================
+# Меню истории игрока в стиле HolyWorld (/pac menu, /pac history <игрок>)
+# Цвета: Зелёный (чисто/низкий), Оранжевый (подозрение), Красный (чит/высокий)
+# + нижняя панель с цветными блоками-инструкциями!
+# ============================================================================
+menu:
+  overview-title: "&8🛡 PurpurAC • Игроки ({count})"
+  history-title: "&8📜 История: &0{player} &8[{avg_color}AVG {avg}&8]"
+  max-history-entries: 72
+  materials:
+    green: "LIME_STAINED_GLASS"
+    orange: "ORANGE_STAINED_GLASS"
+    red: "RED_STAINED_GLASS"
+    border: "GRAY_STAINED_GLASS_PANE"
+  # Пороги окраски срабатываний в истории (по текущему VL проверки)
+  thresholds:
+    orange-vl: 3.0
+    red-vl: 7.0
+  # Блоки-инструкции внизу меню (как на HolyWorld)
+  legend:
+    green-name: "&a&l🟢 ЗЕЛЁНЫЙ УРОВЕНЬ — ЧИСТО / БЕЗОПАСНО"
+    green-lore:
+      - "&7Означает чистый срез игры либо минимальное"
+      - "&7разовое отклонение из-за скачка пинга/сети."
+      - ""
+      - "&a✔ Действие: &fИгрок чист, наказывать НЕ нужно."
+    orange-name: "&6&l🟠 ОРАНЖЕВЫЙ УРОВЕНЬ — ПОДОЗРИТЕЛЬНО"
+    orange-lore:
+      - "&7Неоднократные странные действия на грани нормы:"
+      - "&7подозрительная дистанция, странный CPS или скорость."
+      - ""
+      - "&6⚠ Действие: &fПроследите за игроком (/pac holo)"
+      - "&fили вызовите его на проверку при повторении."
+    red-name: "&c&l🔴 КРАСНЫЙ УРОВЕНЬ — ВЫСОКИЙ РИСК (СОФТ)"
+    red-lore:
+      - "&7Подтверждённый детект популярных читов (Horion,"
+      - "&7Toolbox, Prax, Apollo, Reach, Fly, KillAura)"
+      - "&7при нормальном TPS и с учётом пинга игрока."
+      - ""
+      - "&c✖ Действие: &fВысокая вероятность софта!"
+
+# ============================================================================
+# Гибкая настройка всех проверок (анти-софт без ложных срабатываний на Bedrock)
+# ============================================================================
+checks:
+  # 1. Reach (Дистанция удара с 3D AABB и компенсацией пинга + разделением Сенсор / ПК / Геймпад)
+  reach:
+    enabled: true
+    max-reach-pc: 3.35
+    max-reach-controller: 3.45
+    max-reach-touch: 4.18
+    buffer: 2.5
+    decay: 0.35
+    cancel-hit-above: 4.55
+    max-vl: 14
+    punish-commands: []
+
+  # 2. HitBox (Расширение хитбоксов в Horion / Toolbox на ПК и контроллере)
+  hitbox:
+    enabled: true
+    max-angle-expansion: 0.32
+    buffer: 3.0
+    decay: 0.40
+    cancel-hit: true
+    max-vl: 14
+    punish-commands: []
+
+  # 3. KillAura (MultiAura по разным целям, удары спиной 360°, удары сквозь стены и при открытом меню)
+  killaura:
+    enabled: true
+    multi-aura-window-ms: 45
+    check-through-walls: true
+    check-open-inventory: true
+    buffer: 2.0
+    decay: 0.30
+    cancel-hit: true
+    max-vl: 12
+    punish-commands: []
+
+  # 4. AutoClicker (Превышение CPS + макрос/кликер с нулевым разбросом таймингов)
+  autoclicker:
+    enabled: true
+    max-cps-pc: 22
+    max-cps-touch: 19
+    min-stddev-ms: 2.2
+    buffer: 2.5
+    decay: 0.35
+    cancel-hit: true
+    max-vl: 15
+    punish-commands: []
+
+  # 5. Velocity / AntiKB (Игнорирование вертикального откидывания в открытом пространстве)
+  velocity:
+    enabled: true
+    min-vertical-ratio: 0.15
+    buffer: 3.5
+    decay: 0.35
+    max-vl: 14
+    punish-commands: []
+
+  # 6. Fly / Jetpack / Glide (Полёт, зависание в воздухе и набор высоты без опоры)
+  fly:
+    enabled: true
+    min-air-ticks: 12
+    buffer: 3.0
+    decay: 0.35
+    setback: true
+    max-vl: 12
+    punish-commands: []
+
+  # 7. AirJump (Прыжки от пустого воздуха — популярная функция Toolbox / Horion)
+  airjump:
+    enabled: true
+    min-air-ticks: 11
+    buffer: 2.0
+    decay: 0.30
+    setback: true
+    max-vl: 10
+    punish-commands: []
+
+  # 8. Speed / BHop (Ускорение движения и распрыжка сверх физики зелий/льда/откидывания)
+  speed:
+    enabled: true
+    max-horizontal-base: 0.435
+    buffer: 3.5
+    decay: 0.35
+    setback: true
+    max-vl: 14
+    punish-commands: []
+
+  # 9. Timer (Ускорение игрового времени клиента > 1.18x с защитой от мобильного джиттера Wi-Fi/LTE)
+  timer:
+    enabled: true
+    max-rate-ratio: 1.18
+    allowance-burst-ms: 140
+    buffer: 3.5
+    decay: 0.40
+    setback: true
+    max-vl: 14
+    punish-commands: []
+
+  # 10. Jesus / WaterWalk (Хождение по поверхности глубокой воды/лавы как по твёрдому блоку)
+  jesus:
+    enabled: true
+    buffer: 3.5
+    decay: 0.35
+    setback: true
+    max-vl: 12
+    punish-commands: []
+
+  # 11. NoSlow (Спринт на полной скорости при зажатом щите / еде / натяжении лука)
+  noslow:
+    enabled: true
+    min-using-ticks: 14
+    buffer: 3.5
+    decay: 0.40
+    setback: true
+    max-vl: 14
+    punish-commands: []
+
+  # 12. ImpossibleScaffold (Читерский Scaffold в воздух / сверх-дистанция, НЕ трогает легитный спид-бриджинг Bedrock!)
+  scaffold:
+    enabled: true
+    max-place-distance: 6.6
+    buffer: 2.5
+    decay: 0.35
+    cancel-place: true
+    max-vl: 12
+    punish-commands: []
+
+  # 13. BadPackets (Невозможный угол камеры > 90°, NaN/Infinity координаты, удар по самому себе)
+  badpackets:
+    enabled: true
+    buffer: 1.0
+    decay: 0.20
+    setback: true
+    max-vl: 6
+    punish-commands: []

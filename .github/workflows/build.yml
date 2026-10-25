@@ -78,7 +78,13 @@ jobs:
           {
             gradle applyAllPatches --stacktrace
             echo 'include(":test-plugin")' > test-plugin.settings.gradle.kts
-            gradle createPaperclipJar :test-plugin:jar --stacktrace
+            gradle createPaperclipJar :purpur-api:publishToMavenLocal :test-plugin:jar --stacktrace
+
+            PURPUR_VER=$(ls -1 ~/.m2/repository/org/purpurmc/purpur/purpur-api | grep -v maven-metadata | head -n 1)
+            echo "Building standalone PurpurBedrockAC against local maven purpur-api:${PURPUR_VER}..."
+            gradle -p purpurbedrock-anticheat build -PpurpurVersion="${PURPUR_VER}" --no-daemon --stacktrace
+            cp purpurbedrock-anticheat/build/libs/PurpurBedrockAC-26.2.jar PurpurBedrockAC-26.2.jar
+            sha256sum PurpurBedrockAC-26.2.jar > PurpurBedrockAC-26.2.jar.sha256
 
             ls -la purpur-server/build/libs/
             PAPERCLIP_JAR=$(find purpur-server/build/libs -maxdepth 1 -name "*paperclip*.jar" | head -n 1)
@@ -88,7 +94,7 @@ jobs:
             fi
             cp "$PAPERCLIP_JAR" purpurbedrock-26.2.jar
             sha256sum purpurbedrock-26.2.jar > purpurbedrock-26.2.jar.sha256
-            ls -lh purpurbedrock-26.2.jar purpurbedrock-26.2.jar.sha256
+            ls -lh purpurbedrock-26.2.jar purpurbedrock-26.2.jar.sha256 PurpurBedrockAC-26.2.jar PurpurBedrockAC-26.2.jar.sha256
           } 2>&1 | tee -a /tmp/build.log
 
       - name: Live End-to-End 26.2 Smoke Test (Instant Boot + LAN Discovery 7551 + RakNet 19132 + Anti-Xray + Java Plugin & Menus)
@@ -99,6 +105,7 @@ jobs:
           echo "Using compiled Java 26.2 plugin: $TEST_PLUGIN_JAR"
           mkdir -p /tmp/smoke-server/plugins
           cp purpurbedrock-26.2.jar /tmp/smoke-server/purpurbedrock-26.2.jar
+          cp PurpurBedrockAC-26.2.jar /tmp/smoke-server/plugins/PurpurBedrockAC-26.2.jar
           python3 - "$TEST_PLUGIN_JAR" << 'PY2'
           import os, struct, sys, zipfile, zlib
           src = sys.argv[1]
@@ -215,7 +222,7 @@ jobs:
               if not booted:
                   raise RuntimeError("Timed out waiting for Purpurbedrock 26.2 boot!")
 
-              proc.stdin.write("purpurbedrock status\npurpurbedrock antixray\npurpurbedrock papi\npurpurbedrock selftest\n")
+              proc.stdin.write("purpurbedrock status\npurpurbedrock antixray\npurpurbedrock papi\npurpurbedrock selftest\npac status\npac selftest\n")
               proc.stdin.flush()
               time.sleep(3)
 
@@ -312,6 +319,9 @@ jobs:
               "PLACEHOLDER_PAPI_SELFTEST_OK",
               "PAPI_EXPANSION_LIVE_REGISTERED_OK id=purpurbedrock persist=true ver=26.2 isBedrock=true ping=0",
               "Встроенные плейсхолдеры %purpurbedrock_*% зарегистрированы в PlaceholderAPI",
+              "PurpurBedrockAC 26.2 запущен! Адаптивный спящий режим активен",
+              "PURPURBEDROCK_AC_SELFTEST_OK gui=54 legend=GREEN_ORANGE_RED stage=AWAKE idleHolo=0",
+              "Статус PurpurBedrockAC 26.2",
               "NetherNet LAN Discovery active on UDP",
               "Вход только с Bedrock (блок Java): ВКЛЮЧЁН",
               "Anti-Xray под Bedrock (Алмазы + Незерит): ВКЛЮЧЁН",
@@ -335,16 +345,23 @@ jobs:
           path: |
             purpurbedrock-26.2.jar
             purpurbedrock-26.2.jar.sha256
+            PurpurBedrockAC-26.2.jar
+            PurpurBedrockAC-26.2.jar.sha256
             unlock-windows-lan.bat
 
       - name: Publish Purpurbedrock 26.2 Ready Core to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v26.2.0-bedrock
-          name: "Purpurbedrock 26.2 FINAL — Чистое Bedrock-ядро (Мульти-версия 1.21–26.52 + Чанки + %purpurbedrock_*% PAPI + Java-меню + Anti-Xray)"
+          name: "Purpurbedrock 26.2 FINAL + PurpurBedrockAC 26.2 (Мульти-версия 1.21–26.52 + Чанки + %purpurbedrock_*% PAPI + Адаптивный Античит)"
           body: |
-            ## Purpurbedrock `26.2` FINAL (`purpurbedrock-26.2.jar`)
-            Финальное автономное высокопроизводительное ядро на базе **Purpur `26.2` (`STABLE`)** — **100% независимое от внешнего GeyserMC**:
+            ## Purpurbedrock `26.2` FINAL (`purpurbedrock-26.2.jar`) + Отдельный античит `PurpurBedrockAC-26.2.jar`
+            Финальное автономное высокопроизводительное ядро на базе **Purpur `26.2` (`STABLE`)** и отдельный адаптивный античит, откалиброванный специально под него:
+            - **Отдельный плагин-античит `PurpurBedrockAC-26.2.jar` (папка `purpurbedrock-anticheat/`, не мешает ядру)**:
+              - **Адаптивный спящий режим (`DORMANT → SLEEPING → WAKING → AWAKE`)**: в тишине спит (`0% CPU`), при первых аномалиях плавно и не спеша просыпается только для подозрительного игрока, не нагружая сервер.
+              - **13 проверок без ложных флагов на Bedrock** (учитывает Сенсор / ПК / Геймпад, спид-бриджинг и реальный RTT пинг): `Reach` (3D AABB + компенсация пинга), `HitBox`, `KillAura` (`MultiAura`, `360°`, сквозь стены, с открытым меню), `AutoClicker` (`CPS` + макросы), `Velocity`, `Fly`, `AirJump`, `Speed/BHop`, `Timer`, `Jesus`, `NoSlow`, `Scaffold`, `BadPackets`.
+              - **Небольшая голограмма `AVG` над игроками (`/pac holo`, право `purpurac.hologram`)**: пакетно-изолированный `TextDisplay` без хитбокса, видимый только модераторам (при 0 включивших — `0` сущностей в мире).
+              - **Меню истории игрока в стиле HolyWorld (`/pac menu`, `/pac history <ник>`, право `purpurac.menu`)**: `54` слота с **зелёными 🟢 / оранжевыми 🟠 / красными 🔴** блоками истории и **блоками-инструкциями внизу меню**.
             - **Исправлена погрузка чанков на Bedrock (Moonrise + `NetworkChunkPublisherUpdatePacket` Sync)**:
               - Гарантированная синхронизация `NetworkChunkPublisherUpdatePacket` при входе, стоянии на месте, полёте, любых телепортациях (`/tp`, `/spawn`, `/warp`, `/rtp`, `AuthMe`), смене измерений и изменении ползунка дальности прорисовки на клиенте (`ensureChunkPublished` никогда не даёт клиенту Bedrock отбросить пришедший `LevelChunkPacket`).
               - Убран баг начального радиуса `2` чанка на стадии `CONFIGURATION`, отключено занижение радиуса Moonrise (`auto-config-send-distance: false`), увеличены лимиты стриминга чанков (`120 send/s`, `200 load/s`, `8 concurrent`, `batch=32`) + добавлена команда принудительного ресинка `/pb chunks [игрок]`.
@@ -373,6 +390,8 @@ jobs:
           files: |
             purpurbedrock-26.2.jar
             purpurbedrock-26.2.jar.sha256
+            PurpurBedrockAC-26.2.jar
+            PurpurBedrockAC-26.2.jar.sha256
             unlock-windows-lan.bat
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

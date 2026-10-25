@@ -109,3 +109,16 @@ CheckNetIsolation LoopbackExempt -a -n="Microsoft.MinecraftUWP_8wekyb3d8bbwe"
   - `/pb chunks [игрок]` — принудительно синхронизировать область прогрузки чанков игрока
   - `/pb papi [игрок]` — проверить статус и значения встроенных плейсхолдеров `%purpurbedrock_*%`
   - `/pb antixray` — проверить статус Bedrock Anti-Xray по всем мирам
+
+---
+
+## Отдельный адаптивный античит: `PurpurBedrockAC 26.2` (`purpurbedrock-anticheat/`)
+
+В репозитории в полностью независимом модуле **`purpurbedrock-anticheat/`** (не затрагивающем код ядра) собирается готовый античит **`PurpurBedrockAC-26.2.jar`** (`plugins/PurpurBedrockAC-26.2.jar`):
+- **Адаптивный спящий режим (`DORMANT → SLEEPING → WAKING → AWAKE`)**: спит при спокойной игре (`0% CPU`) и плавно, не спеша просыпается только для подозрительного игрока.
+- **13 проверок без ложных флагов на Bedrock** (учитывает `Сенсор` / `ПК` / `Геймпад`, спид-бриджинг и пинг): `Reach`, `HitBox`, `KillAura`, `AutoClicker`, `Velocity`, `Fly`, `AirJump`, `Speed/BHop`, `Timer`, `Jesus`, `NoSlow`, `Scaffold`, `BadPackets`.
+- **Компактная голограмма `AVG` над игроками** (`/pac holo`, право `purpurac.hologram`) — пакетно-изолированная для каждого модератора и без хитбокса (`0` сущностей в простое).
+- **Меню истории игрока в стиле HolyWorld** (`/pac menu`, `/pac history <ник>`, право `purpurac.menu`) — **зелёные, оранжевые и красные** блоки истории и **блоки-инструкции по цветам внизу меню**.
+- **Право на алерты** (`purpurac.alerts`, переключение `/pac alerts`) и гибкая кастомизация в `plugins/PurpurBedrockAC/config.yml`.
+- Подробная документация: [`purpurbedrock-anticheat/README.md`](purpurbedrock-anticheat/README.md).
+
