@@ -118,9 +118,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-/**
- * Purpurbedrock Multi-Version Palette & Mapping Helper (Bedrock 1.21.0 v685 -> 26.52 v2193).
- */
+// Purpurbedrock Multi-Version Palette and Mapping Helper (Bedrock 1.21.0 v685 to 26.52 v2193).
 public final class MultiVersionPaletteHelper {
 
     private static final Set<String> PALE_OAK_BLOCKS = Set.of(
