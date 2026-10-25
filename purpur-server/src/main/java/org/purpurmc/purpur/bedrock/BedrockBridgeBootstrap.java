@@ -570,9 +570,9 @@ public final class BedrockBridgeBootstrap {
             ClassLoader cl = geyserPlugin.getClass().getClassLoader();
             Class<?> gameProtocolClass = Class.forName("org.geysermc.geyser.network.bedrock.GameProtocol", true, cl);
             java.lang.reflect.Method getBedrockCodec = gameProtocolClass.getMethod("getBedrockCodec", int.class);
-            java.util.List<?> codecs = (java.util.List<?>) gameProtocolClass.getField("SUPPORTED_BEDROCK_CODECS").get(null);
-            if (codecs.size() < expectedProtocols.length) {
-                throw new IllegalStateException("Expected >= 23 codecs, got " + codecs.size());
+            java.util.List<?> protocols = (java.util.List<?>) gameProtocolClass.getField("SUPPORTED_BEDROCK_PROTOCOLS").get(null);
+            if (protocols.size() < expectedProtocols.length) {
+                throw new IllegalStateException("Expected >= 23 codecs, got " + protocols.size());
             }
 
             Class<?> blockRegistriesClass = Class.forName("org.geysermc.geyser.registry.BlockRegistries", true, cl);
@@ -582,7 +582,7 @@ public final class BedrockBridgeBootstrap {
             Class<?> registriesClass = Class.forName("org.geysermc.geyser.registry.Registries", true, cl);
             Object itemsReg = registriesClass.getField("ITEMS").get(null);
             Object defsReg = registriesClass.getField("BEDROCK_ITEM_DEFINITIONS").get(null);
-            Object tagsReg = registriesClass.getField("ITEM_TAGS").get(null);
+            Object tagsReg = registriesClass.getField("TAGS").get(null);
             java.lang.reflect.Method itemsForVersion = itemsReg.getClass().getMethod("forVersion", int.class);
             java.lang.reflect.Method defsForVersion = defsReg.getClass().getMethod("forVersion", int.class);
             java.lang.reflect.Method tagsForVersion = tagsReg.getClass().getMethod("forVersion", int.class);
@@ -616,7 +616,7 @@ public final class BedrockBridgeBootstrap {
                 }
             }
 
-            return "MULTIVERSION_685_TO_2193_SELFTEST_OK codecs=" + codecs.size() + " versions=1.21.0..26.52 dialogWaitPopup=DISABLED";
+            return "MULTIVERSION_685_TO_2193_SELFTEST_OK codecs=" + protocols.size() + " versions=1.21.0..26.52 dialogWaitPopup=DISABLED";
         } catch (Throwable t) {
             throw new RuntimeException("MULTIVERSION_SELFTEST_FAILED: " + t.getMessage(), t);
         }

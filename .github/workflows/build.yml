@@ -358,7 +358,15 @@ jobs:
           log = ""
           if os.path.exists("/tmp/build.log"):
               with open("/tmp/build.log", "r", errors="replace") as f:
-                  log = f.read()[-18000:]
+                  full = f.read()
+              lines = full.splitlines()
+              errs = []
+              for idx, ln in enumerate(lines):
+                  if ": error:" in ln or "Exception:" in ln or "Error:" in ln:
+                      errs.extend(lines[max(0, idx - 1):min(len(lines), idx + 6)])
+                      errs.append("---")
+              err_summary = "\n".join(errs[:200])
+              log = ("=== ERRORS ===\n" + err_summary + "\n=== TAIL ===\n" if err_summary else "") + full[-12000:]
           if os.path.exists("/tmp/server_out.log"):
               with open("/tmp/server_out.log", "r", errors="replace") as f:
                   log += "\n=== SERVER LOG ===\n" + f.read()[-8000:]
