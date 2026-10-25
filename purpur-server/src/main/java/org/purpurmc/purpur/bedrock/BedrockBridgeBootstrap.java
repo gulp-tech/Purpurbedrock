@@ -72,6 +72,7 @@ public final class BedrockBridgeBootstrap {
     }
 
     public static void initialize(DedicatedServer server) {
+        BedrockChunkHelper.applyRuntimeChunkTuning();
         if (!PurpurConfig.bedrockEmbeddedProtocolEnabled) {
             Bukkit.getLogger().info("[Purpurbedrock] Встроенный протокол Bedrock отключён в purpur.yml.");
             return;
@@ -494,7 +495,7 @@ public final class BedrockBridgeBootstrap {
               enable-custom-content: true
               force-resource-packs: %s
               enable-integrated-pack: %s
-              forward-player-ping: false
+              forward-player-ping: true
               xbox-achievements-enabled: false
               max-visible-custom-skulls: %d
               custom-skull-render-distance: 24
@@ -621,7 +622,16 @@ public final class BedrockBridgeBootstrap {
                 }
             }
 
-            return "MULTIVERSION_685_TO_2193_SELFTEST_OK codecs=" + protocols.size() + " versions=1.21.0..26.52 dialogWaitPopup=DISABLED";
+            Class<?> chunkUtilsClass = Class.forName("org.geysermc.geyser.util.ChunkUtils", true, cl);
+            chunkUtilsClass.getMethod(
+                "ensureChunkPublished",
+                Class.forName("org.geysermc.geyser.session.GeyserSession", true, cl),
+                int.class,
+                int.class
+            );
+
+            return "MULTIVERSION_685_TO_2193_SELFTEST_OK codecs=" + protocols.size()
+                + " versions=1.21.0..26.52 dialogWaitPopup=DISABLED chunkPublisher=RELIABLE";
         } catch (Throwable t) {
             throw new RuntimeException("MULTIVERSION_SELFTEST_FAILED: " + t.getMessage(), t);
         }

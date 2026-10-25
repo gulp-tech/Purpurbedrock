@@ -2085,6 +2085,311 @@ import java.util.concurrent.ConcurrentHashMap;""",
         "SkullBlockEntityTranslator.pre748SkullType",
     )
 
+    # =========================================================================
+    # 10. Bedrock Chunk-Loading Reliability Fixes & Real RakNet/NetherNet RTT Ping
+    # =========================================================================
+    chunk_utils = root / "core/src/main/java/org/geysermc/geyser/util/ChunkUtils.java"
+    replace_exact(
+        chunk_utils,
+        """    public static void updateChunkPosition(GeyserSession session, Vector3i position) {
+        Vector2i chunkPos = session.getLastChunkPosition();
+        Vector2i newChunkPos = Vector2i.from(position.getX() >> 4, position.getZ() >> 4);
+
+        if (chunkPos == null || !chunkPos.equals(newChunkPos)) {
+            NetworkChunkPublisherUpdatePacket chunkPublisherUpdatePacket = new NetworkChunkPublisherUpdatePacket();
+            chunkPublisherUpdatePacket.setPosition(position);
+            // Mitigates chunks not loading on 1.17.1 Paper and 1.19.3 Fabric. As of Bedrock 1.19.60.
+            // https://github.com/GeyserMC/Geyser/issues/3490
+            chunkPublisherUpdatePacket.setRadius(squareToCircle(session.getServerRenderDistance()) << 4);
+            session.sendUpstreamPacket(chunkPublisherUpdatePacket);
+
+            session.setLastChunkPosition(newChunkPos);
+        }
+    }""",
+        """    private static final java.util.Map<GeyserSession, Integer> LAST_PUBLISHER_RADIUS =
+        java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+
+    public static int computePublisherBlockRadius(GeyserSession session) {
+        int serverDist = Math.max(session.getServerRenderDistance(), 8);
+        int clientDist = session.getClientRenderDistance() > 0 ? Math.min(session.getClientRenderDistance(), 32) : serverDist;
+        int effectiveChunks = Math.max(serverDist, Math.min(clientDist, serverDist + 2));
+        return (squareToCircle(effectiveChunks) + 3) << 4;
+    }
+
+    public static Vector3i clampPublisherY(GeyserSession session, Vector3i position) {
+        BedrockDimension dim = session.getBedrockDimension();
+        int minY = dim != null ? dim.minY() : -64;
+        int maxY = dim != null ? (dim.minY() + dim.height() - 1) : 319;
+        int rawY = position.getY();
+        int clampedY = (rawY < minY || rawY > maxY) ? Math.max(minY, Math.min(64, maxY)) : rawY;
+        return clampedY == rawY ? position : Vector3i.from(position.getX(), clampedY, position.getZ());
+    }
+
+    public static void updateChunkPosition(GeyserSession session, Vector3i position) {
+        updateChunkPosition(session, position, false);
+    }
+
+    public static void forceUpdateChunkPosition(GeyserSession session, Vector3i position) {
+        updateChunkPosition(session, position, true);
+    }
+
+    public static void updateChunkPosition(GeyserSession session, Vector3i position, boolean force) {
+        Vector3i safePos = clampPublisherY(session, position);
+        Vector2i chunkPos = session.getLastChunkPosition();
+        Vector2i newChunkPos = Vector2i.from(safePos.getX() >> 4, safePos.getZ() >> 4);
+        int blockRadius = computePublisherBlockRadius(session);
+        Integer prevRadius = LAST_PUBLISHER_RADIUS.get(session);
+
+        if (force || chunkPos == null || !chunkPos.equals(newChunkPos) || prevRadius == null || prevRadius != blockRadius) {
+            NetworkChunkPublisherUpdatePacket chunkPublisherUpdatePacket = new NetworkChunkPublisherUpdatePacket();
+            chunkPublisherUpdatePacket.setPosition(safePos);
+            chunkPublisherUpdatePacket.setRadius(blockRadius);
+            session.sendUpstreamPacket(chunkPublisherUpdatePacket);
+
+            session.setLastChunkPosition(newChunkPos);
+            LAST_PUBLISHER_RADIUS.put(session, blockRadius);
+        }
+    }
+
+    public static void ensureChunkPublished(GeyserSession session, int chunkX, int chunkZ) {
+        Vector2i lastCenter = session.getLastChunkPosition();
+        int blockRadius = computePublisherBlockRadius(session);
+        int chunkRadius = Math.max(4, (blockRadius >> 4) - 1);
+        Vector3i playerPos = session.getPlayerEntity() != null
+            ? session.getPlayerEntity().position().toInt()
+            : Vector3i.from((chunkX << 4) + 8, 64, (chunkZ << 4) + 8);
+        if (lastCenter == null) {
+            updateChunkPosition(session, Vector3i.from((chunkX << 4) + 8, playerPos.getY(), (chunkZ << 4) + 8), true);
+            return;
+        }
+        int dx = chunkX - lastCenter.getX();
+        int dz = chunkZ - lastCenter.getY();
+        if ((dx * dx + dz * dz) > (chunkRadius * chunkRadius)) {
+            int playerChunkX = playerPos.getX() >> 4;
+            int playerChunkZ = playerPos.getZ() >> 4;
+            int pdx = chunkX - playerChunkX;
+            int pdz = chunkZ - playerChunkZ;
+            if ((pdx * pdx + pdz * pdz) <= (chunkRadius * chunkRadius)) {
+                updateChunkPosition(session, playerPos, true);
+            } else {
+                updateChunkPosition(session, Vector3i.from((chunkX << 4) + 8, playerPos.getY(), (chunkZ << 4) + 8), true);
+            }
+        }
+    }""",
+        "ChunkUtils.reliableChunkPublisher",
+    )
+
+    cache_center_translator = root / "core/src/main/java/org/geysermc/geyser/translator/protocol/java/level/JavaSetChunkCacheCenterTranslator.java"
+    replace_exact(
+        cache_center_translator,
+        """        if (!session.isSpawned() && session.getLastChunkPosition() == null) {
+            ChunkUtils.updateChunkPosition(session, Vector3i.from(packet.getChunkX() << 4, 64, packet.getChunkZ() << 4));
+        }""",
+        """        int centerY = session.getPlayerEntity() != null ? session.getPlayerEntity().position().toInt().getY() : 64;
+        ChunkUtils.updateChunkPosition(session, Vector3i.from((packet.getChunkX() << 4) + 8, centerY, (packet.getChunkZ() << 4) + 8));""",
+        "JavaSetChunkCacheCenterTranslator.alwaysUpdatePublisher",
+    )
+
+    player_pos_translator = root / "core/src/main/java/org/geysermc/geyser/translator/protocol/java/entity/player/JavaPlayerPositionTranslator.java"
+    replace_exact(
+        player_pos_translator,
+        """                ChunkRadiusUpdatedPacket chunkRadiusUpdatedPacket = new ChunkRadiusUpdatedPacket();
+                chunkRadiusUpdatedPacket.setRadius(session.getServerRenderDistance());
+                session.sendUpstreamPacket(chunkRadiusUpdatedPacket);""",
+        """                ChunkRadiusUpdatedPacket chunkRadiusUpdatedPacket = new ChunkRadiusUpdatedPacket();
+                chunkRadiusUpdatedPacket.setRadius(ChunkUtils.squareToCircle(Math.max(session.getServerRenderDistance(), 8)));
+                session.sendUpstreamPacket(chunkRadiusUpdatedPacket);""",
+        "JavaPlayerPositionTranslator.dimensionRadiusCircle",
+    )
+    replace_exact(
+        player_pos_translator,
+        """        session.setUnconfirmedTeleport(new TeleportCache(session, teleportDestination, deltaMovement, newPitch, newYaw, teleportId, type));
+        entity.moveAbsolute(teleportDestination, newYaw, newPitch, false, true);""",
+        """        session.setUnconfirmedTeleport(new TeleportCache(session, teleportDestination, deltaMovement, newPitch, newYaw, teleportId, type));
+        entity.moveAbsolute(teleportDestination, newYaw, newPitch, false, true);
+        ChunkUtils.updateChunkPosition(session, teleportDestination.toInt());""",
+        "JavaPlayerPositionTranslator.teleportUpdateChunkPosition",
+    )
+
+    level_chunk_translator = root / "core/src/main/java/org/geysermc/geyser/translator/protocol/java/level/JavaLevelChunkWithLightTranslator.java"
+    replace_exact(
+        level_chunk_translator,
+        """        if (session.isSpawned()) {
+            ChunkUtils.updateChunkPosition(session, session.getPlayerEntity().position().toInt());
+        }""",
+        """        if (session.isSpawned()) {
+            ChunkUtils.updateChunkPosition(session, session.getPlayerEntity().position().toInt());
+        }
+        ChunkUtils.ensureChunkPublished(session, packet.getX(), packet.getZ());""",
+        "JavaLevelChunkWithLightTranslator.ensureChunkPublished",
+    )
+
+    chunk_batch_translator = root / "core/src/main/java/org/geysermc/geyser/translator/protocol/java/level/JavaChunkBatchFinishedTranslator.java"
+    replace_exact(
+        chunk_batch_translator,
+        """        session.sendDownstreamGamePacket(new ServerboundChunkBatchReceivedPacket(20));""",
+        """        session.sendDownstreamGamePacket(new ServerboundChunkBatchReceivedPacket(32f));""",
+        "JavaChunkBatchFinishedTranslator.higherChunkBatchRate",
+    )
+
+    replace_exact(
+        geyser_session,
+        """    private int clientRenderDistance = -1;
+    private int serverRenderDistance = -1;""",
+        """    private int clientRenderDistance = -1;
+    private int serverRenderDistance = -1;
+    private volatile int measuredRttMs = -1;
+    private int rttProbeTicks = 0;""",
+        "GeyserSession.measuredRttFields",
+    )
+    replace_exact(
+        geyser_session,
+        """        try {
+            pistonCache.tick();""",
+        """        try {
+            if (++this.rttProbeTicks >= 60 && this.sentSpawnPacket && getUpstream().isInitialized() && !getUpstream().isClosed()) {
+                this.rttProbeTicks = 0;
+                if (this.measuredRttMs < 0 || !(getUpstream().getSession().getPeer().getChannel() instanceof RakChildChannel)) {
+                    sendNetworkLatencyStackPacket(System.currentTimeMillis(), false, () -> {});
+                }
+            }
+            pistonCache.tick();""",
+        "GeyserSession.nethernetRttProbeTick",
+    )
+    replace_exact(
+        geyser_session,
+        """    public void setClientRenderDistance(int clientRenderDistance) {
+        boolean oldSquareToCircle = this.clientRenderDistance < this.serverRenderDistance;
+        this.clientRenderDistance = clientRenderDistance;
+        boolean newSquareToCircle = this.clientRenderDistance < this.serverRenderDistance;
+
+        if (this.serverRenderDistance != -1 && oldSquareToCircle != newSquareToCircle) {
+            recalculateBedrockRenderDistance();
+        }
+    }""",
+        """    public void setClientRenderDistance(int clientRenderDistance) {
+        this.clientRenderDistance = clientRenderDistance;
+        if (this.serverRenderDistance != -1) {
+            recalculateBedrockRenderDistance();
+        }
+    }""",
+        "GeyserSession.alwaysAckClientRenderDistance",
+    )
+    replace_exact(
+        geyser_session,
+        """    private void recalculateBedrockRenderDistance() {
+        int renderDistance = ChunkUtils.squareToCircle(this.serverRenderDistance);
+        ChunkRadiusUpdatedPacket chunkRadiusUpdatedPacket = new ChunkRadiusUpdatedPacket();
+        chunkRadiusUpdatedPacket.setRadius(renderDistance);
+        upstream.sendPacket(chunkRadiusUpdatedPacket);
+    }""",
+        """    private void recalculateBedrockRenderDistance() {
+        int baseDist = Math.max(this.serverRenderDistance, 8);
+        int renderDistance = ChunkUtils.squareToCircle(baseDist);
+        ChunkRadiusUpdatedPacket chunkRadiusUpdatedPacket = new ChunkRadiusUpdatedPacket();
+        chunkRadiusUpdatedPacket.setRadius(renderDistance);
+        upstream.sendPacket(chunkRadiusUpdatedPacket);
+        if (this.playerEntity != null && (this.sentSpawnPacket || this.lastChunkPosition != null)) {
+            org.cloudburstmc.math.vector.Vector3i center = this.lastChunkPosition != null && !this.sentSpawnPacket
+                ? org.cloudburstmc.math.vector.Vector3i.from((this.lastChunkPosition.getX() << 4) + 8, 64, (this.lastChunkPosition.getY() << 4) + 8)
+                : this.playerEntity.position().toInt();
+            ChunkUtils.forceUpdateChunkPosition(this, center);
+        }
+    }""",
+        "GeyserSession.recalculateRenderDistanceRepublish",
+    )
+    replace_exact(
+        geyser_session,
+        """    private int getRenderDistance() {
+        if (clientRenderDistance != -1) {
+            // The client has sent a render distance
+            return clientRenderDistance;
+        } else if (serverRenderDistance != -1) {
+            // only known once ClientboundLoginPacket is received
+            return serverRenderDistance;
+        }
+        return 2; // unfortunate default until we got more info
+    }""",
+        """    private int getRenderDistance() {
+        if (clientRenderDistance != -1) {
+            return Math.max(8, clientRenderDistance);
+        } else if (serverRenderDistance != -1) {
+            return Math.max(8, serverRenderDistance);
+        }
+        return 10;
+    }""",
+        "GeyserSession.preventTinyInitialRenderDistance",
+    )
+    replace_exact(
+        geyser_session,
+        """    @Override
+    public int ping() {
+        // Can otherwise cause issues if the player isn't logged in yet / already left
+        if (!getUpstream().isInitialized() || getUpstream().isClosed()) {
+            return 0;
+        }
+
+        // TODO fixme
+        // TODO NetherNet: expose the WebRTC round trip time
+        if (!(getUpstream().getSession().getPeer().getChannel() instanceof RakChildChannel rakChannel)) {
+            return 0;
+        }
+
+        RakSessionCodec rakSessionCodec = rakChannel.rakPipeline().get(RakSessionCodec.class);
+        return (int) Math.floor(rakSessionCodec.getPing());
+    }""",
+        """    @Override
+    public int ping() {
+        if (!getUpstream().isInitialized() || getUpstream().isClosed()) {
+            return Math.max(0, this.measuredRttMs);
+        }
+
+        if (getUpstream().getSession().getPeer().getChannel() instanceof RakChildChannel rakChannel) {
+            RakSessionCodec rakSessionCodec = rakChannel.rakPipeline().get(RakSessionCodec.class);
+            if (rakSessionCodec != null) {
+                double rawPing = rakSessionCodec.getPing();
+                if (rawPing > 0.0) {
+                    return Math.max(1, (int) Math.round(rawPing));
+                }
+            }
+        }
+
+        return Math.max(0, this.measuredRttMs);
+    }""",
+        "GeyserSession.realRakNetAndNetherNetPing",
+    )
+    replace_exact(
+        geyser_session,
+        """    public void sendNetworkLatencyStackPacket(long timestamp, boolean ensureEventLoop, Runnable runnable) {
+        NetworkStackLatencyPacket latencyPacket = new NetworkStackLatencyPacket();
+        latencyPacket.setFromServer(true);
+        latencyPacket.setTimestamp(timestamp);
+        if (ensureEventLoop) {
+            latencyPingCache.add(() -> ensureInEventLoop(runnable));
+        } else {
+            latencyPingCache.add(runnable);
+        }
+        sendUpstreamPacket(latencyPacket);
+    }""",
+        """    public void sendNetworkLatencyStackPacket(long timestamp, boolean ensureEventLoop, Runnable runnable) {
+        final long sentAtNanos = System.nanoTime();
+        Runnable timedCallback = () -> {
+            this.measuredRttMs = Math.max(1, (int) Math.round((System.nanoTime() - sentAtNanos) / 1_000_000.0));
+            runnable.run();
+        };
+        NetworkStackLatencyPacket latencyPacket = new NetworkStackLatencyPacket();
+        latencyPacket.setFromServer(true);
+        latencyPacket.setTimestamp(timestamp);
+        if (ensureEventLoop) {
+            latencyPingCache.add(() -> ensureInEventLoop(timedCallback));
+        } else {
+            latencyPingCache.add(timedCallback);
+        }
+        sendUpstreamPacket(latencyPacket);
+    }""",
+        "GeyserSession.measureLatencyStackRtt",
+    )
+
 
 
 if __name__ == "__main__":

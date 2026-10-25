@@ -50,6 +50,19 @@
    - Полностью убрано окно ожидания **`gui.waitingForResponse.title`** («Идёт ожидание нового диалога от сервера...») при переходах и закрытии Java Dialog-окон.
    - Устранён ложный вывод `[ERROR]: [STDERR] [sun.instrument.InstrumentationImpl] WARNING: A Java agent has been loaded dynamically` в `SysoutCatcher` при динамической загрузке ByteBuddy-агента плагинами на Java 25.
 
+9. **Безупречная прогрузка чанков на Bedrock (`ChunkUtils.ensureChunkPublished` + Moonrise Sync)**
+   - Устранены пустые/невидимые чанки при входе, стоянии на спавне, быстрых полётах, любых телепортациях (`/tp`, `/spawn`, `/warp`, `/rtp`, `AuthMe`), переходах между мирами и смене дальности прорисовки в настройках клиента Bedrock.
+   - Движок гарантированно обновляет `NetworkChunkPublisherUpdatePacket` (с защитой высоты `Y` после смены измерения и буферным радиусом) **до** отправки каждого `LevelChunkPacket`, поэтому клиент Bedrock никогда не отбрасывает пришедшие чанки.
+   - На стороне Moonrise (`Paper 26.2`) отключено занижение радиуса мобильными клиентами (`auto-config-send-distance: false`, убран начальный дефолт `2` чанка на стадии `CONFIGURATION`) и увеличена скорость отдачи чанков (`120 send/s`, `200 load/s`, `8 concurrent`, `batch=32`).
+
+10. **Встроенные PlaceholderAPI-плейсхолдеры прямо из ядра (`%purpurbedrock_*%`)**
+    - Автоматически регистрируются в `PlaceholderAPI` прямо из ядра (`persist = true`, сохраняются при `/papi reload`) без установки дополнительных плагинов или eCloud-расширений — сразу готовы для **`VoidTab`**, **скорбордов** и **`DeluxeMenus`**:
+      - `%purpurbedrock_device%` — устройство игрока (`📱 Телефон`, `🖥 ПК`, `🎮 Геймпад`, `PlayStation`, `Xbox`, `Switch`)
+      - `%purpurbedrock_input%` — режим управления в реальном времени (`Сенсор`, `Клавиатура+Мышь`, `Контроллер`)
+      - `%purpurbedrock_version%` — точная версия клиента Bedrock игрока (например, `1.21.50` или `26.52`)
+      - `%purpurbedrock_ping%` — реальный RTT пинг RakNet / NetherNet WebRTC в мс *(также пробрасывается напрямую в `Player#getPing()`)*
+      - Дополнительные плейсхолдеры: `%purpurbedrock_ping_colored%`, `%purpurbedrock_os%`, `%purpurbedrock_protocol%`, `%purpurbedrock_ui%`, `%purpurbedrock_xuid%`, `%purpurbedrock_is_bedrock%`.
+
 ---
 
 ## Быстрый запуск (Рекомендуемые флаги Aikars / G1GC + Java 25)
@@ -91,6 +104,8 @@ CheckNetIsolation LoopbackExempt -a -n="Microsoft.MinecraftUWP_8wekyb3d8bbwe"
 - **`bedrock.yml`** *(в корне сервера)* — порт (`19132`), `webrtc-port` (`19133`), `lan-discovery` (`true`), `data-folder` (`bedrock`), `motd` и `max-players`.
 - **`purpur.yml`** (`settings.bedrock.*` и `world-settings.default.gameplay-mechanics.bedrock-combat.*`) — тонкая настройка гейткипера, Anti-Xray, защиты от флагов, защиты от фантомных блоков, Java-меню, боёвки и авто-адаптации чанков/плагинов `26.3 -> 26.2`.
 - **Команда `/purpurbedrock` (`/pb`)**:
-  - `/pb status` — сводка состояния ядра, TPS, папок `bedrock/`, защиты от флагов/фантомных блоков и протокола
+  - `/pb status` — сводка состояния ядра, TPS, чанков, PAPI, папок `bedrock/`, защиты от флагов/фантомных блоков и протокола
   - `/pb menu` — открыть встроенное интерактивное Java-меню диагностического центра (`27` слотов)
+  - `/pb chunks [игрок]` — принудительно синхронизировать область прогрузки чанков игрока
+  - `/pb papi [игрок]` — проверить статус и значения встроенных плейсхолдеров `%purpurbedrock_*%`
   - `/pb antixray` — проверить статус Bedrock Anti-Xray по всем мирам

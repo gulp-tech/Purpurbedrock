@@ -639,6 +639,17 @@ public class PurpurConfig {
     public static boolean bedrockAntiXrayLavaObscures = true;
     public static int bedrockAntiXrayMaxHeight = 128;
     public static boolean bedrockPerformanceOptimizeWorlds = true;
+    public static boolean bedrockChunkLoadingFix = true;
+    public static boolean bedrockPlaceholdersEnabled = true;
+    public static String bedrockPlaceholderDevicePhone = "📱 Телефон";
+    public static String bedrockPlaceholderDevicePc = "🖥 ПК";
+    public static String bedrockPlaceholderDeviceGamepad = "🎮 Геймпад";
+    public static String bedrockPlaceholderDevicePlaystation = "PlayStation";
+    public static String bedrockPlaceholderDeviceXbox = "Xbox";
+    public static String bedrockPlaceholderDeviceSwitch = "Switch";
+    public static String bedrockPlaceholderInputTouch = "Сенсор";
+    public static String bedrockPlaceholderInputKeyboardMouse = "Клавиатура+Мышь";
+    public static String bedrockPlaceholderInputController = "Контроллер";
     public static boolean bedrockAllowNewerChunkDataVersion = true;
     public static boolean bedrockAllowNewerMinorPluginApi = true;
 
@@ -665,6 +676,17 @@ public class PurpurConfig {
         bedrockAntiXrayLavaObscures = getBoolean("bedrock.anti-xray.lava-obscures", bedrockAntiXrayLavaObscures);
         bedrockAntiXrayMaxHeight = getInt("bedrock.anti-xray.max-block-height", bedrockAntiXrayMaxHeight);
         bedrockPerformanceOptimizeWorlds = getBoolean("bedrock.performance.optimize-worlds", bedrockPerformanceOptimizeWorlds);
+        bedrockChunkLoadingFix = getBoolean("bedrock.chunks.fix-bedrock-chunk-loading", bedrockChunkLoadingFix);
+        bedrockPlaceholdersEnabled = getBoolean("bedrock.placeholders.enabled", bedrockPlaceholdersEnabled);
+        bedrockPlaceholderDevicePhone = getString("bedrock.placeholders.device.phone", bedrockPlaceholderDevicePhone);
+        bedrockPlaceholderDevicePc = getString("bedrock.placeholders.device.pc", bedrockPlaceholderDevicePc);
+        bedrockPlaceholderDeviceGamepad = getString("bedrock.placeholders.device.gamepad", bedrockPlaceholderDeviceGamepad);
+        bedrockPlaceholderDevicePlaystation = getString("bedrock.placeholders.device.playstation", bedrockPlaceholderDevicePlaystation);
+        bedrockPlaceholderDeviceXbox = getString("bedrock.placeholders.device.xbox", bedrockPlaceholderDeviceXbox);
+        bedrockPlaceholderDeviceSwitch = getString("bedrock.placeholders.device.switch", bedrockPlaceholderDeviceSwitch);
+        bedrockPlaceholderInputTouch = getString("bedrock.placeholders.input.touch", bedrockPlaceholderInputTouch);
+        bedrockPlaceholderInputKeyboardMouse = getString("bedrock.placeholders.input.keyboard-mouse", bedrockPlaceholderInputKeyboardMouse);
+        bedrockPlaceholderInputController = getString("bedrock.placeholders.input.controller", bedrockPlaceholderInputController);
         bedrockAllowNewerChunkDataVersion = getBoolean("bedrock.compatibility.allow-newer-chunk-data-version", bedrockAllowNewerChunkDataVersion);
         bedrockAllowNewerMinorPluginApi = getBoolean("bedrock.compatibility.allow-newer-26x-plugin-api", bedrockAllowNewerMinorPluginApi);
     }

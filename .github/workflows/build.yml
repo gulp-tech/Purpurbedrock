@@ -99,21 +99,36 @@ jobs:
           echo "Using compiled Java 26.2 plugin: $TEST_PLUGIN_JAR"
           mkdir -p /tmp/smoke-server/plugins
           cp purpurbedrock-26.2.jar /tmp/smoke-server/purpurbedrock-26.2.jar
-          cp "$TEST_PLUGIN_JAR" /tmp/smoke-server/plugins/SmokeJavaPlugin.jar
           python3 - "$TEST_PLUGIN_JAR" << 'PY2'
           import os, struct, sys, zipfile, zlib
           src = sys.argv[1]
+          smoke_main = "/tmp/smoke-server/plugins/SmokeJavaPlugin.jar"
           dst = "/tmp/smoke-server/plugins/SmokeApi263Plugin.jar"
-          with zipfile.ZipFile(src, "r") as zin, zipfile.ZipFile(dst, "w") as zout:
-              for item in zin.infolist():
-                  if item.filename in ("paper-plugin.yml", "plugin.yml"):
-                      continue
-                  if item.filename.endswith("Compat263Plugin.class") or item.filename.startswith("META-INF/"):
-                      zout.writestr(item, zin.read(item.filename))
-              zout.writestr(
-                  "plugin.yml",
-                  "name: SmokeApi263Plugin\nversion: 1.0.0\nmain: org.purpurmc.testplugin.Compat263Plugin\napi-version: '26.3'\n",
-              )
+          papi_dst = "/tmp/smoke-server/plugins/PlaceholderAPI.jar"
+          with zipfile.ZipFile(src, "r") as zin:
+              with zipfile.ZipFile(smoke_main, "w") as zmain:
+                  for item in zin.infolist():
+                      if item.filename.startswith("me/clip/") or item.filename.endswith("Compat263Plugin.class"):
+                          continue
+                      zmain.writestr(item, zin.read(item.filename))
+              with zipfile.ZipFile(dst, "w") as zout:
+                  for item in zin.infolist():
+                      if item.filename in ("paper-plugin.yml", "plugin.yml"):
+                          continue
+                      if item.filename.endswith("Compat263Plugin.class") or item.filename.startswith("META-INF/"):
+                          zout.writestr(item, zin.read(item.filename))
+                  zout.writestr(
+                      "plugin.yml",
+                      "name: SmokeApi263Plugin\nversion: 1.0.0\nmain: org.purpurmc.testplugin.Compat263Plugin\napi-version: '26.3'\n",
+                  )
+              with zipfile.ZipFile(papi_dst, "w") as zpapi:
+                  for item in zin.infolist():
+                      if item.filename.startswith("me/clip/") or item.filename.startswith("META-INF/"):
+                          zpapi.writestr(item, zin.read(item.filename))
+                  zpapi.writestr(
+                      "plugin.yml",
+                      "name: PlaceholderAPI\nversion: 2.11.6\nmain: me.clip.placeholderapi.PlaceholderAPIPlugin\napi-version: '26.2'\n",
+                  )
 
           # Seed a genuine 48x16 HeadDatabase skull PNG in bedrock/cache/player_skulls/
           skulls_dir = "/tmp/smoke-server/bedrock/cache/player_skulls"
@@ -200,7 +215,7 @@ jobs:
               if not booted:
                   raise RuntimeError("Timed out waiting for Purpurbedrock 26.2 boot!")
 
-              proc.stdin.write("purpurbedrock status\npurpurbedrock antixray\npurpurbedrock selftest\n")
+              proc.stdin.write("purpurbedrock status\npurpurbedrock antixray\npurpurbedrock papi\npurpurbedrock selftest\n")
               proc.stdin.flush()
               time.sleep(3)
 
@@ -293,10 +308,15 @@ jobs:
               "Рабочие папки готовы: bedrock/cache (player_skulls / HeadDatabase) | bedrock/custom_mappings | bedrock/extensions | bedrock/packs",
               "Registered 1 custom skulls as custom blocks.",
               "CHUNK_263_PARSE_SELFTEST_OK",
-              "MULTIVERSION_685_TO_2193_SELFTEST_OK codecs=23 versions=1.21.0..26.52 dialogWaitPopup=DISABLED",
+              "MULTIVERSION_685_TO_2193_SELFTEST_OK codecs=23 versions=1.21.0..26.52 dialogWaitPopup=DISABLED chunkPublisher=RELIABLE",
+              "PLACEHOLDER_PAPI_SELFTEST_OK",
+              "PAPI_EXPANSION_LIVE_REGISTERED_OK id=purpurbedrock persist=true ver=26.2 isBedrock=true ping=0",
+              "Встроенные плейсхолдеры %purpurbedrock_*% зарегистрированы в PlaceholderAPI",
               "NetherNet LAN Discovery active on UDP",
               "Вход только с Bedrock (блок Java): ВКЛЮЧЁН",
               "Anti-Xray под Bedrock (Алмазы + Незерит): ВКЛЮЧЁН",
+              "Погрузка чанков Bedrock (Moonrise + Publisher Sync): УСИЛЕНА",
+              "Встроенные плейсхолдеры (%purpurbedrock_*%): АКТИВНЫ В PAPI",
               "Защита от флагов движения и фантомных блоков: ВКЛЮЧЕНА",
               "Java-меню (DeluxeMenus / Chest GUI): ВКЛЮЧЕНЫ",
               "Мульти-версия Bedrock: 1.21.0 — 26.52 (v685 — v2193, 23 протокола)",
@@ -321,10 +341,19 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v26.2.0-bedrock
-          name: "Purpurbedrock 26.2 FINAL — Чистое Bedrock-ядро (Мульти-версия 1.21.0–26.52 + Java-меню + Anti-Xray)"
+          name: "Purpurbedrock 26.2 FINAL — Чистое Bedrock-ядро (Мульти-версия 1.21–26.52 + Чанки + %purpurbedrock_*% PAPI + Java-меню + Anti-Xray)"
           body: |
             ## Purpurbedrock `26.2` FINAL (`purpurbedrock-26.2.jar`)
             Финальное автономное высокопроизводительное ядро на базе **Purpur `26.2` (`STABLE`)** — **100% независимое от внешнего GeyserMC**:
+            - **Исправлена погрузка чанков на Bedrock (Moonrise + `NetworkChunkPublisherUpdatePacket` Sync)**:
+              - Гарантированная синхронизация `NetworkChunkPublisherUpdatePacket` при входе, стоянии на месте, полёте, любых телепортациях (`/tp`, `/spawn`, `/warp`, `/rtp`, `AuthMe`), смене измерений и изменении ползунка дальности прорисовки на клиенте (`ensureChunkPublished` никогда не даёт клиенту Bedrock отбросить пришедший `LevelChunkPacket`).
+              - Убран баг начального радиуса `2` чанка на стадии `CONFIGURATION`, отключено занижение радиуса Moonrise (`auto-config-send-distance: false`), увеличены лимиты стриминга чанков (`120 send/s`, `200 load/s`, `8 concurrent`, `batch=32`) + добавлена команда принудительного ресинка `/pb chunks [игрок]`.
+            - **Встроенные PlaceholderAPI-плейсхолдеры прямо из ядра (`%purpurbedrock_*%`)** без лишних плагинов (авто-регистрация в `PlaceholderAPI` с `persist = true` для `VoidTab`, скорбордов и `DeluxeMenus`):
+              - `%purpurbedrock_device%` — `📱 Телефон`, `🖥 ПК`, `🎮 Геймпад`, `PlayStation`, `Xbox`, `Switch`
+              - `%purpurbedrock_input%` — `Сенсор`, `Клавиатура+Мышь`, `Контроллер` (обновляется в реальном времени)
+              - `%purpurbedrock_version%` — точная версия клиента Bedrock игрока (например, `1.21.50` или `26.52`)
+              - `%purpurbedrock_ping%` — реальный RakNet / NetherNet WebRTC RTT пинг в мс (также пробрасывается в `Player#getPing()`)
+              - Дополнительно: `%purpurbedrock_ping_colored%`, `%purpurbedrock_os%`, `%purpurbedrock_protocol%`, `%purpurbedrock_ui%`, `%purpurbedrock_xuid%`, `%purpurbedrock_is_bedrock%`.
             - **Полная мульти-версия Bedrock от `1.21.0` до `26.52` (`v685` — `v2193`, все 23 кодека протокола)**: игроки могут бесшовно заходить с любых версий `1.21.x` (`1.21.0`, `1.21.20`, `1.21.30`, `1.21.40`, `1.21.50`, `1.21.60`, `1.21.70`, `1.21.80`, `1.21.90–94`, `1.21.100`, `1.21.110`, `1.21.120–124`, `1.21.130–132`) и `26.x` (`26.0–26.3`, `26.10–26.12`, `26.20–26.23`, `26.30–26.34`, `26.40–26.45`, `26.50–26.52`) без вылетов, киков и ошибок пакетов/палитр.
             - **Убрано навязчивое окно диалога `gui.waitingForResponse.title`** («Идёт ожидание нового диалога от сервера...»): переходы и закрытие Java Dialog-меню происходят мгновенно без промежуточного экрана ожидания.
             - **Исправлена ошибка консоли `[STDERR] [sun.instrument.InstrumentationImpl] WARNING: A Java agent has been loaded dynamically`**: встроенный фильтр в `SysoutCatcher` полностью убирает ложный `[ERROR]: [STDERR]` от ByteBuddy/плагинов на Java 25 (дополнительно можно добавить `-XX:+EnableDynamicAgentLoading` в `.bat`/`.sh`).

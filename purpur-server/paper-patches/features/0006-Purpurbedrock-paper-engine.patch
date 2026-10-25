@@ -2,13 +2,46 @@ From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Purpurbedrock <dev@purpurbedrock.org>
 Date: Sat, 24 Oct 2026 21:13:45 +0000
 Subject: [PATCH] Purpurbedrock 26.2 Paper engine optimizations, Anti-Xray,
- movement & plugin guards
+ movement, chunk streaming & built-in PAPI hooks
 
 
 diff --git a/src/main/java/io/papermc/paper/configuration/GlobalConfiguration.java b/src/main/java/io/papermc/paper/configuration/GlobalConfiguration.java
-index 54dffff180d045e9f1a411c351eb66a08f44f31d..d97c095a56514d4ea1a044efd03df8aceef98c56 100644
+index 54dffff180d045e9f1a411c351eb66a08f44f31d..e439fd4ed4203ec0d9b432b1d42e6072423b1a84 100644
 --- a/src/main/java/io/papermc/paper/configuration/GlobalConfiguration.java
 +++ b/src/main/java/io/papermc/paper/configuration/GlobalConfiguration.java
+@@ -40,14 +40,14 @@ public class GlobalConfiguration extends ConfigurationPart {
+ 
+     public class ChunkLoadingBasic extends ConfigurationPart {
+         @Comment("The maximum rate in chunks per second that the server will send to any individual player. Set to -1 to disable this limit.")
+-        public double playerMaxChunkSendRate = 75.0;
++        public double playerMaxChunkSendRate = 120.0; // Purpurbedrock - smooth Bedrock chunk streaming
+ 
+         @Comment(
+             "The maximum rate at which chunks will load for any individual player. " +
+             "Note that this setting also affects chunk generations, since a chunk load is always first issued to test if a" +
+             "chunk is already generated. Set to -1 to disable this limit."
+         )
+-        public double playerMaxChunkLoadRate = 100.0;
++        public double playerMaxChunkLoadRate = 200.0; // Purpurbedrock - prevent Bedrock chunk load starvation
+ 
+         @Comment("The maximum rate at which chunks will generate for any individual player. Set to -1 to disable this limit.")
+         public double playerMaxChunkGenerateRate = -1.0;
+@@ -60,13 +60,13 @@ public class GlobalConfiguration extends ConfigurationPart {
+             "Set to true if the server will match the chunk send radius that clients have configured" +
+             "in their view distance settings if the client is less-than the server's send distance."
+         )
+-        public boolean autoConfigSendDistance = true;
++        public boolean autoConfigSendDistance = false; // Purpurbedrock - prevent mobile tiny initial radius from clamping Moonrise
+ 
+         @Comment(
+             "Specifies the maximum amount of concurrent chunk loads that an individual player can have." +
+             "Set to 0 to let the server configure it automatically per player, or set it to -1 to disable the limit."
+         )
+-        public int playerMaxConcurrentChunkLoads = 0;
++        public int playerMaxConcurrentChunkLoads = 8; // Purpurbedrock - fast parallel Bedrock chunk loading
+ 
+         @Comment(
+             "Specifies the maximum amount of concurrent chunk generations that an individual player can have." +
 @@ -249,7 +249,7 @@ public class GlobalConfiguration extends ConfigurationPart {
  
      public class PacketLimiter extends ConfigurationPart {
@@ -77,6 +110,47 @@ index 86ae93a9cad3d165bbe0aec5babbe98dbf50d625..9461dc118eb49d14da4fbf665b76f95d
          public AlternateCurrentUpdateOrder alternateCurrentUpdateOrder = AlternateCurrentUpdateOrder.HORIZONTAL_FIRST_OUTWARD;
          public boolean disableEndCredits = false;
          public DoubleOr.Default maxLeashDistance = DoubleOr.Default.USE_DEFAULT;
+diff --git a/src/main/java/io/papermc/paper/logging/SysoutCatcher.java b/src/main/java/io/papermc/paper/logging/SysoutCatcher.java
+index a8e813ca89b033f061e695288b3383bdcf128531..63ac37fe6a16ff537775f31f1d46df82f74d749a 100644
+--- a/src/main/java/io/papermc/paper/logging/SysoutCatcher.java
++++ b/src/main/java/io/papermc/paper/logging/SysoutCatcher.java
+@@ -80,6 +80,11 @@ public final class SysoutCatcher {
+                         plugin.getPluginMeta().getDisplayName())
+                 );
+             } catch (final IllegalArgumentException | IllegalStateException e) {
++                // Purpurbedrock start - suppress benign JDK dynamic agent warnings (e.g. ByteBuddy) on STDERR
++                if (clazz.getName().startsWith("sun.instrument.") && line != null && line.startsWith("WARNING: ")) {
++                    return;
++                }
++                // Purpurbedrock end
+                 // If anything happens, the calling class doesn't exist, there is no JavaPlugin that "owns" the calling class, etc
+                 // Just print out normally, with some added information
+                 Bukkit.getLogger().log(this.level, String.format("%s[%s] %s", this.prefix, clazz.getName(), line));
+diff --git a/src/main/java/io/papermc/paper/plugin/manager/PaperPluginInstanceManager.java b/src/main/java/io/papermc/paper/plugin/manager/PaperPluginInstanceManager.java
+index 7b520d3955f271d1dc8b38c3c0fdf0acd3a521a5..63cd5dca7eead5d8de456b4d2d9b7da04b526095 100644
+--- a/src/main/java/io/papermc/paper/plugin/manager/PaperPluginInstanceManager.java
++++ b/src/main/java/io/papermc/paper/plugin/manager/PaperPluginInstanceManager.java
+@@ -210,6 +210,7 @@ class PaperPluginInstanceManager {
+             // Perhaps abort here, rather than continue going, but as it stands,
+             // an abort is not possible the way it's currently written
+             this.server.getPluginManager().callEvent(new PluginEnableEvent(plugin));
++            if ("PlaceholderAPI".equalsIgnoreCase(plugin.getName())) { org.purpurmc.purpur.bedrock.BedrockPlaceholderHook.tryRegisterWithPlaceholderApi(plugin); } // Purpurbedrock - built-in %purpurbedrock_*% expansion
+         } catch (Throwable ex) {
+             this.handlePluginException("Error occurred (in the plugin loader) while enabling "
+                 + plugin.getPluginMeta().getDisplayName() + " (Is it up to date?)", ex, plugin);
+diff --git a/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java b/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java
+index 2571b73f9dbe7cb91560adbf06f0c5eb1dae8bdb..37b21517a5e082cd829d696eba0250df8646154f 100644
+--- a/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java
++++ b/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java
+@@ -2820,6 +2820,8 @@ public class CraftPlayer extends CraftHumanEntity implements Player, PluginMessa
+     @Override
+     public int getPing() {
+         if (this.getHandle().connection == null) throw new UnsupportedOperationException("Too early to call this method at this stage");
++        int bedrockPing = org.purpurmc.purpur.bedrock.BedrockPlaceholderHook.getDirectBedrockPing(this.getUniqueId()); // Purpurbedrock - real RakNet/NetherNet RTT ping
++        if (bedrockPing > 0) return bedrockPing; // Purpurbedrock
+         return this.getHandle().connection.latency();
+     }
+ 
 diff --git a/src/main/java/org/bukkit/craftbukkit/help/SimpleHelpMap.java b/src/main/java/org/bukkit/craftbukkit/help/SimpleHelpMap.java
 index 70b45a7d41f4bafac3b9738129d74af30e36b2a8..b9cafdcf276fd97e81e30764b19e151340b43e14 100644
 --- a/src/main/java/org/bukkit/craftbukkit/help/SimpleHelpMap.java
@@ -162,19 +236,3 @@ index 025ec3f3e84a3367b4d709c8c3ecd98f6dfecab4..e3d32eef95f056dfc64db247b742299a
      }
  
      public static double maxAbsorption = 2048;
-diff --git a/src/main/java/io/papermc/paper/logging/SysoutCatcher.java b/src/main/java/io/papermc/paper/logging/SysoutCatcher.java
-index a8e813ca89b033f061e695288b3383bdcf128531..63ac37fe6a16ff537775f31f1d46df82f74d749a 100644
---- a/src/main/java/io/papermc/paper/logging/SysoutCatcher.java
-+++ b/src/main/java/io/papermc/paper/logging/SysoutCatcher.java
-@@ -80,6 +80,11 @@ public final class SysoutCatcher {
-                         plugin.getPluginMeta().getDisplayName())
-                 );
-             } catch (final IllegalArgumentException | IllegalStateException e) {
-+                // Purpurbedrock start - suppress benign JDK dynamic agent warnings (e.g. ByteBuddy) on STDERR
-+                if (clazz.getName().startsWith("sun.instrument.") && line != null && line.startsWith("WARNING: ")) {
-+                    return;
-+                }
-+                // Purpurbedrock end
-                 // If anything happens, the calling class doesn't exist, there is no JavaPlugin that "owns" the calling class, etc
-                 // Just print out normally, with some added information
-                 Bukkit.getLogger().log(this.level, String.format("%s[%s] %s", this.prefix, clazz.getName(), line));

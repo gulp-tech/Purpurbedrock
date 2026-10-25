@@ -17,6 +17,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.purpurmc.purpur.PurpurConfig;
 import org.purpurmc.purpur.bedrock.BedrockBridgeBootstrap;
+import org.purpurmc.purpur.bedrock.BedrockPlaceholderHook;
 
 import java.util.List;
 import java.util.function.Consumer;
@@ -32,6 +33,7 @@ public final class JavaChestMenuManager {
     }
 
     public static void initAfterPlugins() {
+        BedrockPlaceholderHook.initAfterPlugins();
         if (!PurpurConfig.bedrockMenusEnabled) {
             return;
         }

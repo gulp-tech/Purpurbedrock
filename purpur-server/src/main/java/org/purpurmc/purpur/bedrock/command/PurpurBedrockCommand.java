@@ -9,10 +9,13 @@ import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
+import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 import org.purpurmc.purpur.PurpurConfig;
 import org.purpurmc.purpur.bedrock.BedrockBridgeBootstrap;
 import org.purpurmc.purpur.bedrock.BedrockChunkDowngrader;
+import org.purpurmc.purpur.bedrock.BedrockChunkHelper;
+import org.purpurmc.purpur.bedrock.BedrockPlaceholderHook;
 import org.purpurmc.purpur.bedrock.menu.JavaChestMenuManager;
 
 import java.io.File;
@@ -24,8 +27,8 @@ import java.util.stream.Stream;
 public final class PurpurBedrockCommand extends Command {
     public PurpurBedrockCommand(String name) {
         super(name);
-        this.description = "Purpurbedrock 26.2 — управление ядром Bedrock-only, Anti-Xray, LAN и Java-меню";
-        this.usageMessage = "/purpurbedrock [status | menu | antixray | reload]";
+        this.description = "Purpurbedrock 26.2 — управление ядром Bedrock-only, чанками, PAPI, Anti-Xray, LAN и Java-меню";
+        this.usageMessage = "/purpurbedrock [status | menu | chunks | papi | antixray | reload]";
         this.setAliases(List.of("pb", "bedrockcore"));
         this.setPermission("purpurbedrock.admin");
     }
@@ -34,8 +37,15 @@ public final class PurpurBedrockCommand extends Command {
     public List<String> tabComplete(CommandSender sender, String alias, String[] args, Location location) {
         if (args.length == 1) {
             String prefix = args[0].toLowerCase(Locale.ROOT);
-            return Stream.of("status", "menu", "antixray", "reload")
+            return Stream.of("status", "menu", "chunks", "papi", "antixray", "reload")
                 .filter(opt -> opt.startsWith(prefix))
+                .toList();
+        }
+        if (args.length == 2 && ("chunks".equalsIgnoreCase(args[0]) || "papi".equalsIgnoreCase(args[0]))) {
+            String prefix = args[1].toLowerCase(Locale.ROOT);
+            return Bukkit.getOnlinePlayers().stream()
+                .map(Player::getName)
+                .filter(name -> name.toLowerCase(Locale.ROOT).startsWith(prefix))
                 .toList();
         }
         return Collections.emptyList();
@@ -64,7 +74,45 @@ public final class PurpurBedrockCommand extends Command {
             for (ServerLevel level : console.getAllLevels()) {
                 level.purpurConfig.init();
             }
+            BedrockChunkHelper.applyRuntimeChunkTuning();
+            BedrockPlaceholderHook.initAfterPlugins();
             sender.sendMessage(Component.text("[Purpurbedrock] Конфигурация Purpurbedrock 26.2 успешно перезагружена.", NamedTextColor.GREEN));
+            return true;
+        }
+
+        if ("chunks".equals(sub)) {
+            Player target = args.length >= 2 ? Bukkit.getPlayerExact(args[1]) : (sender instanceof Player p ? p : null);
+            if (target == null) {
+                sender.sendMessage(Component.text("Использование: /purpurbedrock chunks <игрок>", NamedTextColor.YELLOW));
+                return true;
+            }
+            int radius = BedrockChunkHelper.forceResyncPlayerChunks(((CraftPlayer) target).getHandle());
+            sender.sendMessage(Component.text(
+                String.format("[Purpurbedrock] Область прогрузки чанков для %s синхронизирована (радиус: %d чанков).", target.getName(), radius),
+                NamedTextColor.GREEN
+            ));
+            return true;
+        }
+
+        if ("papi".equals(sub)) {
+            Player target = args.length >= 2 ? Bukkit.getPlayerExact(args[1]) : (sender instanceof Player p ? p : null);
+            boolean papiLoaded = Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI");
+            sender.sendMessage(Component.text("=== Встроенные плейсхолдеры %purpurbedrock_*% ===", NamedTextColor.GOLD));
+            sender.sendMessage(Component.text(
+                " • Статус PlaceholderAPI: " + (BedrockPlaceholderHook.isRegistered()
+                    ? "АКТИВЕН (%purpurbedrock_*% зарегистрирован из ядра)"
+                    : (papiLoaded ? "ГОТОВ" : "Ожидание плагина PlaceholderAPI в plugins/")),
+                BedrockPlaceholderHook.isRegistered() ? NamedTextColor.GREEN : NamedTextColor.YELLOW
+            ));
+            if (target != null) {
+                sender.sendMessage(Component.text(" • Игрок: " + target.getName(), NamedTextColor.AQUA));
+                sender.sendMessage(Component.text("   %purpurbedrock_device%  -> " + BedrockPlaceholderHook.resolveOnline(target, "device"), NamedTextColor.WHITE));
+                sender.sendMessage(Component.text("   %purpurbedrock_input%   -> " + BedrockPlaceholderHook.resolveOnline(target, "input"), NamedTextColor.WHITE));
+                sender.sendMessage(Component.text("   %purpurbedrock_version% -> " + BedrockPlaceholderHook.resolveOnline(target, "version"), NamedTextColor.WHITE));
+                sender.sendMessage(Component.text("   %purpurbedrock_ping%    -> " + BedrockPlaceholderHook.resolveOnline(target, "ping") + " мс", NamedTextColor.WHITE));
+            } else {
+                sender.sendMessage(Component.text(" • Доступно: %purpurbedrock_device%, %purpurbedrock_input%, %purpurbedrock_version%, %purpurbedrock_ping%", NamedTextColor.AQUA));
+            }
             return true;
         }
 
@@ -72,8 +120,10 @@ public final class PurpurBedrockCommand extends Command {
             ServerLevel level = MinecraftServer.getServer().overworld();
             String report = BedrockChunkDowngrader.runSelfTest(level);
             String protoReport = BedrockBridgeBootstrap.runProtocolSelfTest();
+            String papiReport = BedrockPlaceholderHook.runSelfTest();
             sender.sendMessage(Component.text("[Purpurbedrock] " + report, NamedTextColor.GREEN));
             sender.sendMessage(Component.text("[Purpurbedrock] " + protoReport, NamedTextColor.GREEN));
+            sender.sendMessage(Component.text("[Purpurbedrock] " + papiReport, NamedTextColor.GREEN));
             return true;
         }
 
@@ -110,6 +160,9 @@ public final class PurpurBedrockCommand extends Command {
             : "ОЖИДАНИЕ"), NamedTextColor.AQUA));
         sender.sendMessage(Component.text(" • Боевая система Bedrock (1.8 без КД): " + (combatEnabled ? "ВКЛЮЧЕНА" : "ВЫКЛЮЧЕНА"), NamedTextColor.AQUA));
         sender.sendMessage(Component.text(" • Anti-Xray под Bedrock (Алмазы + Незерит): " + (PurpurConfig.bedrockAntiXrayEnabled ? "ВКЛЮЧЁН" : "ВЫКЛЮЧЕН"), NamedTextColor.AQUA));
+        sender.sendMessage(Component.text(" • Погрузка чанков Bedrock (Moonrise + Publisher Sync): " + (PurpurConfig.bedrockChunkLoadingFix ? "УСИЛЕНА" : "СТАНДАРТ"), NamedTextColor.AQUA));
+        sender.sendMessage(Component.text(" • Встроенные плейсхолдеры (%purpurbedrock_*%): "
+            + (BedrockPlaceholderHook.isRegistered() ? "АКТИВНЫ В PAPI" : (PurpurConfig.bedrockPlaceholdersEnabled ? "ГОТОВЫ (авто-подключение к PAPI)" : "ВЫКЛ")), NamedTextColor.AQUA));
         sender.sendMessage(Component.text(" • Защита от флагов движения и фантомных блоков: "
             + ((PurpurConfig.bedrockMovementLeniency && PurpurConfig.bedrockPreventGhostBlocks) ? "ВКЛЮЧЕНА" : "ЧАСТИЧНО"), NamedTextColor.AQUA));
         sender.sendMessage(Component.text(" • Java-меню (DeluxeMenus / Chest GUI): " + (PurpurConfig.bedrockMenusEnabled ? "ВКЛЮЧЕНЫ" : "ВЫКЛЮЧЕНЫ"), NamedTextColor.AQUA));

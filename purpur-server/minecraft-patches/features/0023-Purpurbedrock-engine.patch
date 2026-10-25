@@ -302,7 +302,15 @@ index 0000000000000000000000000000000000000000..00000000000000000000000000000000
                  ServerGamePacketListenerImpl.LOGGER.warn("Disconnected on accept teleport packet. Was not expecting position data from client at this time"); // Purpur - Add more logger output for invalid movement kicks
                  this.disconnect(Component.translatable("multiplayer.disconnect.invalid_player_movement"), org.bukkit.event.player.PlayerKickEvent.Cause.INVALID_PLAYER_MOVEMENT); // Paper - kick event cause
                  return;
-@@ -2080,8 +2080,10 @@
+@@ -1844,6 +1844,7 @@
+         this.lastXRot = this.player.getXRot();
+         // CraftBukkit end
+         this.send(ClientboundPlayerPositionPacket.of(this.awaitingTeleport, destination, relatives));
++        org.purpurmc.purpur.bedrock.BedrockChunkHelper.onTeleportOrWorldChange(this.player); // Purpurbedrock - Keep Bedrock chunk publisher synced on every teleport & dimension switch
+     }
+ 
+     @Override
+@@ -2080,8 +2081,10 @@
                  case START_DESTROY_BLOCK:
                  case ABORT_DESTROY_BLOCK:
                  case STOP_DESTROY_BLOCK:

@@ -67,19 +67,13 @@ public final class BedrockGatekeeper {
         if (uuid.getMostSignificantBits() == 0L) {
             return true;
         }
-        try {
-            Class<?> geyserApiClass = Class.forName("org.geysermc.geyser.api.GeyserApi");
-            Object api = geyserApiClass.getMethod("api").invoke(null);
-            if (api != null) {
-                Method byUuid = api.getClass().getMethod("connectionByUuid", UUID.class);
-                if (byUuid.invoke(api, uuid) != null) {
-                    return true;
-                }
-            }
-        } catch (Throwable ignored) {
+        if (BedrockPlaceholderHook.findGeyserSession(uuid) != null) {
+            return true;
         }
         try {
-            Class<?> floodgateApiClass = Class.forName("org.geysermc.floodgate.api.FloodgateApi");
+            org.bukkit.plugin.Plugin fgPlugin = org.bukkit.Bukkit.getPluginManager().getPlugin("floodgate");
+            ClassLoader cl = fgPlugin != null ? fgPlugin.getClass().getClassLoader() : BedrockGatekeeper.class.getClassLoader();
+            Class<?> floodgateApiClass = Class.forName("org.geysermc.floodgate.api.FloodgateApi", true, cl);
             Object api = floodgateApiClass.getMethod("getInstance").invoke(null);
             if (api != null) {
                 Method isFg = api.getClass().getMethod("isFloodgatePlayer", UUID.class);
