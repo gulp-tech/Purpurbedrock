@@ -581,11 +581,11 @@ public final class BedrockBridgeBootstrap {
 
             Class<?> registriesClass = Class.forName("org.geysermc.geyser.registry.Registries", true, cl);
             Object itemsReg = registriesClass.getField("ITEMS").get(null);
-            Object defsReg = registriesClass.getField("BEDROCK_ITEM_DEFINITIONS").get(null);
             Object tagsReg = registriesClass.getField("TAGS").get(null);
+            Object potionReg = registriesClass.getField("POTION_MIXES").get(null);
             java.lang.reflect.Method itemsForVersion = itemsReg.getClass().getMethod("forVersion", int.class);
-            java.lang.reflect.Method defsForVersion = defsReg.getClass().getMethod("forVersion", int.class);
             java.lang.reflect.Method tagsForVersion = tagsReg.getClass().getMethod("forVersion", int.class);
+            java.lang.reflect.Method potionsForVersion = potionReg.getClass().getMethod("forVersion", int.class);
 
             for (int proto : expectedProtocols) {
                 Object codec = getBedrockCodec.invoke(null, proto);
@@ -595,14 +595,19 @@ public final class BedrockBridgeBootstrap {
                 if (blocksForVersion.invoke(blocksReg, proto) == null) {
                     throw new IllegalStateException("Missing BlockMappings for protocol v" + proto);
                 }
-                if (itemsForVersion.invoke(itemsReg, proto) == null) {
+                Object itemMappings = itemsForVersion.invoke(itemsReg, proto);
+                if (itemMappings == null) {
                     throw new IllegalStateException("Missing ItemMappings for protocol v" + proto);
                 }
-                if (defsForVersion.invoke(defsReg, proto) == null) {
-                    throw new IllegalStateException("Missing BedrockItemDefinitions for protocol v" + proto);
+                Object[] mappedItems = (Object[]) itemMappings.getClass().getMethod("getItems").invoke(itemMappings);
+                if (mappedItems == null || mappedItems.length < 1000) {
+                    throw new IllegalStateException("Incomplete ItemMappings for protocol v" + proto);
                 }
                 if (tagsForVersion.invoke(tagsReg, proto) == null) {
                     throw new IllegalStateException("Missing ItemTags for protocol v" + proto);
+                }
+                if (potionsForVersion.invoke(potionReg, proto) == null) {
+                    throw new IllegalStateException("Missing PotionMixes for protocol v" + proto);
                 }
             }
 
