@@ -101,7 +101,7 @@ jobs:
           cp purpurbedrock-26.2.jar /tmp/smoke-server/purpurbedrock-26.2.jar
           cp "$TEST_PLUGIN_JAR" /tmp/smoke-server/plugins/SmokeJavaPlugin.jar
           python3 - "$TEST_PLUGIN_JAR" << 'PY2'
-          import sys, zipfile
+          import os, struct, sys, zipfile, zlib
           src = sys.argv[1]
           dst = "/tmp/smoke-server/plugins/SmokeApi263Plugin.jar"
           with zipfile.ZipFile(src, "r") as zin, zipfile.ZipFile(dst, "w") as zout:
@@ -114,6 +114,22 @@ jobs:
                   "plugin.yml",
                   "name: SmokeApi263Plugin\nversion: 1.0.0\nmain: org.purpurmc.testplugin.Compat263Plugin\napi-version: '26.3'\n",
               )
+
+          # Seed a genuine 48x16 HeadDatabase skull PNG in bedrock/cache/player_skulls/
+          skulls_dir = "/tmp/smoke-server/bedrock/cache/player_skulls"
+          os.makedirs(skulls_dir, exist_ok=True)
+          def png_chunk(ctype, data):
+              return struct.pack(">I", len(data)) + ctype + data + struct.pack(">I", zlib.crc32(ctype + data) & 0xFFFFFFFF)
+          w, h = 48, 16
+          raw = b"".join(b"\x00" + (b"\x44\x88\xcc\xff" * w) for _ in range(h))
+          png_bytes = (
+              b"\x89PNG\r\n\x1a\n"
+              + png_chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0))
+              + png_chunk(b"IDAT", zlib.compress(raw))
+              + png_chunk(b"IEND", b"")
+          )
+          with open(f"{skulls_dir}/00bd5ef1e38f8656df9bc04f87867963fb1479678fcad4eb89a452256fc4bd80.png", "wb") as pf:
+              pf.write(png_bytes)
           PY2
           echo "eula=true" > /tmp/smoke-server/eula.txt
           cat > /tmp/smoke-server/server.properties << 'EOF'
@@ -184,7 +200,7 @@ jobs:
               if not booted:
                   raise RuntimeError("Timed out waiting for Purpurbedrock 26.2 boot!")
 
-              proc.stdin.write("purpurbedrock status\npurpurbedrock antixray\n")
+              proc.stdin.write("purpurbedrock status\npurpurbedrock antixray\npurpurbedrock selftest\n")
               proc.stdin.flush()
               time.sleep(3)
 
@@ -251,17 +267,31 @@ jobs:
 
           assert not pathlib.Path("/tmp/smoke-server/plugins/Geyser-Spigot").exists(), "plugins/Geyser-Spigot must NOT exist!"
           assert pathlib.Path("/tmp/smoke-server/bedrock.yml").is_file(), "bedrock.yml missing!"
+          assert not pathlib.Path("/tmp/smoke-server/bedrock/config.yml").exists(), "internal config.yml must NOT pollute bedrock/!"
+          assert pathlib.Path("/tmp/smoke-server/bedrock/cache").is_dir(), "bedrock/cache missing!"
+          assert pathlib.Path("/tmp/smoke-server/bedrock/cache/player_skulls").is_dir(), "bedrock/cache/player_skulls missing!"
+          assert pathlib.Path("/tmp/smoke-server/bedrock/cache/player_skulls/00bd5ef1e38f8656df9bc04f87867963fb1479678fcad4eb89a452256fc4bd80.png").is_file(), "HeadDatabase skull PNG was deleted!"
+          assert pathlib.Path("/tmp/smoke-server/bedrock/cache/player_skulls.mcpack").is_file(), "bedrock/cache/player_skulls.mcpack missing!"
+          assert pathlib.Path("/tmp/smoke-server/bedrock/cache/GeyserIntegratedPack.mcpack").is_file(), "bedrock/cache/GeyserIntegratedPack.mcpack missing!"
+          assert pathlib.Path("/tmp/smoke-server/bedrock/cache/images").is_dir(), "bedrock/cache/images missing!"
+          assert pathlib.Path("/tmp/smoke-server/bedrock/cache/default_player_skins").is_dir(), "bedrock/cache/default_player_skins missing!"
+          assert pathlib.Path("/tmp/smoke-server/bedrock/cache/remote_packs").is_dir(), "bedrock/cache/remote_packs missing!"
           assert pathlib.Path("/tmp/smoke-server/bedrock/custom_mappings").is_dir(), "bedrock/custom_mappings missing!"
           assert pathlib.Path("/tmp/smoke-server/bedrock/extensions").is_dir(), "bedrock/extensions missing!"
           assert pathlib.Path("/tmp/smoke-server/bedrock/packs").is_dir(), "bedrock/packs missing!"
           assert pathlib.Path("/tmp/smoke-server/unlock-windows-lan.bat").is_file(), "unlock-windows-lan.bat missing!"
           shutil.copyfile("/tmp/smoke-server/unlock-windows-lan.bat", "unlock-windows-lan.bat")
 
+          assert "Recoverable errors when loading section" not in server_log, "Unexpected chunk section palette error!"
+          assert "Failed to create block entity" not in server_log, "Unexpected block entity error!"
+
           required_lines = [
               "SMOKE_JAVA_PLUGIN_26_2_OK server=Purpurbedrock mc=26.2 invSize=27",
               "SMOKE_API_26_3_PLUGIN_OK",
               "загружен в режиме совместимости с 26.2",
-              "Рабочие папки готовы: bedrock/custom_mappings | bedrock/extensions | bedrock/packs",
+              "Рабочие папки готовы: bedrock/cache (player_skulls / HeadDatabase) | bedrock/custom_mappings | bedrock/extensions | bedrock/packs",
+              "Registered 1 custom skulls as custom blocks.",
+              "CHUNK_263_PARSE_SELFTEST_OK",
               "NetherNet LAN Discovery active on UDP",
               "Вход только с Bedrock (блок Java): ВКЛЮЧЁН",
               "Anti-Xray под Bedrock (Алмазы + Незерит): ВКЛЮЧЁН",
@@ -291,14 +321,15 @@ jobs:
           body: |
             ## Purpurbedrock `26.2` (`purpurbedrock-26.2.jar`)
             Автономное высокопроизводительное ядро на базе **Purpur `26.2` (`STABLE`)** — **100% независимое от внешнего GeyserMC**:
-            - **Версия `26.2` (`26.2-R0.1-SNAPSHOT`)**: полная совместимость со всеми вашими Java-плагинами (`DeluxeMenus`, `packetevents 2.13.0`, `DecentHolograms`, `VoidItems`, `VoidTab`, `AuthMe`, `WorldEdit`, `WorldGuard`, `LuckPerms` и др.).
+            - **Версия `26.2` (`26.2-R0.1-SNAPSHOT`)**: полная совместимость со всеми вашими Java-плагинами (`DeluxeMenus`, `packetevents 2.13.0`, `DecentHolograms`, `LMtops`, `HeadDatabase`, `VoidItems`, `VoidTab`, `AuthMe`, `WorldEdit`, `WorldGuard`, `LuckPerms` и др.).
             - **Чистый Bedrock без внешних плагинов/сервисов**: встроенный протокольный движок внутри ядра (`RakNet UDP 19132` + `NetherNet WebRTC 19133` + **`NetherNet LAN Discovery UDP 7551`** для вкладки `Миры` на Bedrock `26.30–26.52`). Никаких скачиваний Mojang/GeyserMC при запуске — **мгновенный старт и мгновенный вход игроков**.
             - **Отдельная папка `bedrock/` в корне сервера**: ядро автоматически создаёт чистую структуру:
+              - `bedrock/cache` — кэш Bedrock: **`bedrock/cache/player_skulls`** (автоматическое подключение кастомных 3D-голов плагина **`HeadDatabase`** + сборка `player_skulls.mcpack` и `GeyserIntegratedPack.mcpack`), `images`, `default_player_skins`, `remote_packs`
               - `bedrock/custom_mappings` (для `.json` маппингов предметов, стеклянных панелей, сфер и кастомных голов)
               - `bedrock/extensions` (для `.jar` расширений, таких как `GeyserJavaGlowing`, `VoidAnvilExtension` и др.)
               - `bedrock/packs` (для `.mcpack` / `.zip` ресурспаков Bedrock)
-              *(при первом запуске автоматически переносит существующие файлы из старой папки `plugins/Geyser-Spigot/`, если она осталась в сборке).*
-            - **Авто-совместимость карт и плагинов `26.3 -> 26.2`**: чанки, сохранённые на `26.3` (`DataVersion 5023`), автоматически адаптируются под `26.2` (`4903`) без остановки сервера, а плагины с `api-version: 26.3` (`WorldGuard 7.0.20` и др.) загружаются штатно.
+              *(при первом запуске автоматически переносит существующие файлы из старой папки `plugins/Geyser-Spigot/`, включая `cache/player_skulls`, без удаления кэшированных PNG-голов).*
+            - **Полная обратная совместимость карт и плагинов `26.3 -> 26.2`**: бесшовная конвертация палитр блоков `26.3` (`StringTag` и `{id, properties}` -> `{Name, Properties}`), тайлов (`DecoratedPot`, бочки, полки, таблички, черепа `HeadDatabase`), `blending_data` и `DataVersion 5023 -> 4903` без сброса блоков в `air` и без ошибок `Invalid block entity`, а плагины с `api-version: 26.3` (`WorldGuard 7.0.20` и др.) загружаются штатно.
             - **Полная поддержка Java-меню (`9x1`–`9x6`)**: нативный перехват кликов и переходов между подменю в `ServerGamePacketListenerImpl` + встроенная тестовая команда `/purpurbedrock menu` (`/pb menu`).
             - **Bedrock Anti-Xray (из коробки)**: `EngineMode.HIDE` (`Y <= 128`, `lava-obscures: true`) для Обычного мира (алмазы, изумруды, золото, железо, медь, лазурит, редстоун, уголь) и Незера (`ancient_debris`, кварц, незер-золото) с минимальной нагрузкой на FPS телефонов и TPS сервера.
             - **Ноль флагов движения и ноль фантомных блоков**: встроенные `BedrockMovementGuard` и `BedrockGhostBlockResync` (защита от откатов при спид-бриджинге, прыжках со слябов/лестниц, копании под Эффективностью V и отменах приватов `WorldGuard`).

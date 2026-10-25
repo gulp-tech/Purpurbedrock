@@ -389,22 +389,26 @@ index 0000000000000000000000000000000000000000..00000000000000000000000000000000
          event.callEvent();
          return event;
      }
+diff --git a/net/minecraft/world/level/block/state/BlockState.java b/net/minecraft/world/level/block/state/BlockState.java
+index 0000000000000000000000000000000000000000..0000000000000000000000000000000000000000 100644
+--- a/net/minecraft/world/level/block/state/BlockState.java
++++ b/net/minecraft/world/level/block/state/BlockState.java
+@@ -8,5 +8,5 @@
+ public class BlockState extends BlockBehaviour.BlockStateBase {
+-    public static final Codec<BlockState> CODEC = codec(BuiltInRegistries.BLOCK.byNameCodec(), Block::defaultBlockState, Block::getStateDefinition).stable();
++    public static final Codec<BlockState> CODEC = org.purpurmc.purpur.bedrock.BedrockChunkDowngrader.wrapBlockStateCodec(codec(BuiltInRegistries.BLOCK.byNameCodec(), Block::defaultBlockState, Block::getStateDefinition).stable()); // Purpurbedrock - 26.3+ BlockState format compatibility
+ 
+     // Paper start - optimise getType calls
+     org.bukkit.@org.jspecify.annotations.Nullable Material cachedMaterial;
 diff --git a/net/minecraft/world/level/chunk/storage/SerializableChunkData.java b/net/minecraft/world/level/chunk/storage/SerializableChunkData.java
 index 0000000000000000000000000000000000000000..0000000000000000000000000000000000000000 100644
 --- a/net/minecraft/world/level/chunk/storage/SerializableChunkData.java
 +++ b/net/minecraft/world/level/chunk/storage/SerializableChunkData.java
-@@ -149,8 +149,14 @@
+@@ -148,6 +148,7 @@
          // Paper start - Do not let the server load chunks from newer versions
++        org.purpurmc.purpur.bedrock.BedrockChunkDowngrader.adaptChunkNbtFor262(chunkData, CURRENT_DATA_VERSION); // Purpurbedrock - convert 26.3+ chunk palettes, DecoratedPot sherds & DataVersion
          chunkData.getInt("DataVersion").ifPresent(dataVersion -> {
              if (!JUST_CORRUPT_IT && dataVersion > CURRENT_DATA_VERSION) {
-+                // Purpurbedrock start - seamlessly adapt 26.3+ saved chunks to 26.2 without halting the server
-+                if (org.purpurmc.purpur.PurpurConfig.bedrockAllowNewerChunkDataVersion) {
-+                    chunkData.putInt("DataVersion", CURRENT_DATA_VERSION);
-+                    return;
-+                }
-+                // Purpurbedrock end
                  new RuntimeException("Server attempted to load chunk saved with newer version of minecraft! " + dataVersion + " > " + CURRENT_DATA_VERSION).printStackTrace();
                  System.exit(1);
              }
-         });
-         // Paper end - Do not let the server load chunks from newer versions

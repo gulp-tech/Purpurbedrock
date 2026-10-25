@@ -100,6 +100,7 @@ public final class BedrockBridgeBootstrap {
             Path dataDir = Path.of(configuredDataFolder);
             prepareBedrockDataDirectories(dataDir, pluginsDir, bedrockCfg.getBoolean("auto-import-legacy-geyser", true));
             System.setProperty("purpurbedrock.dataDir", dataDir.toAbsolutePath().toString());
+            System.setProperty("purpurbedrock.preserveSkullCache", "true");
 
             Path engineDir = Path.of("cache", "purpurbedrock", "engine");
             Files.createDirectories(engineDir);
@@ -330,7 +331,16 @@ public final class BedrockBridgeBootstrap {
     }
 
     private static void prepareBedrockDataDirectories(Path dataDir, File pluginsDir, boolean autoImportLegacy) throws IOException {
-        String[] subdirs = {"custom_mappings", "extensions", "packs"};
+        String[] subdirs = {
+            "cache",
+            "cache/player_skulls",
+            "cache/images",
+            "cache/default_player_skins",
+            "cache/remote_packs",
+            "custom_mappings",
+            "extensions",
+            "packs"
+        };
         for (String sub : subdirs) {
             Files.createDirectories(dataDir.resolve(sub));
         }
@@ -339,19 +349,26 @@ public final class BedrockBridgeBootstrap {
         if (autoImportLegacy && pluginsDir.isDirectory()) {
             Path legacyGeyserDir = pluginsDir.toPath().resolve("Geyser-Spigot");
             if (Files.isDirectory(legacyGeyserDir)) {
-                for (String sub : subdirs) {
+                String[] topSubdirs = {"cache", "custom_mappings", "extensions", "packs"};
+                for (String sub : topSubdirs) {
                     Path srcDir = legacyGeyserDir.resolve(sub);
                     Path dstDir = dataDir.resolve(sub);
                     if (Files.isDirectory(srcDir)) {
                         importedFiles += copyMissingRecursively(srcDir, dstDir);
                     }
                 }
+                Path legacyCustomSkulls = legacyGeyserDir.resolve("custom-skulls.yml");
+                Path dstCustomSkulls = dataDir.resolve("custom-skulls.yml");
+                if (Files.isRegularFile(legacyCustomSkulls) && !Files.exists(dstCustomSkulls)) {
+                    Files.copy(legacyCustomSkulls, dstCustomSkulls);
+                    importedFiles++;
+                }
             }
         }
 
         Bukkit.getLogger().info(String.format(
-            "[Purpurbedrock] Рабочие папки готовы: %s/custom_mappings | %s/extensions | %s/packs",
-            dataDir, dataDir, dataDir
+            "[Purpurbedrock] Рабочие папки готовы: %s/cache (player_skulls / HeadDatabase) | %s/custom_mappings | %s/extensions | %s/packs",
+            dataDir, dataDir, dataDir, dataDir
         ));
         if (importedFiles > 0) {
             Bukkit.getLogger().info(String.format(

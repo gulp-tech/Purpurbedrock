@@ -75,10 +75,13 @@ CheckNetIsolation LoopbackExempt -a -n="Microsoft.MinecraftUWP_8wekyb3d8bbwe"
 ## Управление и конфигурация
 
 - **Папка `bedrock/`** *(создаётся автоматически в корне сервера)*:
+  - **`bedrock/cache/`** — кэш Bedrock:
+    - **`bedrock/cache/player_skulls/`** — PNG-текстуры 3D-голов плагина **`HeadDatabase`** *(автоматически подхватываются ядром, сохраняются при перезапусках и собираются в `bedrock/cache/player_skulls.mcpack`)*
+    - `bedrock/cache/images/`, `bedrock/cache/default_player_skins/`, `bedrock/cache/remote_packs/` и `GeyserIntegratedPack.mcpack`
   - **`bedrock/custom_mappings/`** — кастомные `.json` маппинги предметов, блоков, стеклянных панелей и голов (`Geyser-panes-mapping.json`, `Geyser-spheres-mapping.json`, `migrated-custom-skulls.json` и др.)
   - **`bedrock/extensions/`** — расширения Bedrock-движка (`GeyserJavaGlowing`, `VoidAnvilExtension` и др.)
   - **`bedrock/packs/`** — ресурспаки `.mcpack` и `.zip` (`VoidResourcePack.mcpack`, `VoidSpheres.mcpack`, `GeyserEvent-Pack.mcpack` и др.)
-  - *Если в сборке осталась старая папка `plugins/Geyser-Spigot/`, при первом запуске ядро автоматически скопирует оттуда все недостающие файлы в `bedrock/`.*
+  - *Если в сборке осталась старая папка `plugins/Geyser-Spigot/`, при первом запуске ядро автоматически скопирует оттуда все недостающие файлы (включая `cache/player_skulls`) в `bedrock/`.*
 - **`bedrock.yml`** *(в корне сервера)* — порт (`19132`), `webrtc-port` (`19133`), `lan-discovery` (`true`), `data-folder` (`bedrock`), `motd` и `max-players`.
 - **`purpur.yml`** (`settings.bedrock.*` и `world-settings.default.gameplay-mechanics.bedrock-combat.*`) — тонкая настройка гейткипера, Anti-Xray, защиты от флагов, защиты от фантомных блоков, Java-меню, боёвки и авто-адаптации чанков/плагинов `26.3 -> 26.2`.
 - **Команда `/purpurbedrock` (`/pb`)**:

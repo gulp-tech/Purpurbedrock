@@ -12,6 +12,7 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.purpurmc.purpur.PurpurConfig;
 import org.purpurmc.purpur.bedrock.BedrockBridgeBootstrap;
+import org.purpurmc.purpur.bedrock.BedrockChunkDowngrader;
 import org.purpurmc.purpur.bedrock.menu.JavaChestMenuManager;
 
 import java.io.File;
@@ -67,6 +68,13 @@ public final class PurpurBedrockCommand extends Command {
             return true;
         }
 
+        if ("selftest".equals(sub)) {
+            ServerLevel level = MinecraftServer.getServer().overworld();
+            String report = BedrockChunkDowngrader.runSelfTest(level);
+            sender.sendMessage(Component.text("[Purpurbedrock] " + report, NamedTextColor.GREEN));
+            return true;
+        }
+
         if ("antixray".equals(sub)) {
             sender.sendMessage(Component.text("=== Статус Bedrock Anti-Xray по мирам ===", NamedTextColor.GOLD));
             for (World world : Bukkit.getWorlds()) {
@@ -104,7 +112,7 @@ public final class PurpurBedrockCommand extends Command {
             + ((PurpurConfig.bedrockMovementLeniency && PurpurConfig.bedrockPreventGhostBlocks) ? "ВКЛЮЧЕНА" : "ЧАСТИЧНО"), NamedTextColor.AQUA));
         sender.sendMessage(Component.text(" • Java-меню (DeluxeMenus / Chest GUI): " + (PurpurConfig.bedrockMenusEnabled ? "ВКЛЮЧЕНЫ" : "ВЫКЛЮЧЕНЫ"), NamedTextColor.AQUA));
         String df = BedrockBridgeBootstrap.getActiveDataFolder();
-        sender.sendMessage(Component.text(String.format(" • Папки Bedrock: %s/custom_mappings | %s/extensions | %s/packs", df, df, df), NamedTextColor.AQUA));
+        sender.sendMessage(Component.text(String.format(" • Папки Bedrock: %s/cache (player_skulls) | %s/custom_mappings | %s/extensions | %s/packs", df, df, df, df), NamedTextColor.AQUA));
         return true;
     }
 }

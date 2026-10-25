@@ -2,14 +2,18 @@
 """
 Transforms GeyserMC/Geyser (commit bbd7e67, native Minecraft 26.2) into
 Purpurbedrock's self-contained internal Bedrock 26.2 protocol engine:
-1. Internal engine config folder ('cache/purpurbedrock/engine') -> zero 'plugins/Geyser-Spigot' pollution.
-2. Disables bStats metrics and external geysermc.org NewsHandler polling.
-3. Offline instant AssetUtils -> loads assets/minecraft/lang/en_us.json directly from Purpur 26.2's
+1. Dedicated 'bedrock/' folder for cache (including cache/player_skulls for HeadDatabase +
+   player_skulls.mcpack + GeyserIntegratedPack.mcpack), custom_mappings, extensions, and packs,
+   while keeping internal engine config.yml/key.pem/nethernet cleanly inside 'cache/purpurbedrock/engine'.
+2. Auto-discovers pre-cached HeadDatabase PNG skull textures in 'bedrock/cache/player_skulls/*.png'
+   and preserves them across restarts so custom heads work automatically in menus and worlds.
+3. Disables bStats metrics and external geysermc.org NewsHandler polling.
+4. Offline instant AssetUtils -> loads assets/minecraft/lang/en_us.json directly from Purpur 26.2's
    server classpath in <1ms with zero Mojang client JAR download on startup.
-4. Adds NetherNet Local LAN Discovery (NetherNetDiscoverySignaling on UDP 7551) alongside
+5. Adds NetherNet Local LAN Discovery (NetherNetDiscoverySignaling on UDP 7551) alongside
    RakNet (UDP 19132) + NetherNet HTTP Signaling/WebRTC so the server automatically appears
    in Minecraft Bedrock 26.x's local LAN Worlds ('Миры') tab.
-5. Anti-kick protocol resilience: never kicks Bedrock players on PacketViolationWarningPacket
+6. Anti-kick protocol resilience: never kicks Bedrock players on PacketViolationWarningPacket
    or recoverable IllegalPacketExceptions.
 """
 import pathlib
@@ -67,7 +71,9 @@ project(":spigot").projectDir = file("bootstrap/spigot")""",
         "settings.gradle.kts minimal spigot build",
     )
 
-    # 1. GeyserSpigotPlugin.java: internal config folder + disable bStats
+    # 1. GeyserSpigotPlugin.java: point getConfigFolder() to bedrock/ (so cache, player_skulls, packs,
+    #    extensions, custom_mappings all live cleanly in bedrock/), keep Floodgate fallback key in engineDir,
+    #    and disable bStats telemetry.
     spigot_plugin = root / "bootstrap/spigot/src/main/java/org/geysermc/geyser/platform/spigot/GeyserSpigotPlugin.java"
     replace_exact(
         spigot_plugin,
@@ -77,12 +83,12 @@ project(":spigot").projectDir = file("bootstrap/spigot")""",
     }""",
         """    @Override
     public Path getConfigFolder() {
-        Path internalDir = Path.of(System.getProperty("purpurbedrock.engineDir", "cache/purpurbedrock/engine"));
+        Path bedrockDataDir = Path.of(System.getProperty("purpurbedrock.dataDir", "bedrock")).toAbsolutePath();
         try {
-            java.nio.file.Files.createDirectories(internalDir);
+            java.nio.file.Files.createDirectories(bedrockDataDir);
         } catch (java.io.IOException ignored) {
         }
-        return internalDir;
+        return bedrockDataDir;
     }""",
         "GeyserSpigotPlugin.getConfigFolder",
     )
@@ -92,7 +98,7 @@ project(":spigot").projectDir = file("bootstrap/spigot")""",
         Path geyserDataFolder = getDataFolder().toPath();
         Path floodgateDataFolder = floodgate != null ? floodgate.getDataFolder().toPath() : null;""",
         """        Plugin floodgate = Bukkit.getPluginManager().getPlugin("floodgate");
-        Path geyserDataFolder = getConfigFolder();
+        Path geyserDataFolder = Path.of(System.getProperty("purpurbedrock.engineDir", "cache/purpurbedrock/engine")).toAbsolutePath();
         Path floodgateDataFolder = floodgate != null ? floodgate.getDataFolder().toPath() : null;""",
         "GeyserSpigotPlugin.getFloodgateKeyPath",
     )
@@ -107,6 +113,28 @@ project(":spigot").projectDir = file("bootstrap/spigot")""",
         return null; // Purpurbedrock: disable external bStats telemetry
     }""",
         "GeyserSpigotPlugin.createMetricsPlatform",
+    )
+
+    # 1b. ConfigLoader.java: read internal config.yml from purpurbedrock.engineDir so bedrock/ only holds user content
+    config_loader = root / "core/src/main/java/org/geysermc/geyser/configuration/ConfigLoader.java"
+    replace_exact(
+        config_loader,
+        """    public ConfigLoader(GeyserBootstrap bootstrap) {
+        this.bootstrap = bootstrap;
+        this.platformType = bootstrap.platformType();
+        configFile = new File(bootstrap.getConfigFolder().toFile(), "config.yml");
+    }""",
+        """    public ConfigLoader(GeyserBootstrap bootstrap) {
+        this.bootstrap = bootstrap;
+        this.platformType = bootstrap.platformType();
+        Path engineDir = Path.of(System.getProperty("purpurbedrock.engineDir", "cache/purpurbedrock/engine")).toAbsolutePath();
+        try {
+            java.nio.file.Files.createDirectories(engineDir);
+        } catch (java.io.IOException ignored) {
+        }
+        configFile = engineDir.resolve("config.yml").toFile();
+    }""",
+        "ConfigLoader.constructor",
     )
 
     # 2. NewsHandler.java: disable external geysermc.org polling
@@ -176,7 +204,7 @@ project(":spigot").projectDir = file("bootstrap/spigot")""",
         "AssetUtils.downloadAndRunClientJarTasks",
     )
 
-    # 4. NetherNetServer.java: add NetherNetDiscoverySignaling on UDP 7551 for Bedrock 26.x LAN Worlds ('Миры')
+    # 4. NetherNetServer.java: keep internal nethernet temp dir in engineDir + add NetherNetDiscoverySignaling on UDP 7551
     nethernet_server = root / "core/src/main/java/org/geysermc/geyser/network/bedrock/nethernet/NetherNetServer.java"
     replace_exact(
         nethernet_server,
@@ -201,6 +229,12 @@ import org.cloudburstmc.netty.channel.nethernet.signaling.NetherNetServerSignali
     private Channel lanDiscoveryChannel;
     private NetherNetChannelInitialiser lanDiscoveryInitialiser;""",
         "NetherNetServer.fields",
+    )
+    replace_exact(
+        nethernet_server,
+        """        this.dataFolder = geyser.getBootstrap().getConfigFolder().resolve("nethernet");""",
+        """        this.dataFolder = java.nio.file.Path.of(System.getProperty("purpurbedrock.engineDir", "cache/purpurbedrock/engine")).toAbsolutePath().resolve("nethernet");""",
+        "NetherNetServer.dataFolder",
     )
     replace_exact(
         nethernet_server,
@@ -327,7 +361,7 @@ import org.cloudburstmc.netty.channel.nethernet.signaling.NetherNetServerSignali
         "InvalidPacketHandler",
     )
 
-    # 6. Dedicated root folder ('bedrock/') for custom_mappings, extensions, and packs
+    # 6. Dedicated root folder ('bedrock/') for cache, custom_mappings, extensions, and packs
     geyser_impl = root / "core/src/main/java/org/geysermc/geyser/GeyserImpl.java"
     replace_exact(
         geyser_impl,
@@ -370,6 +404,78 @@ import org.cloudburstmc.netty.channel.nethernet.signaling.NetherNetServerSignali
         """        Path customMappingsDirectory = GeyserImpl.getInstance().getBootstrap().getConfigFolder().resolve("custom_mappings");""",
         """        Path customMappingsDirectory = Path.of(System.getProperty("purpurbedrock.dataDir", "bedrock")).toAbsolutePath().resolve("custom_mappings");""",
         "MappingsConfigReader.customMappingsDirectory",
+    )
+
+    # 7. HeadDatabase / player_skulls cache support:
+    #    - Auto-register any pre-cached <skinHash>.png textures in bedrock/cache/player_skulls/
+    #      so HeadDatabase skulls render in 3D on Bedrock without requiring manual JSON lists.
+    #    - Eagerly ensure bedrock/cache/player_skulls exists and never wipe cached .png textures.
+    skull_populator = root / "core/src/main/java/org/geysermc/geyser/registry/populator/CustomSkullRegistryPopulator.java"
+    replace_exact(
+        skull_populator,
+        """        profiles.forEach((profile) -> {
+            String skinHash = getSkinHash(profile);
+            if (skinHash != null) {
+                skinHashes.add(skinHash);
+            }
+        });""",
+        """        profiles.forEach((profile) -> {
+            String skinHash = getSkinHash(profile);
+            if (skinHash != null) {
+                skinHashes.add(skinHash);
+            }
+        });
+
+        // Purpurbedrock: auto-discover pre-cached HeadDatabase skull PNGs in bedrock/cache/player_skulls/
+        Path cachedSkullsDir = GeyserImpl.getInstance().getBootstrap().getConfigFolder().resolve("cache").resolve("player_skulls");
+        try {
+            Files.createDirectories(cachedSkullsDir);
+            java.util.HashSet<String> seenHashes = new java.util.HashSet<>(skinHashes);
+            try (java.util.stream.Stream<Path> cachedFiles = Files.list(cachedSkullsDir)) {
+                cachedFiles.forEach(file -> {
+                    String fileName = file.getFileName().toString();
+                    if (Files.isRegularFile(file) && fileName.endsWith(".png") && fileName.length() > 4) {
+                        String candidateHash = fileName.substring(0, fileName.length() - 4);
+                        if (SKULL_HASH_PATTERN.matcher(candidateHash).matches() && seenHashes.add(candidateHash)) {
+                            skinHashes.add(candidateHash);
+                        }
+                    }
+                });
+            }
+        } catch (IOException ignored) {
+        }""",
+        "CustomSkullRegistryPopulator.autoDiscoverPlayerSkulls",
+    )
+
+    skull_pack_mgr = root / "core/src/main/java/org/geysermc/geyser/pack/SkullResourcePackManager.java"
+    replace_exact(
+        skull_pack_mgr,
+        """        try {
+            Files.createDirectories(cachePath);
+        } catch (IOException e) {""",
+        """        try {
+            Files.createDirectories(cachePath);
+            Files.createDirectories(SKULL_SKIN_CACHE_PATH);
+        } catch (IOException e) {""",
+        "SkullResourcePackManager.ensurePlayerSkullsDir",
+    )
+    replace_exact(
+        skull_pack_mgr,
+        """    public static void cleanSkullSkinCache() {
+        // No need to clean up if skin cache does not exist
+        if (!Files.exists(SKULL_SKIN_CACHE_PATH)) {
+            return;
+        }""",
+        """    public static void cleanSkullSkinCache() {
+        // Purpurbedrock: preserve pre-cached HeadDatabase player_skulls/*.png textures across restarts
+        if (Boolean.parseBoolean(System.getProperty("purpurbedrock.preserveSkullCache", "true"))) {
+            return;
+        }
+        // No need to clean up if skin cache does not exist
+        if (!Files.exists(SKULL_SKIN_CACHE_PATH)) {
+            return;
+        }""",
+        "SkullResourcePackManager.preserveHeadDatabaseCache",
     )
 
 
