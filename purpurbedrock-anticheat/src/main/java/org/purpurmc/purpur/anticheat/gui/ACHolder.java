@@ -11,7 +11,8 @@ import java.util.UUID;
 public final class ACHolder implements InventoryHolder {
     public enum MenuType {
         OVERVIEW,
-        PLAYER_HISTORY
+        PLAYER_HISTORY,
+        CHECKS_CONFIG
     }
 
     private final MenuType menuType;
@@ -19,6 +20,7 @@ public final class ACHolder implements InventoryHolder {
     private final int page;
     private final Inventory inventory;
     private final UUID[] slotPlayerTargets = new UUID[54];
+    private final String[] slotCheckKeys = new String[54];
 
     public ACHolder(MenuType menuType, UUID targetUuid, int page, Component title) {
         this.menuType = menuType;
@@ -47,6 +49,16 @@ public final class ACHolder implements InventoryHolder {
 
     public UUID getSlotTarget(int slot) {
         return (slot >= 0 && slot < slotPlayerTargets.length) ? slotPlayerTargets[slot] : null;
+    }
+
+    public void setSlotCheckKey(int slot, String key) {
+        if (slot >= 0 && slot < slotCheckKeys.length) {
+            slotCheckKeys[slot] = key;
+        }
+    }
+
+    public String getSlotCheckKey(int slot) {
+        return (slot >= 0 && slot < slotCheckKeys.length) ? slotCheckKeys[slot] : null;
     }
 
     @Override

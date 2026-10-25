@@ -85,6 +85,53 @@ public final class PACCommand implements CommandExecutor, TabCompleter {
                 }
                 return true;
             }
+            case "checks", "modules", "settings" -> {
+                if (sender instanceof Player player) {
+                    if (!player.hasPermission(cfg.permAdmin) && !player.hasPermission(cfg.permMenu)) {
+                        player.sendMessage(ColorUtil.color(cfg.alertPrefix + "&cНедостаточно прав!"));
+                        return true;
+                    }
+                    plugin.menus().openChecksConfig(player);
+                    return true;
+                }
+                sender.sendMessage(ColorUtil.color("&#A855F7&l=== PurpurBedrockAC • Модули ("
+                    + cfg.countEnabledChecks() + "/" + ACConfig.ALL_CHECKS.size() + ") ==="));
+                for (ACConfig.CheckMeta m : ACConfig.ALL_CHECKS) {
+                    ACConfig.CheckSettings s = cfg.check(m.key());
+                    sender.sendMessage(ColorUtil.color(" &8• " + (s.enabled ? "&a✔ " : "&c✖ ")
+                        + "&f" + m.key() + " &8— &7" + m.title()));
+                }
+                return true;
+            }
+            case "toggle" -> {
+                if (!sender.hasPermission(cfg.permAdmin)) {
+                    sender.sendMessage(ColorUtil.color(cfg.alertPrefix + "&cНедостаточно прав (&f" + cfg.permAdmin + "&c)!"));
+                    return true;
+                }
+                if (args.length < 2) {
+                    sender.sendMessage(ColorUtil.color(cfg.alertPrefix + "&eИспользование: &f/pac toggle <модуль>"));
+                    return true;
+                }
+                ACConfig.CheckMeta meta = cfg.findMeta(args[1]);
+                if (meta == null) {
+                    sender.sendMessage(ColorUtil.color(cfg.alertPrefix + "&cМодуль &f" + args[1] + " &cне найден! Список: &f/pac checks"));
+                    return true;
+                }
+                boolean nowOn = cfg.toggleCheckEnabled(plugin, meta.key());
+                sender.sendMessage(ColorUtil.color(cfg.alertPrefix + "&7Проверка &f" + meta.title() + "&7: "
+                    + (nowOn ? "&aВКЛЮЧЕНА" : "&cВЫКЛЮЧЕНА") + " &8(сохранено в config.yml)"));
+                return true;
+            }
+            case "autopunish", "autokick" -> {
+                if (!sender.hasPermission(cfg.permAdmin)) {
+                    sender.sendMessage(ColorUtil.color(cfg.alertPrefix + "&cНедостаточно прав (&f" + cfg.permAdmin + "&c)!"));
+                    return true;
+                }
+                boolean nowOn = cfg.toggleAutoPunish(plugin);
+                sender.sendMessage(ColorUtil.color(cfg.alertPrefix + "&7Авто-наказания при высоком VL: "
+                    + (nowOn ? "&eВКЛЮЧЕНЫ (с защитой пинга/TPS)" : "&aВЫКЛЮЧЕНЫ (только сетбэк и отмена читов без случайных киков)")));
+                return true;
+            }
             case "history", "hist", "check" -> {
                 if (!(sender instanceof Player player)) {
                     sender.sendMessage(ColorUtil.color(cfg.alertPrefix + "&cМеню истории открывается игроком в игре."));
@@ -192,7 +239,8 @@ public final class PACCommand implements CommandExecutor, TabCompleter {
                 sender.sendMessage(ColorUtil.color(" &8• &7Голограммы AVG: &f" + plugin.holograms().getActiveEntityCount()
                     + " сущн. &8(&7зрителей: &f" + plugin.holograms().getActiveViewerCount() + "&8)"));
                 sender.sendMessage(ColorUtil.color(" &8• &7TPS сервера: &a" + String.format(Locale.US, "%.2f", tps)
-                    + " &8| &7Проверок активно: &a13/13"));
+                    + " &8| &7Проверок активно: &a" + cfg.countEnabledChecks() + "/" + ACConfig.ALL_CHECKS.size()
+                    + " &8| &7Авто-кик: " + (cfg.autoPunishEnabled ? "&eВКЛ" : "&aБЕЗОПАСНО (Сетбэк)")));
                 return true;
             }
             default -> {
@@ -200,6 +248,9 @@ public final class PACCommand implements CommandExecutor, TabCompleter {
                 sender.sendMessage(ColorUtil.color(" &e/pac alerts &8— &7включить/выключить алерты (&f" + cfg.permAlerts + "&7)"));
                 sender.sendMessage(ColorUtil.color(" &e/pac holo &8— &7включить/выключить голограмму AVG (&f" + cfg.permHologram + "&7)"));
                 sender.sendMessage(ColorUtil.color(" &e/pac menu &8— &7открыть меню мониторинга игроков"));
+                sender.sendMessage(ColorUtil.color(" &e/pac checks &8— &7открыть живую настройку всех 21 модулей"));
+                sender.sendMessage(ColorUtil.color(" &e/pac toggle <модуль> &8— &7включить/выключить проверку на лету"));
+                sender.sendMessage(ColorUtil.color(" &e/pac autopunish &8— &7вкл/выкл авто-кик (по умолч. безопасный сетбэк)"));
                 sender.sendMessage(ColorUtil.color(" &e/pac history <ник> &8— &7открыть историю игрока (🟢/🟠/🔴 HolyWorld)"));
                 sender.sendMessage(ColorUtil.color(" &e/pac status &8— &7показать нагрузку и спящий/активный режим движка"));
                 sender.sendMessage(ColorUtil.color(" &e/pac reset <ник> &8— &7сбросить VL и историю игрока"));
@@ -218,14 +269,17 @@ public final class PACCommand implements CommandExecutor, TabCompleter {
     ) {
         if (args.length == 1) {
             String pfx = args[0].toLowerCase(Locale.ROOT);
-            List<String> subs = List.of("alerts", "holo", "menu", "history", "info", "status", "reset", "reload");
+            List<String> subs = List.of("alerts", "holo", "menu", "checks", "toggle", "autopunish", "history", "info", "status", "reset", "reload");
             return subs.stream().filter(s -> s.startsWith(pfx)).toList();
         }
         if (args.length == 2) {
             String sub = args[0].toLowerCase(Locale.ROOT);
+            String pfx = args[1].toLowerCase(Locale.ROOT);
+            if ("toggle".equals(sub)) {
+                return ACConfig.ALL_CHECKS.stream().map(ACConfig.CheckMeta::key).filter(k -> k.startsWith(pfx)).toList();
+            }
             if ("history".equals(sub) || "hist".equals(sub) || "menu".equals(sub)
                 || "info".equals(sub) || "reset".equals(sub)) {
-                String pfx = args[1].toLowerCase(Locale.ROOT);
                 List<String> names = new ArrayList<>();
                 for (String n : plugin.cachedPlayerNames()) {
                     if (n.toLowerCase(Locale.ROOT).startsWith(pfx)) {

@@ -6,15 +6,44 @@ import org.bukkit.configuration.file.FileConfiguration;
 import org.purpurmc.purpur.anticheat.PurpurBedrockACPlugin;
 
 import java.util.Collections;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
 /**
- * Pre-parsed primitive configuration for zero-overhead hot-path reads.
+ * Pre-parsed primitive configuration for zero-overhead hot-path reads,
+ * plus live in-game check toggle persistence to config.yml.
  */
 public final class ACConfig {
+
+    public record CheckMeta(String key, String title, Material icon, String shortDesc, boolean movementStyle) {
+    }
+
+    public static final List<CheckMeta> ALL_CHECKS = List.of(
+        new CheckMeta("reach", "Reach (Дальность удара)", Material.DIAMOND_SWORD, "3D AABB + откат позиций цели на 18 тиков под пинг", false),
+        new CheckMeta("hitbox", "HitBox (Хитбоксы)", Material.SPECTRAL_ARROW, "Луч прицела на ПК/Геймпаде + конус экрана на Сенсоре", false),
+        new CheckMeta("killaura", "KillAura (Мульти/Стены/360°)", Material.NETHERITE_SWORD, "MultiAura, удар спиной, сквозь плотные стены и с сундуком", false),
+        new CheckMeta("autoclicker", "AutoClicker / Макросы", Material.CLOCK, "Лимит боевых CPS + анализ разброса интервалов макроса", false),
+        new CheckMeta("criticals", "Criticals (Пакетные криты)", Material.IRON_AXE, "Блокирует микро-подскоки Packet/EC Criticals без прыжка", false),
+        new CheckMeta("velocity", "Velocity (Anti-Knockback)", Material.PISTON, "Динамическое окно отдачи с учётом пинга, потолка и воды", false),
+        new CheckMeta("fly", "Fly / MotionFly / Glide", Material.ELYTRA, "Закон гравитации (dy - lastDy) без ложных флагов на слизи", true),
+        new CheckMeta("airjump", "AirJump (Прыжки в воздухе)", Material.RABBIT_FOOT, "Ловит прыжки по воздуху без опоры и ветровых зарядов", true),
+        new CheckMeta("speed", "Speed / BHop / Strafe", Material.SUGAR, "Физика скорости с учётом льда, зелий, элитр и трезубца", true),
+        new CheckMeta("step", "Step (Высокий шаг > 1 бл.)", Material.QUARTZ_STAIRS, "Разрешает авто-шаг Bedrock 0.6, ловит Step 1.1..5.0", true),
+        new CheckMeta("highjump", "HighJump / JetPack", Material.SLIME_BLOCK, "Ловит завышенный вертикальный импульс прыжка", true),
+        new CheckMeta("spider", "Spider (Лазание по стенам)", Material.COBWEB, "Ловит подъём по плоским стенам без лестниц и лиан", true),
+        new CheckMeta("jesus", "Jesus (Хождение по воде)", Material.WATER_BUCKET, "Проверка 4 углов хитбокса, лодок, кувшинок и полублоков", true),
+        new CheckMeta("noslow", "NoSlow (Бег с едой/луком)", Material.GOLDEN_APPLE, "Сброс при смене слота + игнор авто-щита при приседе", true),
+        new CheckMeta("nofall", "NoFall / ElytraGlitch", Material.FEATHER, "Ловит фейк-полёт элитрами без элитр и GroundSpoof", true),
+        new CheckMeta("phase", "Phase / NoClip / VClip", Material.ENDER_PEARL, "Блокирует проход сквозь плотные стены, пол и потолок", true),
+        new CheckMeta("timer", "Timer / Blink (Токен-бакет)", Material.COMPASS, "Кредит лагов Wi-Fi до 3.5 сек — 0 ложных флагов на телефоне", true),
+        new CheckMeta("scaffold", "Scaffold / AirPlace / Tower", Material.SANDSTONE, "Разрешает спид-бридж Bedrock, ловит AirPlace и быстрый Tower", false),
+        new CheckMeta("fastbreak", "FastBreak / Nuker / BedFucker", Material.NETHERITE_PICKAXE, "Точная формула NMS getBreakSpeed + защита кроватей сквозь блоки", false),
+        new CheckMeta("inventory", "ChestStealer / InvMove", Material.CHEST, "Авто-лут сундуков < 32 мс и спринт с открытым контейнером", false),
+        new CheckMeta("badpackets", "BadPackets (Пакеты / Pitch)", Material.BARRIER, "Невозможный угол > 91°, NaN-координаты и удар по себе", true)
+    );
+
     public static final class CheckSettings {
         public final boolean enabled;
         public final double buffer;
@@ -51,6 +80,12 @@ public final class ACConfig {
     public String permAdmin;
     public boolean enableBypassPermission;
 
+    // Anti-False-Kick & Global Mitigation Safety
+    public boolean autoPunishEnabled;
+    public int maxPingForAutoPunish;
+    public double minTpsForAutoPunish;
+    public long setbackCooldownMs;
+
     // Adaptive Sleep/Wake Engine
     public int sleepSampleInterval;
     public int wakingSampleInterval;
@@ -82,9 +117,10 @@ public final class ACConfig {
     public double hologramGreenMaxAvg;
     public double hologramOrangeMaxAvg;
 
-    // HolyWorld History Menu
+    // HolyWorld History & Checks Menus
     public String menuOverviewTitle;
     public String menuHistoryTitle;
+    public String menuChecksTitle;
     public int maxHistoryEntries;
     public Material matGreen;
     public Material matOrange;
@@ -99,12 +135,13 @@ public final class ACConfig {
     public String legendRedName;
     public List<String> legendRedLore;
 
-    // Specific check parameters
+    // Calibrated Physics & Combat Check Parameters
     public double maxReachPc;
     public double maxReachController;
     public double maxReachTouch;
     public double cancelReachAbove;
     public double hitboxMaxExpansion;
+    public double hitboxTouchMaxAngleDeg;
     public long multiAuraWindowMs;
     public boolean killauraThroughWalls;
     public boolean killauraOpenInventory;
@@ -115,12 +152,24 @@ public final class ACConfig {
     public int flyMinAirTicks;
     public int airJumpMinAirTicks;
     public double speedMaxHorizontalBase;
-    public double timerMaxRateRatio;
-    public long timerAllowanceBurstMs;
+    public double stepMaxHeight;
+    public double highJumpMaxBase;
+    public int spiderMinWallTicks;
     public int noSlowMinUsingTicks;
+    public int noFallMinAirTicks;
+    public double timerMaxBalanceMs;
+    public double timerMaxLagCreditMs;
+    public long blinkMinFreezeMs;
+    public double blinkMaxBurstDistance;
     public double scaffoldMaxPlaceDistance;
+    public long towerMinBlockIntervalMs;
+    public double fastBreakMinTimeRatio;
+    public int nukerMaxBlocksPerSec;
+    public boolean bedFuckerThroughWalls;
+    public double chestStealerMinAvgMs;
+    public int invMoveMinTicks;
 
-    private final Map<String, CheckSettings> checkSettingsMap = new HashMap<>();
+    private final Map<String, CheckSettings> checkSettingsMap = new LinkedHashMap<>();
 
     public void reload(PurpurBedrockACPlugin plugin) {
         plugin.saveDefaultConfig();
@@ -134,6 +183,11 @@ public final class ACConfig {
         permAdmin = c.getString("permissions.admin", "purpurac.admin");
         enableBypassPermission = c.getBoolean("permissions.enable-bypass-permission", false);
 
+        autoPunishEnabled = c.getBoolean("protection.auto-punish-enabled", false);
+        maxPingForAutoPunish = Math.max(120, c.getInt("protection.max-ping-for-autopunish", 320));
+        minTpsForAutoPunish = Math.clamp(c.getDouble("protection.min-tps-for-autopunish", 18.5), 12.0, 20.0);
+        setbackCooldownMs = Math.max(150L, c.getLong("protection.setback-cooldown-ms", 450L));
+
         sleepSampleInterval = Math.max(1, c.getInt("adaptive-engine.sleep-sample-interval", 4));
         wakingSampleInterval = Math.max(1, c.getInt("adaptive-engine.waking-sample-interval", 2));
         wakeUpStep = Math.clamp(c.getDouble("adaptive-engine.wake-up-step", 0.22), 0.05, 1.0);
@@ -141,7 +195,7 @@ public final class ACConfig {
         wakingThreshold = Math.clamp(c.getDouble("adaptive-engine.waking-threshold", 0.20), 0.05, 0.90);
         awakeThreshold = Math.clamp(c.getDouble("adaptive-engine.awake-threshold", 0.58), wakingThreshold + 0.05, 0.99);
         minServerTps = c.getDouble("adaptive-engine.min-server-tps", 18.0);
-        highPingLeniencyMs = Math.max(80, c.getInt("adaptive-engine.high-ping-leniency-ms", 260));
+        highPingLeniencyMs = Math.max(80, c.getInt("adaptive-engine.high-ping-leniency-ms", 250));
         cleanHistorySampleSeconds = Math.max(8, c.getInt("adaptive-engine.clean-history-sample-seconds", 25));
 
         alertsAutoEnableOnJoin = c.getBoolean("alerts.auto-enable-on-join", true);
@@ -165,6 +219,7 @@ public final class ACConfig {
 
         menuOverviewTitle = c.getString("menu.overview-title", "&8🛡 PurpurAC • Игроки ({count})");
         menuHistoryTitle = c.getString("menu.history-title", "&8📜 История: &0{player} &8[{avg_color}AVG {avg}&8]");
+        menuChecksTitle = c.getString("menu.checks-title", "&8⚙ PurpurAC • Настройка 21 проверки");
         maxHistoryEntries = Math.clamp(c.getInt("menu.max-history-entries", 72), 18, 256);
         matGreen = parseMat(c.getString("menu.materials.green"), Material.LIME_STAINED_GLASS);
         matOrange = parseMat(c.getString("menu.materials.orange"), Material.ORANGE_STAINED_GLASS);
@@ -180,46 +235,71 @@ public final class ACConfig {
         legendRedName = c.getString("menu.legend.red-name", "&c&l🔴 КРАСНЫЙ УРОВЕНЬ — ВЫСОКИЙ РИСК (СОФТ)");
         legendRedLore = c.getStringList("menu.legend.red-lore");
 
-        maxReachPc = c.getDouble("checks.reach.max-reach-pc", 3.35);
-        maxReachController = c.getDouble("checks.reach.max-reach-controller", 3.45);
-        maxReachTouch = c.getDouble("checks.reach.max-reach-touch", 4.18);
-        cancelReachAbove = c.getDouble("checks.reach.cancel-hit-above", 4.55);
-        hitboxMaxExpansion = c.getDouble("checks.hitbox.max-angle-expansion", 0.32);
+        maxReachPc = c.getDouble("checks.reach.max-reach-pc", 3.30);
+        maxReachController = c.getDouble("checks.reach.max-reach-controller", 3.40);
+        maxReachTouch = c.getDouble("checks.reach.max-reach-touch", 4.15);
+        cancelReachAbove = c.getDouble("checks.reach.cancel-hit-above", 4.45);
+
+        hitboxMaxExpansion = c.getDouble("checks.hitbox.max-angle-expansion", 0.30);
+        hitboxTouchMaxAngleDeg = c.getDouble("checks.hitbox.touch-max-angle-deg", 88.0);
+
         multiAuraWindowMs = c.getLong("checks.killaura.multi-aura-window-ms", 45L);
         killauraThroughWalls = c.getBoolean("checks.killaura.check-through-walls", true);
         killauraOpenInventory = c.getBoolean("checks.killaura.check-open-inventory", true);
+
         maxCpsPc = c.getInt("checks.autoclicker.max-cps-pc", 22);
         maxCpsTouch = c.getInt("checks.autoclicker.max-cps-touch", 19);
-        minClickStdDevMs = c.getDouble("checks.autoclicker.min-stddev-ms", 2.2);
-        minVelocityRatio = c.getDouble("checks.velocity.min-vertical-ratio", 0.15);
+        minClickStdDevMs = c.getDouble("checks.autoclicker.min-stddev-ms", 2.0);
+
+        minVelocityRatio = c.getDouble("checks.velocity.min-vertical-ratio", 0.14);
         flyMinAirTicks = c.getInt("checks.fly.min-air-ticks", 12);
         airJumpMinAirTicks = c.getInt("checks.airjump.min-air-ticks", 11);
-        speedMaxHorizontalBase = c.getDouble("checks.speed.max-horizontal-base", 0.435);
-        timerMaxRateRatio = c.getDouble("checks.timer.max-rate-ratio", 1.18);
-        timerAllowanceBurstMs = c.getLong("checks.timer.allowance-burst-ms", 140L);
-        noSlowMinUsingTicks = c.getInt("checks.noslow.min-using-ticks", 14);
-        scaffoldMaxPlaceDistance = c.getDouble("checks.scaffold.max-place-distance", 6.6);
+        speedMaxHorizontalBase = c.getDouble("checks.speed.max-horizontal-base", 0.44);
+        stepMaxHeight = c.getDouble("checks.step.max-step-height", 1.05);
+        highJumpMaxBase = c.getDouble("checks.highjump.max-jump-dy", 0.56);
+        spiderMinWallTicks = c.getInt("checks.spider.min-wall-ticks", 9);
+        noSlowMinUsingTicks = c.getInt("checks.noslow.min-using-ticks", 15);
+        noFallMinAirTicks = c.getInt("checks.nofall.min-air-ticks", 10);
+
+        timerMaxBalanceMs = c.getDouble("checks.timer.max-balance-ms", 260.0);
+        timerMaxLagCreditMs = c.getDouble("checks.timer.max-lag-credit-ms", 3500.0);
+        blinkMinFreezeMs = c.getLong("checks.timer.blink-min-freeze-ms", 1600L);
+        blinkMaxBurstDistance = c.getDouble("checks.timer.blink-max-burst-blocks", 9.5);
+
+        scaffoldMaxPlaceDistance = c.getDouble("checks.scaffold.max-place-distance", 6.5);
+        towerMinBlockIntervalMs = c.getLong("checks.scaffold.tower-min-interval-ms", 205L);
+
+        fastBreakMinTimeRatio = c.getDouble("checks.fastbreak.min-time-ratio", 0.52);
+        nukerMaxBlocksPerSec = c.getInt("checks.fastbreak.nuker-max-blocks-per-sec", 9);
+        bedFuckerThroughWalls = c.getBoolean("checks.fastbreak.check-encased-beds", true);
+
+        chestStealerMinAvgMs = c.getDouble("checks.inventory.stealer-min-avg-ms", 32.0);
+        invMoveMinTicks = c.getInt("checks.inventory.invmove-min-ticks", 12);
 
         checkSettingsMap.clear();
         ConfigurationSection checksSec = c.getConfigurationSection("checks");
-        if (checksSec != null) {
-            for (String key : checksSec.getKeys(false)) {
-                ConfigurationSection s = checksSec.getConfigurationSection(key);
-                if (s != null) {
-                    boolean cancel = s.getBoolean("cancel-hit", s.getBoolean("cancel-place", false));
-                    checkSettingsMap.put(
-                        key.toLowerCase(Locale.ROOT),
-                        new CheckSettings(
-                            s.getBoolean("enabled", true),
-                            s.getDouble("buffer", 3.0),
-                            s.getDouble("decay", 0.35),
-                            s.getBoolean("setback", false),
-                            cancel,
-                            s.getDouble("max-vl", 14.0),
-                            s.getStringList("punish-commands")
-                        )
-                    );
-                }
+        for (CheckMeta meta : ALL_CHECKS) {
+            ConfigurationSection s = checksSec != null ? checksSec.getConfigurationSection(meta.key()) : null;
+            if (s != null) {
+                boolean cancel = s.getBoolean("cancel-action",
+                    s.getBoolean("cancel-hit", s.getBoolean("cancel-place", !meta.movementStyle())));
+                checkSettingsMap.put(
+                    meta.key(),
+                    new CheckSettings(
+                        s.getBoolean("enabled", true),
+                        s.getDouble("buffer", 3.0),
+                        s.getDouble("decay", 0.35),
+                        s.getBoolean("setback", meta.movementStyle()),
+                        cancel,
+                        s.getDouble("max-vl", 16.0),
+                        s.getStringList("punish-commands")
+                    )
+                );
+            } else {
+                checkSettingsMap.put(
+                    meta.key(),
+                    new CheckSettings(true, 3.0, 0.35, meta.movementStyle(), !meta.movementStyle(), 16.0, Collections.emptyList())
+                );
             }
         }
     }
@@ -229,7 +309,67 @@ public final class ACConfig {
         if (found != null) {
             return found;
         }
-        return new CheckSettings(true, 3.0, 0.35, false, false, 14.0, Collections.emptyList());
+        return new CheckSettings(true, 3.0, 0.35, false, false, 16.0, Collections.emptyList());
+    }
+
+    public int countEnabledChecks() {
+        int active = 0;
+        for (CheckSettings s : checkSettingsMap.values()) {
+            if (s.enabled) {
+                active++;
+            }
+        }
+        return active;
+    }
+
+    public CheckMeta findMeta(String key) {
+        String norm = key.toLowerCase(Locale.ROOT);
+        for (CheckMeta m : ALL_CHECKS) {
+            if (m.key().equals(norm)) {
+                return m;
+            }
+        }
+        return null;
+    }
+
+    public boolean toggleCheckEnabled(PurpurBedrockACPlugin plugin, String key) {
+        CheckMeta meta = findMeta(key);
+        if (meta == null) {
+            return false;
+        }
+        CheckSettings cur = check(meta.key());
+        boolean next = !cur.enabled;
+        plugin.getConfig().set("checks." + meta.key() + ".enabled", next);
+        plugin.saveConfig();
+        reload(plugin);
+        return next;
+    }
+
+    public boolean toggleCheckMitigation(PurpurBedrockACPlugin plugin, String key) {
+        CheckMeta meta = findMeta(key);
+        if (meta == null) {
+            return false;
+        }
+        CheckSettings cur = check(meta.key());
+        boolean next;
+        if (meta.movementStyle()) {
+            next = !cur.setback;
+            plugin.getConfig().set("checks." + meta.key() + ".setback", next);
+        } else {
+            next = !cur.cancelAction;
+            plugin.getConfig().set("checks." + meta.key() + ".cancel-action", next);
+        }
+        plugin.saveConfig();
+        reload(plugin);
+        return next;
+    }
+
+    public boolean toggleAutoPunish(PurpurBedrockACPlugin plugin) {
+        boolean next = !this.autoPunishEnabled;
+        plugin.getConfig().set("protection.auto-punish-enabled", next);
+        plugin.saveConfig();
+        reload(plugin);
+        return next;
     }
 
     private static Material parseMat(String raw, Material fallback) {

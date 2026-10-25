@@ -109,14 +109,20 @@ public final class AlertManager {
             cfg.maxHistoryEntries
         );
 
-        // Rate-limit chat broadcast per suspect so chat never floods
         if (nowMs - profile.lastAlertSentMs >= cfg.alertMinIntervalMs) {
             profile.lastAlertSentMs = nowMs;
             sendAlertBroadcast(player, profile, displayName, details, checkVl, severity, ping, tps, device, input, version, cfg);
         }
 
-        // Execute configured max-vl punishment commands if configured
-        if (settings.maxVl > 0 && checkVl >= settings.maxVl && !settings.punishCommands.isEmpty()) {
+        // Execute configured max-vl punishment commands ONLY when auto-punish is enabled AND ping/TPS safety guards pass
+        boolean pingSafe = "badpackets".equalsIgnoreCase(checkKey) || ping <= cfg.maxPingForAutoPunish;
+        boolean tpsSafe = tps >= cfg.minTpsForAutoPunish;
+        if (cfg.autoPunishEnabled
+            && pingSafe
+            && tpsSafe
+            && settings.maxVl > 0
+            && checkVl >= settings.maxVl
+            && !settings.punishCommands.isEmpty()) {
             profile.setBuffer(checkKey, 0.0);
             for (String rawCmd : settings.punishCommands) {
                 String cmd = applyPlaceholders(rawCmd, player.getName(), displayName, details, checkVl, profile.avgScore,

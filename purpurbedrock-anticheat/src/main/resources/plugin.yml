@@ -1,37 +1,35 @@
 name: PurpurBedrockAC
-version: '26.2.0'
+version: "26.2.1"
 main: org.purpurmc.purpur.anticheat.PurpurBedrockACPlugin
-api-version: '26.2'
-author: Purpurbedrock
-description: Высокооптимизированный адаптивный античит специально под ядро Purpurbedrock 26.2
-softdepend:
-  - PlaceholderAPI
-  - Geyser-Spigot
+api-version: "26.2"
+folia-supported: false
+authors:
+  - Purpurbedrock
+description: "Адаптивный античит под Purpurbedrock 26.2 и механику Geyser (21 модуль, 0 ложных киков, спящий режим, голограмма AVG, меню HolyWorld)"
+
 commands:
   purpurac:
-    description: Управление античитом PurpurBedrockAC (алерты, голограмма AVG, меню истории HolyWorld)
-    usage: /pac [alerts | holo | menu | history <игрок> | info <игрок> | reset <игрок> | status | reload]
-    aliases:
-      - pac
-      - anticheat
-      - bac
+    description: "Управление античитом PurpurBedrockAC 26.2"
+    aliases: [pac, anticheat, ac]
+    usage: "/pac <alerts|holo|menu|checks|toggle|autopunish|history|info|status|reset|reload>"
+
 permissions:
   purpurac.alerts:
-    description: Право получать и переключать алерты античита (/pac alerts)
+    description: "Право на получение и переключение алертов античита (/pac alerts)"
     default: op
   purpurac.hologram:
-    description: Право включать и выключать голограмму AVG над игроками (/pac holo)
+    description: "Право на отображение небольшой голограммы AVG над игроками (/pac holo)"
     default: op
   purpurac.menu:
-    description: Право открывать меню истории и проверок в стиле HolyWorld (/pac menu, /pac history)
+    description: "Право на открытие меню мониторинга и истории игрока HolyWorld (/pac menu, /pac history)"
     default: op
-  purpurac.bypass:
-    description: Обход проверок античита (по умолчанию выключен даже у OP, если bypass-enabled=false)
-    default: false
   purpurac.admin:
-    description: Полный доступ администратора к античиту (/pac reload, /pac reset, /pac status)
+    description: "Полное управление античитом (/pac checks, /pac toggle, /pac autopunish, /pac reset, /pac reload)"
     default: op
     children:
       purpurac.alerts: true
       purpurac.hologram: true
       purpurac.menu: true
+  purpurac.bypass:
+    description: "Обход проверок античита (по умолчанию выключен в config.yml)"
+    default: false

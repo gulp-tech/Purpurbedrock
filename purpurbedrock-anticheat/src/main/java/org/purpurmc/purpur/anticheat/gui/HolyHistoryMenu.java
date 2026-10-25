@@ -1,6 +1,5 @@
 package org.purpurmc.purpur.anticheat.gui;
 
-import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.Sound;
@@ -28,15 +27,8 @@ import java.util.Locale;
 import java.util.UUID;
 
 /**
- * HolyWorld-style 54-slot Staff Inspection & Player History Menu.
- *
- * Displays chronological player history using 3 color tiers:
- * - GREEN  (Зелёный): чистый срез игры / одиночный сетевой пинг-спайк
- * - ORANGE (Оранжевый): подозрительная активность на грани нормы
- * - RED    (Красный): подтверждённый детект софта / высокий риск
- *
- * Includes the 3 colored instruction blocks along the bottom bar (slots 46, 47, 48)
- * plus one-click AVG Hologram toggle, Alerts toggle, Teleport, and VL Reset.
+ * HolyWorld-style 54-slot Staff Inspection, Player History (Green / Orange / Red + bottom legend),
+ * and Live 21-Check In-Game Configurator GUI.
  */
 public final class HolyHistoryMenu {
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm:ss")
@@ -67,13 +59,14 @@ public final class HolyHistoryMenu {
             inv.setItem(s, border);
         }
 
-        // Top summary icon (slot 4)
         inv.setItem(4, makeItem(
             Material.BEACON,
             "&#A855F7&l🛡 PurpurBedrockAC 26.2 • Мониторинг",
             List.of(
                 "&7Режим движка: " + plugin.engine().getGlobalStage().badge(),
                 "&7Нагрузка пульса: &a" + plugin.engine().getLastPulseMicros() + " мкс/сек",
+                "&7Активно модулей: &a" + cfg.countEnabledChecks() + "/" + ACConfig.ALL_CHECKS.size(),
+                "&7Авто-наказания: " + (cfg.autoPunishEnabled ? "&eВКЛЮЧЕНЫ" : "&aВЫКЛ (только блокировка софта)"),
                 "&7Игроков онлайн: &f" + online.size(),
                 "",
                 "&7Игроки отсортированы по &cриску (AVG)&7:",
@@ -126,7 +119,68 @@ public final class HolyHistoryMenu {
             ));
         }
 
-        placeBottomLegendAndControls(inv, viewer, null, safePage, maxPage, false, cfg);
+        placeBottomLegendAndControls(inv, viewer, null, safePage, maxPage, ACHolder.MenuType.OVERVIEW, cfg);
+        return inv;
+    }
+
+    public Inventory buildChecksInventory(Player viewer) {
+        ACConfig cfg = plugin.cfg();
+        ACHolder holder = new ACHolder(ACHolder.MenuType.CHECKS_CONFIG, null, 0, ColorUtil.color(cfg.menuChecksTitle));
+        Inventory inv = holder.getInventory();
+
+        ItemStack border = makeItem(cfg.matBorder, " ", List.of());
+        for (int s = 0; s < 9; s++) {
+            inv.setItem(s, border);
+        }
+        for (int s = 45; s < 54; s++) {
+            inv.setItem(s, border);
+        }
+
+        inv.setItem(4, makeItem(
+            Material.COMPARATOR,
+            "&#A855F7&l⚙ Живая настройка модулей PurpurBedrockAC",
+            List.of(
+                "&7Активно проверок: &a" + cfg.countEnabledChecks() + " из " + ACConfig.ALL_CHECKS.size(),
+                "&7Авто-наказания (кик/бан): " + (cfg.autoPunishEnabled ? "&eВКЛЮЧЕНЫ" : "&aВЫКЛЮЧЕНЫ (безопасный режим)"),
+                "&7Защита пинга/TPS для кика: &f≤" + cfg.maxPingForAutoPunish + "мс &8/ &f≥" + cfg.minTpsForAutoPunish + " TPS",
+                "",
+                "&e• ЛКМ по модулю &8— &fвключить / выключить проверку",
+                "&b• ПКМ по модулю &8— &fвкл/выкл Сетбэк / Отмену действия",
+                "&7Все изменения сразу сохраняются в &fconfig.yml&7!"
+            )
+        ));
+
+        int slot = 9;
+        for (ACConfig.CheckMeta meta : ACConfig.ALL_CHECKS) {
+            if (slot >= 45) {
+                break;
+            }
+            ACConfig.CheckSettings s = cfg.check(meta.key());
+            boolean mitigateOn = meta.movementStyle() ? s.setback : s.cancelAction;
+            String mitigateLabel = meta.movementStyle() ? "Мягкий сетбэк" : "Отмена удара/блока";
+
+            inv.setItem(slot, makeItem(
+                s.enabled ? meta.icon() : Material.GRAY_DYE,
+                (s.enabled ? "&a&l✔ " : "&c&l✖ ") + meta.title(),
+                List.of(
+                    "&7Код модуля: &f" + meta.key(),
+                    "&7Описание: &f" + meta.shortDesc(),
+                    "",
+                    "&7Статус проверки: " + (s.enabled ? "&aВКЛЮЧЕНА" : "&cВЫКЛЮЧЕНА"),
+                    "&7Блокировка софта (" + mitigateLabel + "): " + (mitigateOn ? "&aВКЛ" : "&cВЫКЛ"),
+                    "&7Буфер: &f" + String.format(Locale.US, "%.1f", s.buffer)
+                        + " &8| &7Спад: &f" + String.format(Locale.US, "%.2f", s.decay)
+                        + " &8| &7Порог VL: &e" + String.format(Locale.US, "%.0f", s.maxVl),
+                    "",
+                    "&e▶ ЛКМ: переключить модуль",
+                    "&b▶ ПКМ: переключить " + mitigateLabel.toLowerCase(Locale.ROOT)
+                )
+            ));
+            holder.setSlotCheckKey(slot, meta.key());
+            slot++;
+        }
+
+        placeBottomLegendAndControls(inv, viewer, null, 0, 0, ACHolder.MenuType.CHECKS_CONFIG, cfg);
         return inv;
     }
 
@@ -163,7 +217,6 @@ public final class HolyHistoryMenu {
         String version = onlineTarget != null ? BedrockBridgeInfo.getVersion(onlineTarget) : "—";
         String pingStr = onlineTarget != null ? (BedrockBridgeInfo.getPing(onlineTarget) + " мс") : "оффлайн";
 
-        // Slot 4: Player profile header card
         inv.setItem(4, makeItem(
             Material.RECOVERY_COMPASS,
             "&#A855F7&lДосье игрока: &f" + targetProfile.playerName,
@@ -226,7 +279,7 @@ public final class HolyHistoryMenu {
             }
         }
 
-        placeBottomLegendAndControls(inv, viewer, targetProfile, safePage, maxPage, true, cfg);
+        placeBottomLegendAndControls(inv, viewer, targetProfile, safePage, maxPage, ACHolder.MenuType.PLAYER_HISTORY, cfg);
         return inv;
     }
 
@@ -236,17 +289,16 @@ public final class HolyHistoryMenu {
         PlayerProfile targetProfile,
         int page,
         int maxPage,
-        boolean inPlayerHistory,
+        ACHolder.MenuType menuType,
         ACConfig cfg
     ) {
-        // Slot 45: Back / Previous page
         if (page > 0) {
             inv.setItem(45, makeItem(
                 Material.ARROW,
                 "&e⬅ Предыдущая страница &8(&7" + page + "/" + (maxPage + 1) + "&8)",
-                List.of("&7Перейти к более новым записям")
+                List.of("&7Перейти к предыдущим записям")
             ));
-        } else if (inPlayerHistory) {
+        } else if (menuType != ACHolder.MenuType.OVERVIEW) {
             inv.setItem(45, makeItem(
                 Material.ARROW,
                 "&e⬅ К общему списку игроков",
@@ -259,7 +311,6 @@ public final class HolyHistoryMenu {
         inv.setItem(47, makeItem(cfg.matOrange, cfg.legendOrangeName, cfg.legendOrangeLore));
         inv.setItem(48, makeItem(cfg.matRed, cfg.legendRedName, cfg.legendRedLore));
 
-        // Slot 49: AVG Hologram Toggle (permission-gated)
         if (viewer != null) {
             boolean holoOn = plugin.holograms().isEnabledFor(viewer);
             boolean hasHoloPerm = viewer.hasPermission(cfg.permHologram);
@@ -276,7 +327,6 @@ public final class HolyHistoryMenu {
                 )
             ));
 
-            // Slot 50: Alerts Toggle (permission-gated)
             boolean alertsOn = plugin.alerts().hasAlertsEnabled(viewer);
             boolean hasAlertPerm = viewer.hasPermission(cfg.permAlerts);
             inv.setItem(50, makeItem(
@@ -291,7 +341,48 @@ public final class HolyHistoryMenu {
             ));
         }
 
-        if (inPlayerHistory && targetProfile != null) {
+        if (menuType == ACHolder.MenuType.OVERVIEW) {
+            if (viewer == null || viewer.hasPermission(cfg.permAdmin)) {
+                inv.setItem(51, makeItem(
+                    Material.COMPARATOR,
+                    "&b&l⚙ Настройка модулей (" + cfg.countEnabledChecks() + "/" + ACConfig.ALL_CHECKS.size() + ")",
+                    List.of(
+                        "&7Гибкое включение/выключение любой из",
+                        "&721 проверки, сетбэков и отмены ударов",
+                        "&7прямо из игры с автосохранением!",
+                        "",
+                        "&e▶ Нажмите, чтобы открыть настройки"
+                    )
+                ));
+                inv.setItem(52, makeItem(
+                    cfg.autoPunishEnabled ? Material.TNT : Material.SHIELD,
+                    "&e&l⚡ Авто-кик / Авто-наказания",
+                    List.of(
+                        "&7Статус: " + (cfg.autoPunishEnabled
+                            ? "&eВКЛЮЧЕНЫ (при VL ≥ порога)"
+                            : "&aВЫКЛЮЧЕНЫ (не кикает просто так!)"),
+                        "&7Даже при выключенном авто-кике античит",
+                        "&7блокирует софт сетбэками и отменой ударов!",
+                        "",
+                        "&e▶ Нажмите для переключения"
+                    )
+                ));
+            }
+        } else if (menuType == ACHolder.MenuType.CHECKS_CONFIG) {
+            if (viewer == null || viewer.hasPermission(cfg.permAdmin)) {
+                inv.setItem(52, makeItem(
+                    cfg.autoPunishEnabled ? Material.TNT : Material.SHIELD,
+                    "&e&l⚡ Авто-кик / Авто-наказания",
+                    List.of(
+                        "&7Статус: " + (cfg.autoPunishEnabled
+                            ? "&eВКЛЮЧЕНЫ (с защитой пинга/TPS)"
+                            : "&aВЫКЛЮЧЕНЫ (0 ложных киков!)"),
+                        "",
+                        "&e▶ Нажмите для переключения"
+                    )
+                ));
+            }
+        } else if (menuType == ACHolder.MenuType.PLAYER_HISTORY && targetProfile != null) {
             Player onlineTarget = Bukkit.getPlayer(targetProfile.uuid);
             if (onlineTarget != null) {
                 inv.setItem(51, makeItem(
@@ -317,7 +408,6 @@ public final class HolyHistoryMenu {
             }
         }
 
-        // Slot 53: Next page
         if (page < maxPage) {
             inv.setItem(53, makeItem(
                 Material.ARROW,
@@ -329,6 +419,10 @@ public final class HolyHistoryMenu {
 
     public void openOverview(Player viewer, int page) {
         viewer.openInventory(buildOverviewInventory(viewer, page));
+    }
+
+    public void openChecksConfig(Player viewer) {
+        viewer.openInventory(buildChecksInventory(viewer));
     }
 
     public void openPlayerHistory(Player viewer, PlayerProfile targetProfile, int page) {
@@ -369,6 +463,13 @@ public final class HolyHistoryMenu {
             if (slot == 45 && holder.page() > 0) {
                 viewer.playSound(viewer.getLocation(), Sound.UI_BUTTON_CLICK, 0.7f, 1.1f);
                 openOverview(viewer, holder.page() - 1);
+            } else if (slot == 51 && viewer.hasPermission(cfg.permAdmin)) {
+                viewer.playSound(viewer.getLocation(), Sound.UI_BUTTON_CLICK, 0.7f, 1.2f);
+                openChecksConfig(viewer);
+            } else if (slot == 52 && viewer.hasPermission(cfg.permAdmin)) {
+                boolean on = cfg.toggleAutoPunish(plugin);
+                viewer.playSound(viewer.getLocation(), Sound.UI_BUTTON_CLICK, 0.7f, on ? 1.3f : 0.9f);
+                openOverview(viewer, holder.page());
             } else if (slot == 53 && event.getCurrentItem() != null && event.getCurrentItem().getType() == Material.ARROW) {
                 viewer.playSound(viewer.getLocation(), Sound.UI_BUTTON_CLICK, 0.7f, 1.1f);
                 openOverview(viewer, holder.page() + 1);
@@ -381,6 +482,35 @@ public final class HolyHistoryMenu {
                         openPlayerHistory(viewer, targetProf, 0);
                     }
                 }
+            }
+            return;
+        }
+
+        if (holder.menuType() == ACHolder.MenuType.CHECKS_CONFIG) {
+            if (slot == 45) {
+                viewer.playSound(viewer.getLocation(), Sound.UI_BUTTON_CLICK, 0.7f, 1.1f);
+                openOverview(viewer, 0);
+                return;
+            }
+            if (!viewer.hasPermission(cfg.permAdmin)) {
+                return;
+            }
+            if (slot == 52) {
+                boolean on = cfg.toggleAutoPunish(plugin);
+                viewer.playSound(viewer.getLocation(), Sound.UI_BUTTON_CLICK, 0.7f, on ? 1.3f : 0.9f);
+                openChecksConfig(viewer);
+                return;
+            }
+            String checkKey = holder.getSlotCheckKey(slot);
+            if (checkKey != null) {
+                boolean state;
+                if (event.isRightClick()) {
+                    state = cfg.toggleCheckMitigation(plugin, checkKey);
+                } else {
+                    state = cfg.toggleCheckEnabled(plugin, checkKey);
+                }
+                viewer.playSound(viewer.getLocation(), Sound.UI_BUTTON_CLICK, 0.7f, state ? 1.3f : 0.9f);
+                openChecksConfig(viewer);
             }
             return;
         }
@@ -419,6 +549,8 @@ public final class HolyHistoryMenu {
     private void reopenCurrent(Player viewer, ACHolder holder) {
         if (holder.menuType() == ACHolder.MenuType.OVERVIEW) {
             openOverview(viewer, holder.page());
+        } else if (holder.menuType() == ACHolder.MenuType.CHECKS_CONFIG) {
+            openChecksConfig(viewer);
         } else {
             PlayerProfile prof = holder.targetUuid() != null ? plugin.profileByUuid(holder.targetUuid()) : null;
             if (prof != null) {
