@@ -141,7 +141,7 @@ public final class BedrockBridgeBootstrap {
                 if (loaded != null) {
                     protocolActive = true;
                     Bukkit.getLogger().info(String.format(
-                        "[Purpurbedrock] Встроенный протокол Bedrock 26.2 активен! RakNet/Signaling: %s:%d | NetherNet WebRTC: UDP %d | LAN Discovery (Миры): %s | Auth: %s",
+                        "[Purpurbedrock] Встроенный протокол Bedrock 26.2 активен! Мульти-версия: 1.21.0–26.52 (v685–v2193, 23 кодека) | RakNet/Signaling: %s:%d | NetherNet WebRTC: UDP %d | LAN Discovery (Миры): %s | Auth: %s",
                         bedrockCfg.getString("address", "0.0.0.0"),
                         activeBedrockPort,
                         activeWebrtcPort,
@@ -555,6 +555,71 @@ public final class BedrockBridgeBootstrap {
 
         Files.createDirectories(engineDir);
         Files.writeString(engineDir.resolve("config.yml"), internalYaml, StandardCharsets.UTF_8);
+    }
+
+    public static String runProtocolSelfTest() {
+        int[] expectedProtocols = {
+            685, 686, 712, 729, 748, 766, 776, 786, 800, 818, 819,
+            827, 844, 859, 860, 898, 924, 944, 975, 1001, 2168, 2169, 2193
+        };
+        try {
+            Plugin geyserPlugin = Bukkit.getPluginManager().getPlugin("Geyser-Spigot");
+            if (geyserPlugin == null) {
+                throw new IllegalStateException("Geyser-Spigot internal plugin not loaded");
+            }
+            ClassLoader cl = geyserPlugin.getClass().getClassLoader();
+            Class<?> gameProtocolClass = Class.forName("org.geysermc.geyser.network.bedrock.GameProtocol", true, cl);
+            java.lang.reflect.Method getBedrockCodec = gameProtocolClass.getMethod("getBedrockCodec", int.class);
+            java.util.List<?> codecs = (java.util.List<?>) gameProtocolClass.getField("SUPPORTED_BEDROCK_CODECS").get(null);
+            if (codecs.size() < expectedProtocols.length) {
+                throw new IllegalStateException("Expected >= 23 codecs, got " + codecs.size());
+            }
+
+            Class<?> blockRegistriesClass = Class.forName("org.geysermc.geyser.registry.BlockRegistries", true, cl);
+            Object blocksReg = blockRegistriesClass.getField("BLOCKS").get(null);
+            java.lang.reflect.Method blocksForVersion = blocksReg.getClass().getMethod("forVersion", int.class);
+
+            Class<?> registriesClass = Class.forName("org.geysermc.geyser.registry.Registries", true, cl);
+            Object itemsReg = registriesClass.getField("ITEMS").get(null);
+            Object defsReg = registriesClass.getField("BEDROCK_ITEM_DEFINITIONS").get(null);
+            Object tagsReg = registriesClass.getField("ITEM_TAGS").get(null);
+            java.lang.reflect.Method itemsForVersion = itemsReg.getClass().getMethod("forVersion", int.class);
+            java.lang.reflect.Method defsForVersion = defsReg.getClass().getMethod("forVersion", int.class);
+            java.lang.reflect.Method tagsForVersion = tagsReg.getClass().getMethod("forVersion", int.class);
+
+            for (int proto : expectedProtocols) {
+                Object codec = getBedrockCodec.invoke(null, proto);
+                if (codec == null) {
+                    throw new IllegalStateException("Missing BedrockCodec for protocol v" + proto);
+                }
+                if (blocksForVersion.invoke(blocksReg, proto) == null) {
+                    throw new IllegalStateException("Missing BlockMappings for protocol v" + proto);
+                }
+                if (itemsForVersion.invoke(itemsReg, proto) == null) {
+                    throw new IllegalStateException("Missing ItemMappings for protocol v" + proto);
+                }
+                if (defsForVersion.invoke(defsReg, proto) == null) {
+                    throw new IllegalStateException("Missing BedrockItemDefinitions for protocol v" + proto);
+                }
+                if (tagsForVersion.invoke(tagsReg, proto) == null) {
+                    throw new IllegalStateException("Missing ItemTags for protocol v" + proto);
+                }
+            }
+
+            try (InputStream dhIn = cl.getResourceAsStream("org/geysermc/geyser/session/dialog/DialogHolder.class")) {
+                if (dhIn == null) {
+                    throw new IllegalStateException("DialogHolder.class not found");
+                }
+                String raw = new String(dhIn.readAllBytes(), StandardCharsets.ISO_8859_1);
+                if (raw.contains("gui.waitingForResponse.title")) {
+                    throw new IllegalStateException("DialogHolder still contains gui.waitingForResponse.title!");
+                }
+            }
+
+            return "MULTIVERSION_685_TO_2193_SELFTEST_OK codecs=" + codecs.size() + " versions=1.21.0..26.52 dialogWaitPopup=DISABLED";
+        } catch (Throwable t) {
+            throw new RuntimeException("MULTIVERSION_SELFTEST_FAILED: " + t.getMessage(), t);
+        }
     }
 
     private static String escapeYaml(String value) {

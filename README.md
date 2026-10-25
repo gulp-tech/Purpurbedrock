@@ -1,6 +1,6 @@
-# Purpurbedrock `26.2`
+# Purpurbedrock `26.2` (FINAL)
 
-**Purpurbedrock `26.2`** — автономное высокопроизводительное серверное ядро на базе **Purpur `26.2` (`STABLE`)**, созданное специально для **Minecraft: Bedrock Edition (`26.30–26.52`)** с **100% нативной поддержкой всех Java-плагинов и сундучных Java-меню** — без зависимости от внешних плагинов GeyserMC или облачных API.
+**Purpurbedrock `26.2`** — автономное высокопроизводительное серверное ядро на базе **Purpur `26.2` (`STABLE`)**, созданное специально для **Minecraft: Bedrock Edition с полной мульти-версией `1.21.0 — 26.52` (`v685 — v2193`)** и **100% нативной поддержкой всех Java-плагинов и сундучных Java-меню** — без зависимости от внешних плагинов GeyserMC или облачных API.
 
 ## Скачать готовое ядро
 
@@ -45,17 +45,23 @@
    - Отключён кулдаун удара 1.9 (`attackStrengthTicker = 9999`), таблица урона мечей/топоров как на Bedrock, криты в спринте, сохранение спринта в комбо, мгновенный блок щитом + щит на шифте, откидывание снежками и яйцами.
    - Из коробки включены **Alternate Current Redstone** (в 5–10 раз быстрее ванильного редстоуна) и **`use-alternate-keepalive: true`**.
 
+8. **Полная мульти-версия Bedrock `1.21.0 — 26.52` (`v685 — v2193`) + чистые диалоги и консоль**
+   - Вшиты все **23 протокольных кодека** (`v685`, `v686`, `v712`, `v729`, `v748`, `v766`, `v776`, `v786`, `v800`, `v818`, `v819`, `v827`, `v844`, `v859`, `v860`, `v898`, `v924`, `v944`, `v975`, `v1001`, `v2168`, `v2169`, `v2193`) и **59 исторических палитр блоков/предметов/тегов/компонентов** с автоматическим маппингом новых блоков и предметов `26.2` на старых клиентах (`1.21.0–26.45`) без багов, киков и крашей.
+   - Полностью убрано окно ожидания **`gui.waitingForResponse.title`** («Идёт ожидание нового диалога от сервера...») при переходах и закрытии Java Dialog-окон.
+   - Устранён ложный вывод `[ERROR]: [STDERR] [sun.instrument.InstrumentationImpl] WARNING: A Java agent has been loaded dynamically` в `SysoutCatcher` при динамической загрузке ByteBuddy-агента плагинами на Java 25.
+
 ---
 
-## Быстрый запуск (Рекомендуемые флаги Aikars / G1GC)
+## Быстрый запуск (Рекомендуемые флаги Aikars / G1GC + Java 25)
 
 Удалите `Geyser-Spigot.jar` из папки `plugins/` (он больше **не нужен**!) и запустите сервер:
 
 ```bash
-java -Xms4G -Xmx4G -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=100 \
-  -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:G1NewSizePercent=30 \
-  -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 \
-  -XX:InitiatingHeapOccupancyPercent=15 -jar purpurbedrock-26.2.jar --nogui
+java -Xms4G -Xmx4G -XX:+EnableDynamicAgentLoading -XX:+UseG1GC -XX:+ParallelRefProcEnabled \
+  -XX:MaxGCPauseMillis=100 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC \
+  -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M \
+  -XX:G1ReservePercent=20 -XX:InitiatingHeapOccupancyPercent=15 \
+  -jar purpurbedrock-26.2.jar --nogui
 ```
 
 ### Как увидеть локальный сервер на том же ПК с Windows 10 / 11

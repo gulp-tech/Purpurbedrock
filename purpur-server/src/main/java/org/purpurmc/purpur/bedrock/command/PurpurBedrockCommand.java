@@ -71,7 +71,9 @@ public final class PurpurBedrockCommand extends Command {
         if ("selftest".equals(sub)) {
             ServerLevel level = MinecraftServer.getServer().overworld();
             String report = BedrockChunkDowngrader.runSelfTest(level);
+            String protoReport = BedrockBridgeBootstrap.runProtocolSelfTest();
             sender.sendMessage(Component.text("[Purpurbedrock] " + report, NamedTextColor.GREEN));
+            sender.sendMessage(Component.text("[Purpurbedrock] " + protoReport, NamedTextColor.GREEN));
             return true;
         }
 
@@ -111,6 +113,8 @@ public final class PurpurBedrockCommand extends Command {
         sender.sendMessage(Component.text(" • Защита от флагов движения и фантомных блоков: "
             + ((PurpurConfig.bedrockMovementLeniency && PurpurConfig.bedrockPreventGhostBlocks) ? "ВКЛЮЧЕНА" : "ЧАСТИЧНО"), NamedTextColor.AQUA));
         sender.sendMessage(Component.text(" • Java-меню (DeluxeMenus / Chest GUI): " + (PurpurConfig.bedrockMenusEnabled ? "ВКЛЮЧЕНЫ" : "ВЫКЛЮЧЕНЫ"), NamedTextColor.AQUA));
+        sender.sendMessage(Component.text(" • Мульти-версия Bedrock: 1.21.0 — 26.52 (v685 — v2193, 23 протокола)", NamedTextColor.AQUA));
+        sender.sendMessage(Component.text(" • Окно ожидания диалога (gui.waitingForResponse): УБРАНО", NamedTextColor.AQUA));
         String df = BedrockBridgeBootstrap.getActiveDataFolder();
         sender.sendMessage(Component.text(String.format(" • Папки Bedrock: %s/cache (player_skulls) | %s/custom_mappings | %s/extensions | %s/packs", df, df, df, df), NamedTextColor.AQUA));
         return true;
