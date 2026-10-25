@@ -103,6 +103,8 @@ public final class PurpurBedrockCommand extends Command {
         sender.sendMessage(Component.text(" • Защита от флагов движения и фантомных блоков: "
             + ((PurpurConfig.bedrockMovementLeniency && PurpurConfig.bedrockPreventGhostBlocks) ? "ВКЛЮЧЕНА" : "ЧАСТИЧНО"), NamedTextColor.AQUA));
         sender.sendMessage(Component.text(" • Java-меню (DeluxeMenus / Chest GUI): " + (PurpurConfig.bedrockMenusEnabled ? "ВКЛЮЧЕНЫ" : "ВЫКЛЮЧЕНЫ"), NamedTextColor.AQUA));
+        String df = BedrockBridgeBootstrap.getActiveDataFolder();
+        sender.sendMessage(Component.text(String.format(" • Папки Bedrock: %s/custom_mappings | %s/extensions | %s/packs", df, df, df), NamedTextColor.AQUA));
         return true;
     }
 }

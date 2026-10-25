@@ -33,6 +33,7 @@ public final class BedrockBridgeBootstrap {
     private static volatile int activeLanDiscoveryPort = 7551;
     private static volatile String activeTransport = "both";
     private static volatile String activeAuthMode = "offline";
+    private static volatile String activeDataFolder = "bedrock";
     private static volatile boolean windowsLoopbackWarning = false;
 
     private BedrockBridgeBootstrap() {
@@ -62,6 +63,10 @@ public final class BedrockBridgeBootstrap {
         return activeAuthMode;
     }
 
+    public static String getActiveDataFolder() {
+        return activeDataFolder;
+    }
+
     public static boolean hasWindowsLoopbackWarning() {
         return windowsLoopbackWarning;
     }
@@ -87,11 +92,20 @@ public final class BedrockBridgeBootstrap {
             boolean externalGeyserJarPresent = hasStandaloneGeyserSpigotJar(pluginsDir);
             boolean floodgateReady = detectFloodgateReady(pluginsDir);
 
+            String configuredDataFolder = bedrockCfg.getString("data-folder", "bedrock");
+            if (configuredDataFolder == null || configuredDataFolder.isBlank()) {
+                configuredDataFolder = "bedrock";
+            }
+            activeDataFolder = configuredDataFolder;
+            Path dataDir = Path.of(configuredDataFolder);
+            prepareBedrockDataDirectories(dataDir, pluginsDir, bedrockCfg.getBoolean("auto-import-legacy-geyser", true));
+            System.setProperty("purpurbedrock.dataDir", dataDir.toAbsolutePath().toString());
+
             Path engineDir = Path.of("cache", "purpurbedrock", "engine");
             Files.createDirectories(engineDir);
             System.setProperty("purpurbedrock.engineDir", engineDir.toAbsolutePath().toString());
             System.setProperty("purpurbedrock.offlineAssets",
-                bedrockCfg.getInt("performance.max-visible-custom-skulls", 0) <= 0 ? "true" : "false");
+                bedrockCfg.getBoolean("advanced.download-mojang-assets", false) ? "false" : "true");
 
             boolean lanEnabled = bedrockCfg.getBoolean("lan-discovery.enabled", true);
             int lanPort = bedrockCfg.getInt("lan-discovery.port", 7551);
@@ -277,6 +291,8 @@ public final class BedrockBridgeBootstrap {
             "NetherNet WebRTC и поддержка всех Java-плагинов и меню встроены прямо в ядро."
         ));
         cfg.addDefault("enabled", true);
+        cfg.addDefault("data-folder", "bedrock");
+        cfg.addDefault("auto-import-legacy-geyser", true);
         cfg.addDefault("address", "0.0.0.0");
         cfg.addDefault("port", 19132);
         cfg.addDefault("transport", "both");
@@ -295,12 +311,76 @@ public final class BedrockBridgeBootstrap {
         cfg.addDefault("performance.mtu", 1350);
         cfg.addDefault("performance.compression-level", 4);
         cfg.addDefault("performance.cache-images", 7);
-        cfg.addDefault("performance.max-visible-custom-skulls", 0);
-        cfg.addDefault("packs.force-resource-packs", false);
-        cfg.addDefault("packs.enable-integrated-pack", false);
+        cfg.addDefault("performance.max-visible-custom-skulls", 128);
+        cfg.addDefault("packs.force-resource-packs", true);
+        cfg.addDefault("packs.enable-integrated-pack", true);
+        cfg.addDefault("advanced.download-mojang-assets", false);
+        cfg.addDefault("config-schema", 2);
+        if (file.exists() && cfg.getInt("config-schema", 1) < 2) {
+            cfg.set("packs.force-resource-packs", true);
+            cfg.set("packs.enable-integrated-pack", true);
+            if (cfg.getInt("performance.max-visible-custom-skulls", 0) == 0) {
+                cfg.set("performance.max-visible-custom-skulls", 128);
+            }
+            cfg.set("config-schema", 2);
+        }
         cfg.options().copyDefaults(true);
         cfg.save(file);
         return cfg;
+    }
+
+    private static void prepareBedrockDataDirectories(Path dataDir, File pluginsDir, boolean autoImportLegacy) throws IOException {
+        String[] subdirs = {"custom_mappings", "extensions", "packs"};
+        for (String sub : subdirs) {
+            Files.createDirectories(dataDir.resolve(sub));
+        }
+
+        int importedFiles = 0;
+        if (autoImportLegacy && pluginsDir.isDirectory()) {
+            Path legacyGeyserDir = pluginsDir.toPath().resolve("Geyser-Spigot");
+            if (Files.isDirectory(legacyGeyserDir)) {
+                for (String sub : subdirs) {
+                    Path srcDir = legacyGeyserDir.resolve(sub);
+                    Path dstDir = dataDir.resolve(sub);
+                    if (Files.isDirectory(srcDir)) {
+                        importedFiles += copyMissingRecursively(srcDir, dstDir);
+                    }
+                }
+            }
+        }
+
+        Bukkit.getLogger().info(String.format(
+            "[Purpurbedrock] Рабочие папки готовы: %s/custom_mappings | %s/extensions | %s/packs",
+            dataDir, dataDir, dataDir
+        ));
+        if (importedFiles > 0) {
+            Bukkit.getLogger().info(String.format(
+                "[Purpurbedrock] Авто-импортировано %d файл(ов) из старой папки plugins/Geyser-Spigot в %s/!",
+                importedFiles, dataDir
+            ));
+        }
+    }
+
+    private static int copyMissingRecursively(Path sourceRoot, Path targetRoot) {
+        int copied = 0;
+        try (java.util.stream.Stream<Path> walk = Files.walk(sourceRoot)) {
+            for (Path src : walk.toList()) {
+                Path rel = sourceRoot.relativize(src);
+                Path dst = targetRoot.resolve(rel);
+                if (Files.isDirectory(src)) {
+                    Files.createDirectories(dst);
+                } else if (Files.isRegularFile(src) && !Files.exists(dst)) {
+                    if (dst.getParent() != null) {
+                        Files.createDirectories(dst.getParent());
+                    }
+                    Files.copy(src, dst);
+                    copied++;
+                }
+            }
+        } catch (IOException ex) {
+            Bukkit.getLogger().log(Level.WARNING, "[Purpurbedrock] Не удалось скопировать часть файлов из " + sourceRoot, ex);
+        }
+        return copied;
     }
 
     private static void syncInternalEngineConfig(
@@ -346,9 +426,9 @@ public final class BedrockBridgeBootstrap {
         int mtu = bedrockCfg.getInt("performance.mtu", 1350);
         int compressionLevel = bedrockCfg.getInt("performance.compression-level", 4);
         int cacheImages = bedrockCfg.getInt("performance.cache-images", 7);
-        int maxSkulls = bedrockCfg.getInt("performance.max-visible-custom-skulls", 0);
-        boolean forcePacks = bedrockCfg.getBoolean("packs.force-resource-packs", false);
-        boolean integratedPack = bedrockCfg.getBoolean("packs.enable-integrated-pack", false);
+        int maxSkulls = bedrockCfg.getInt("performance.max-visible-custom-skulls", 128);
+        boolean forcePacks = bedrockCfg.getBoolean("packs.force-resource-packs", true);
+        boolean integratedPack = bedrockCfg.getBoolean("packs.enable-integrated-pack", true);
 
         // Internal engine config-version 10 (verified 1:1 against GeyserConfig 26.2 interface)
         String internalYaml = """

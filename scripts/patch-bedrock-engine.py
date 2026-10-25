@@ -327,6 +327,51 @@ import org.cloudburstmc.netty.channel.nethernet.signaling.NetherNetServerSignali
         "InvalidPacketHandler",
     )
 
+    # 6. Dedicated root folder ('bedrock/') for custom_mappings, extensions, and packs
+    geyser_impl = root / "core/src/main/java/org/geysermc/geyser/GeyserImpl.java"
+    replace_exact(
+        geyser_impl,
+        """    @Override
+    @NonNull
+    public Path configDirectory() {
+        return bootstrap.getConfigFolder();
+    }
+
+    @Override
+    @NonNull
+    public Path packDirectory() {
+        return bootstrap.getConfigFolder().resolve("packs");
+    }""",
+        """    @Override
+    @NonNull
+    public Path configDirectory() {
+        return Path.of(System.getProperty("purpurbedrock.dataDir", "bedrock")).toAbsolutePath();
+    }
+
+    @Override
+    @NonNull
+    public Path packDirectory() {
+        return Path.of(System.getProperty("purpurbedrock.dataDir", "bedrock")).toAbsolutePath().resolve("packs");
+    }""",
+        "GeyserImpl.configAndPackDirectory",
+    )
+
+    ext_loader = root / "core/src/main/java/org/geysermc/geyser/extension/GeyserExtensionLoader.java"
+    replace_exact(
+        ext_loader,
+        """    private final Path extensionsDirectory = GeyserImpl.getInstance().getBootstrap().getConfigFolder().resolve("extensions");""",
+        """    private final Path extensionsDirectory = Path.of(System.getProperty("purpurbedrock.dataDir", "bedrock")).toAbsolutePath().resolve("extensions");""",
+        "GeyserExtensionLoader.extensionsDirectory",
+    )
+
+    mappings_reader = root / "core/src/main/java/org/geysermc/geyser/registry/mappings/MappingsConfigReader.java"
+    replace_exact(
+        mappings_reader,
+        """        Path customMappingsDirectory = GeyserImpl.getInstance().getBootstrap().getConfigFolder().resolve("custom_mappings");""",
+        """        Path customMappingsDirectory = Path.of(System.getProperty("purpurbedrock.dataDir", "bedrock")).toAbsolutePath().resolve("custom_mappings");""",
+        "MappingsConfigReader.customMappingsDirectory",
+    )
+
 
 if __name__ == "__main__":
     main()

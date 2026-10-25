@@ -74,9 +74,14 @@ CheckNetIsolation LoopbackExempt -a -n="Microsoft.MinecraftUWP_8wekyb3d8bbwe"
 
 ## Управление и конфигурация
 
-- **`bedrock.yml`** *(в корне сервера)* — порт (`19132`), `webrtc-port` (`19133`), `lan-discovery` (`true`), `motd1` / `motd2`, `max-players`.
-- **`purpur.yml`** (`settings.bedrock.*` и `world-settings.default.gameplay-mechanics.bedrock-combat.*`) — тонкая настройка гейткипера, Anti-Xray, защиты от флагов, защиты от фантомных блоков, Java-меню и боёвки.
+- **Папка `bedrock/`** *(создаётся автоматически в корне сервера)*:
+  - **`bedrock/custom_mappings/`** — кастомные `.json` маппинги предметов, блоков, стеклянных панелей и голов (`Geyser-panes-mapping.json`, `Geyser-spheres-mapping.json`, `migrated-custom-skulls.json` и др.)
+  - **`bedrock/extensions/`** — расширения Bedrock-движка (`GeyserJavaGlowing`, `VoidAnvilExtension` и др.)
+  - **`bedrock/packs/`** — ресурспаки `.mcpack` и `.zip` (`VoidResourcePack.mcpack`, `VoidSpheres.mcpack`, `GeyserEvent-Pack.mcpack` и др.)
+  - *Если в сборке осталась старая папка `plugins/Geyser-Spigot/`, при первом запуске ядро автоматически скопирует оттуда все недостающие файлы в `bedrock/`.*
+- **`bedrock.yml`** *(в корне сервера)* — порт (`19132`), `webrtc-port` (`19133`), `lan-discovery` (`true`), `data-folder` (`bedrock`), `motd` и `max-players`.
+- **`purpur.yml`** (`settings.bedrock.*` и `world-settings.default.gameplay-mechanics.bedrock-combat.*`) — тонкая настройка гейткипера, Anti-Xray, защиты от флагов, защиты от фантомных блоков, Java-меню, боёвки и авто-адаптации чанков/плагинов `26.3 -> 26.2`.
 - **Команда `/purpurbedrock` (`/pb`)**:
-  - `/pb status` — сводка состояния ядра, TPS, защиты от флагов/фантомных блоков и протокола
+  - `/pb status` — сводка состояния ядра, TPS, папок `bedrock/`, защиты от флагов/фантомных блоков и протокола
   - `/pb menu` — открыть встроенное интерактивное Java-меню диагностического центра (`27` слотов)
   - `/pb antixray` — проверить статус Bedrock Anti-Xray по всем мирам
