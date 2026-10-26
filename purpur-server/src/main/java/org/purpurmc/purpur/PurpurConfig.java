@@ -666,6 +666,8 @@ public class PurpurConfig {
     public static double bedrockMaxChunkSendRate = 28.0D;
     public static int bedrockMaxMobileRenderDistance = 8;
     public static int bedrockMaxClientCommands = 96;
+    public static boolean bedrockCustomSkullsEnabled = true;
+    public static boolean bedrockPromptOptionalPacks = true;
 
     private static void bedrockCoreSettings() {
         bedrockOnlyAllowBedrock = getBoolean("bedrock.only-allow-bedrock", bedrockOnlyAllowBedrock);
@@ -717,6 +719,8 @@ public class PurpurConfig {
         bedrockMaxChunkSendRate = Math.max(10.0D, getDouble("bedrock.chunks.max-chunk-send-rate", bedrockMaxChunkSendRate));
         bedrockMaxMobileRenderDistance = Math.max(5, getInt("bedrock.chunks.max-mobile-render-distance", bedrockMaxMobileRenderDistance));
         bedrockMaxClientCommands = Math.max(32, getInt("bedrock.performance.max-client-commands", bedrockMaxClientCommands));
+        bedrockCustomSkullsEnabled = getBoolean("bedrock.custom-skulls.enabled", bedrockCustomSkullsEnabled);
+        bedrockPromptOptionalPacks = getBoolean("bedrock.custom-skulls.prompt-optional-packs", bedrockPromptOptionalPacks);
     }
     // Purpurbedrock end
 }

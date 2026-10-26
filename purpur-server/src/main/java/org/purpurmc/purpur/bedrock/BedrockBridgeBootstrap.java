@@ -71,6 +71,110 @@ public final class BedrockBridgeBootstrap {
         return windowsLoopbackWarning;
     }
 
+    public static boolean isCustomSkullsEnabled() {
+        return Boolean.parseBoolean(System.getProperty("purpurbedrock.customSkullsEnabled", "true"));
+    }
+
+    public static boolean isPromptOptionalPacksEnabled() {
+        return Boolean.parseBoolean(System.getProperty("purpurbedrock.promptOptionalPacks", "true"));
+    }
+
+    public static void syncRuntimePackSettingsFromPurpurConfig() {
+        boolean bedrockCfgSkulls = true;
+        boolean bedrockCfgPrompt = true;
+        File bedrockConfigFile = new File("bedrock.yml");
+        if (bedrockConfigFile.isFile()) {
+            YamlConfiguration bedrockCfg = YamlConfiguration.loadConfiguration(bedrockConfigFile);
+            bedrockCfgSkulls = bedrockCfg.getBoolean("gameplay.custom-skulls-enabled", true);
+            bedrockCfgPrompt = bedrockCfg.getBoolean("packs.prompt-optional-packs", true);
+        }
+        boolean resolvedSkulls = PurpurConfig.bedrockCustomSkullsEnabled && bedrockCfgSkulls;
+        boolean resolvedPrompt = PurpurConfig.bedrockPromptOptionalPacks && bedrockCfgPrompt && resolvedSkulls;
+        System.setProperty("purpurbedrock.customSkullsEnabled", Boolean.toString(resolvedSkulls));
+        System.setProperty("purpurbedrock.promptOptionalPacks", Boolean.toString(resolvedPrompt));
+        if (!resolvedSkulls) {
+            clearOnlineSkullCaches();
+        }
+    }
+
+    /**
+     * Toggles custom skulls and optional pack download prompts live at runtime and persists to bedrock.yml and purpur.yml
+     * without deleting cached player_skulls/*.png textures or removing custom-skull support from the core.
+     */
+    public static int setCustomSkullsEnabled(boolean enabled) {
+        PurpurConfig.bedrockCustomSkullsEnabled = enabled;
+        PurpurConfig.bedrockPromptOptionalPacks = enabled;
+        System.setProperty("purpurbedrock.customSkullsEnabled", Boolean.toString(enabled));
+        System.setProperty("purpurbedrock.promptOptionalPacks", Boolean.toString(enabled));
+
+        try {
+            File bedrockConfigFile = new File("bedrock.yml");
+            if (bedrockConfigFile.isFile()) {
+                YamlConfiguration bedrockCfg = YamlConfiguration.loadConfiguration(bedrockConfigFile);
+                bedrockCfg.set("gameplay.custom-skulls-enabled", enabled);
+                bedrockCfg.set("packs.prompt-optional-packs", enabled);
+                bedrockCfg.save(bedrockConfigFile);
+            }
+        } catch (IOException ex) {
+            Bukkit.getLogger().log(Level.WARNING, "[Purpurbedrock] Не удалось сохранить bedrock.yml", ex);
+        }
+
+        try {
+            net.minecraft.server.MinecraftServer console = net.minecraft.server.MinecraftServer.getServer();
+            if (console != null && PurpurConfig.config != null) {
+                File purpurFile = (File) console.options.valueOf("purpur-settings");
+                PurpurConfig.config.set("bedrock.custom-skulls.enabled", enabled);
+                PurpurConfig.config.set("bedrock.custom-skulls.prompt-optional-packs", enabled);
+                if (purpurFile != null) {
+                    PurpurConfig.config.save(purpurFile);
+                }
+            }
+        } catch (Throwable ex) {
+            Bukkit.getLogger().log(Level.WARNING, "[Purpurbedrock] Не удалось сохранить purpur.yml", ex);
+        }
+
+        return enabled ? 0 : clearOnlineSkullCaches();
+    }
+
+    private static int clearOnlineSkullCaches() {
+        int cleared = 0;
+        try {
+            Plugin geyserPlugin = Bukkit.getPluginManager().getPlugin("Geyser-Spigot");
+            if (geyserPlugin == null || !geyserPlugin.isEnabled()) {
+                return 0;
+            }
+            ClassLoader cl = geyserPlugin.getClass().getClassLoader();
+            Class<?> geyserImplClass = Class.forName("org.geysermc.geyser.GeyserImpl", true, cl);
+            Object geyser = geyserImplClass.getMethod("getInstance").invoke(null);
+            if (geyser == null) {
+                return 0;
+            }
+            Object sessionMgr = geyserImplClass.getMethod("getSessionManager").invoke(geyser);
+            java.util.Collection<?> sessions = (java.util.Collection<?>) sessionMgr.getClass().getMethod("getAllSessions").invoke(sessionMgr);
+            Class<?> sessionClass = Class.forName("org.geysermc.geyser.session.GeyserSession", true, cl);
+            java.lang.reflect.Method ensureLoop = sessionClass.getMethod("ensureInEventLoop", Runnable.class);
+            java.lang.reflect.Method getSkullCache = sessionClass.getMethod("getSkullCache");
+            for (Object session : sessions) {
+                if (session == null) {
+                    continue;
+                }
+                Runnable clearTask = () -> {
+                    try {
+                        Object skullCache = getSkullCache.invoke(session);
+                        if (skullCache != null) {
+                            skullCache.getClass().getMethod("clear").invoke(skullCache);
+                        }
+                    } catch (Throwable ignored) {
+                    }
+                };
+                ensureLoop.invoke(session, clearTask);
+                cleared++;
+            }
+        } catch (Throwable ignored) {
+        }
+        return cleared;
+    }
+
     public static void initialize(DedicatedServer server) {
         BedrockChunkHelper.applyRuntimeChunkTuning();
         if (!PurpurConfig.bedrockEmbeddedProtocolEnabled) {
@@ -162,6 +266,17 @@ public final class BedrockBridgeBootstrap {
                     "purpurbedrock.maxClientCommands",
                     Integer.toString(PurpurConfig.bedrockMaxClientCommands)
                 );
+            }
+            boolean resolvedCustomSkulls = PurpurConfig.bedrockCustomSkullsEnabled
+                && bedrockCfg.getBoolean("gameplay.custom-skulls-enabled", true);
+            boolean resolvedPromptOptionalPacks = PurpurConfig.bedrockPromptOptionalPacks
+                && bedrockCfg.getBoolean("packs.prompt-optional-packs", true)
+                && resolvedCustomSkulls;
+            if (System.getProperty("purpurbedrock.customSkullsEnabled") == null) {
+                System.setProperty("purpurbedrock.customSkullsEnabled", Boolean.toString(resolvedCustomSkulls));
+            }
+            if (System.getProperty("purpurbedrock.promptOptionalPacks") == null) {
+                System.setProperty("purpurbedrock.promptOptionalPacks", Boolean.toString(resolvedPromptOptionalPacks));
             }
 
             syncInternalEngineConfig(bedrockCfg, server, engineDir, floodgateReady);
@@ -357,6 +472,7 @@ public final class BedrockBridgeBootstrap {
         cfg.addDefault("gameplay.show-cooldown", "false");
         cfg.addDefault("gameplay.disable-bedrock-scaffolding", false);
         cfg.addDefault("gameplay.allow-vibrant-visuals", false);
+        cfg.addDefault("gameplay.custom-skulls-enabled", true);
         cfg.addDefault("performance.mtu", 1200);
         cfg.addDefault("performance.compression-level", 4);
         cfg.addDefault("performance.cache-images", 7);
@@ -365,8 +481,9 @@ public final class BedrockBridgeBootstrap {
         cfg.addDefault("performance.max-cached-custom-skulls", 16);
         cfg.addDefault("packs.force-resource-packs", false);
         cfg.addDefault("packs.enable-integrated-pack", true);
+        cfg.addDefault("packs.prompt-optional-packs", true);
         cfg.addDefault("advanced.download-mojang-assets", false);
-        cfg.addDefault("config-schema", 5);
+        cfg.addDefault("config-schema", 6);
         int existingSchema = cfg.getInt("config-schema", 1);
         if (file.exists() && existingSchema < 2) {
             cfg.set("packs.enable-integrated-pack", true);
@@ -398,6 +515,9 @@ public final class BedrockBridgeBootstrap {
             }
             cfg.set("gameplay.allow-vibrant-visuals", false);
             cfg.set("config-schema", 5);
+        }
+        if (file.exists() && existingSchema < 6) {
+            cfg.set("config-schema", 6);
         }
         cfg.options().copyDefaults(true);
         cfg.save(file);
@@ -517,7 +637,11 @@ public final class BedrockBridgeBootstrap {
         int mtu = bedrockCfg.getInt("performance.mtu", 1200);
         int compressionLevel = bedrockCfg.getInt("performance.compression-level", 4);
         int cacheImages = bedrockCfg.getInt("performance.cache-images", 7);
-        int maxSkulls = bedrockCfg.getInt("performance.max-visible-custom-skulls", 12);
+        boolean customSkullsEnabled = PurpurConfig.bedrockCustomSkullsEnabled
+            && bedrockCfg.getBoolean("gameplay.custom-skulls-enabled", true);
+        int maxSkulls = customSkullsEnabled
+            ? bedrockCfg.getInt("performance.max-visible-custom-skulls", 12)
+            : 0;
         int skullRenderDist = Math.max(8, Math.min(64, bedrockCfg.getInt("performance.custom-skull-render-distance", 12)));
         boolean forcePacks = bedrockCfg.getBoolean("packs.force-resource-packs", false);
         boolean integratedPack = bedrockCfg.getBoolean("packs.enable-integrated-pack", true);
@@ -806,10 +930,26 @@ public final class BedrockBridgeBootstrap {
             if (activeStaticSkullCap < 0 || activeStaticSkullCap > 64) {
                 throw new IllegalStateException("Mobile-unsafe maxCachedCustomSkulls cap: " + activeStaticSkullCap);
             }
+            try (InputStream lcIn = cl.getResourceAsStream("org/geysermc/geyser/translator/protocol/java/level/JavaLevelChunkWithLightTranslator.class")) {
+                if (lcIn == null) {
+                    throw new IllegalStateException("JavaLevelChunkWithLightTranslator.class not found");
+                }
+                String lcRaw = new String(lcIn.readAllBytes(), StandardCharsets.ISO_8859_1);
+                if (!lcRaw.contains("purpurbedrock.customSkullsEnabled") || !lcRaw.contains("sendEmptyChunk")) {
+                    throw new IllegalStateException("JavaLevelChunkWithLightTranslator missing bounds-safe chunk & skull toggle guards!");
+                }
+            }
+            try (InputStream rpIn = cl.getResourceAsStream("org/geysermc/geyser/event/type/SessionLoadResourcePacksEventImpl.class")) {
+                if (rpIn == null || !new String(rpIn.readAllBytes(), StandardCharsets.ISO_8859_1).contains("purpurbedrock.promptOptionalPacks")) {
+                    throw new IllegalStateException("SessionLoadResourcePacksEventImpl missing promptOptionalPacks guard!");
+                }
+            }
 
             return "MULTIVERSION_685_TO_2193_SELFTEST_OK codecs=" + protocols.size()
                 + " versions=1.21.0..26.52 dialogWaitPopup=DISABLED chunkPublisher=RELIABLE ruLocale=OK"
-                + " pre818StartGame=OK attrSingleton=OK waypointFix=OK configDialogSafe=OK particleCap=" + activeParticleCap
+                + " pre818StartGame=OK attrSingleton=OK waypointFix=OK configDialogSafe=OK chunkBoundsSafe=OK"
+                + " skullsToggle=" + (isCustomSkullsEnabled() ? "ON" : "OFF")
+                + " particleCap=" + activeParticleCap
                 + " mobileStaticSkulls=" + activeStaticSkullCap;
         } catch (Throwable t) {
             throw new RuntimeException("MULTIVERSION_SELFTEST_FAILED: " + t.getMessage(), t);

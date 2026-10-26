@@ -225,7 +225,7 @@ jobs:
               if not booted:
                   raise RuntimeError("Timed out waiting for Purpurbedrock 26.2 boot!")
 
-              proc.stdin.write("purpurbedrock status\npurpurbedrock antixray\npurpurbedrock papi\npurpurbedrock selftest\npac status\npac checks\npac selftest\n")
+              proc.stdin.write("purpurbedrock status\npurpurbedrock skulls off\npurpurbedrock skulls status\npurpurbedrock skulls on\npurpurbedrock antixray\npurpurbedrock papi\npurpurbedrock selftest\npac status\npac checks\npac selftest\n")
               proc.stdin.flush()
               time.sleep(3)
 
@@ -334,6 +334,9 @@ jobs:
               "Java-меню (DeluxeMenus / Chest GUI): ВКЛЮЧЕНЫ",
               "Мульти-версия Bedrock: 1.21.0 — 26.52 (v685 — v2193, 23 протокола)",
               "Окно ожидания диалога (gui.waitingForResponse): УБРАНО",
+              "chunkBoundsSafe=OK",
+              "Кастомные головы ВЫКЛЮЧЕНЫ",
+              "Кастомные головы ВКЛЮЧЕНЫ",
           ]
           for req in required_lines:
               assert req in server_log, f"Missing expected log line: {req!r}"

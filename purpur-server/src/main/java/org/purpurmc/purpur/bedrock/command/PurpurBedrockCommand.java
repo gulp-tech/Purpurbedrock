@@ -27,8 +27,8 @@ import java.util.stream.Stream;
 public final class PurpurBedrockCommand extends Command {
     public PurpurBedrockCommand(String name) {
         super(name);
-        this.description = "Purpurbedrock 26.2 — управление ядром Bedrock-only, чанками, PAPI, Anti-Xray, LAN и Java-меню";
-        this.usageMessage = "/purpurbedrock [status | menu | chunks | papi | antixray | reload]";
+        this.description = "Purpurbedrock 26.2 — управление ядром Bedrock-only, чанками, головами, PAPI, Anti-Xray, LAN и Java-меню";
+        this.usageMessage = "/purpurbedrock [status | menu | skulls | chunks | papi | antixray | reload]";
         this.setAliases(List.of("pb", "bedrockcore"));
         this.setPermission("purpurbedrock.admin");
     }
@@ -37,7 +37,13 @@ public final class PurpurBedrockCommand extends Command {
     public List<String> tabComplete(CommandSender sender, String alias, String[] args, Location location) {
         if (args.length == 1) {
             String prefix = args[0].toLowerCase(Locale.ROOT);
-            return Stream.of("status", "menu", "chunks", "papi", "antixray", "reload")
+            return Stream.of("status", "menu", "skulls", "chunks", "papi", "antixray", "reload")
+                .filter(opt -> opt.startsWith(prefix))
+                .toList();
+        }
+        if (args.length == 2 && "skulls".equalsIgnoreCase(args[0])) {
+            String prefix = args[1].toLowerCase(Locale.ROOT);
+            return Stream.of("on", "off", "status")
                 .filter(opt -> opt.startsWith(prefix))
                 .toList();
         }
@@ -75,8 +81,38 @@ public final class PurpurBedrockCommand extends Command {
                 level.purpurConfig.init();
             }
             BedrockChunkHelper.applyRuntimeChunkTuning();
+            BedrockBridgeBootstrap.syncRuntimePackSettingsFromPurpurConfig();
             BedrockPlaceholderHook.initAfterPlugins();
             sender.sendMessage(Component.text("[Purpurbedrock] Конфигурация Purpurbedrock 26.2 успешно перезагружена.", NamedTextColor.GREEN));
+            return true;
+        }
+
+        if ("skulls".equals(sub)) {
+            String action = args.length >= 2 ? args[1].toLowerCase(Locale.ROOT) : "status";
+            if ("off".equals(action) || "false".equals(action) || "disable".equals(action)) {
+                int cleared = BedrockBridgeBootstrap.setCustomSkullsEnabled(false);
+                sender.sendMessage(Component.text(
+                    "[Purpurbedrock] Кастомные головы ВЫКЛЮЧЕНЫ (сохранено в bedrock.yml и purpur.yml; очищено сессий: "
+                        + cleared + "). Игрокам больше НЕ предлагается скачивать текстурпак при входе, а PNG-кэш HeadDatabase сохранён.",
+                    NamedTextColor.YELLOW
+                ));
+                return true;
+            }
+            if ("on".equals(action) || "true".equals(action) || "enable".equals(action)) {
+                BedrockBridgeBootstrap.setCustomSkullsEnabled(true);
+                sender.sendMessage(Component.text(
+                    "[Purpurbedrock] Кастомные головы ВКЛЮЧЕНЫ (сохранено в bedrock.yml и purpur.yml).",
+                    NamedTextColor.GREEN
+                ));
+                return true;
+            }
+            boolean enabled = BedrockBridgeBootstrap.isCustomSkullsEnabled();
+            sender.sendMessage(Component.text(
+                "[Purpurbedrock] Кастомные головы и запрос пака при входе: "
+                    + (enabled ? "ВКЛЮЧЕНЫ" : "ВЫКЛЮЧЕНЫ (ванильные головы без скачивания пака)"),
+                enabled ? NamedTextColor.GREEN : NamedTextColor.YELLOW
+            ));
+            sender.sendMessage(Component.text(" • Переключение на лету: /pb skulls off | /pb skulls on", NamedTextColor.AQUA));
             return true;
         }
 
@@ -169,6 +205,8 @@ public final class PurpurBedrockCommand extends Command {
         sender.sendMessage(Component.text(" • Защита от флагов движения и фантомных блоков: "
             + ((PurpurConfig.bedrockMovementLeniency && PurpurConfig.bedrockPreventGhostBlocks) ? "ВКЛЮЧЕНА" : "ЧАСТИЧНО"), NamedTextColor.AQUA));
         sender.sendMessage(Component.text(" • Java-меню (DeluxeMenus / Chest GUI): " + (PurpurConfig.bedrockMenusEnabled ? "ВКЛЮЧЕНЫ" : "ВЫКЛЮЧЕНЫ"), NamedTextColor.AQUA));
+        sender.sendMessage(Component.text(" • Кастомные головы (HeadDatabase / паки): "
+            + (BedrockBridgeBootstrap.isCustomSkullsEnabled() ? "ВКЛЮЧЕНЫ (/pb skulls off — выключить)" : "ВЫКЛЮЧЕНЫ (без скачивания пака)"), NamedTextColor.AQUA));
         sender.sendMessage(Component.text(" • Мульти-версия Bedrock: 1.21.0 — 26.52 (v685 — v2193, 23 протокола)", NamedTextColor.AQUA));
         sender.sendMessage(Component.text(" • Окно ожидания диалога (gui.waitingForResponse): УБРАНО", NamedTextColor.AQUA));
         String df = BedrockBridgeBootstrap.getActiveDataFolder();

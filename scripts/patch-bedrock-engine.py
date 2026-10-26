@@ -5259,6 +5259,533 @@ import java.util.concurrent.ConcurrentHashMap;""",
         "JavaShowDialogueConfigurationTranslator.safeOpenDialog",
     )
 
+    # =========================================================================
+    # 17. Chunk Translation Bounds-Safety (Fixes ClientboundLevelChunkWithLightPacket
+    #     ArrayIndexOutOfBoundsException #5341/#3863/#3369 & Spawn Join Timeouts)
+    #     + Live Toggleable Custom Skulls & Resource-Pack Prompt Suppression:
+    #     - Self-heals uninitialized/mismatched ChunkCache minY/heightY and decodes
+    #       actual ChunkSection count from packet.getChunkData() so Limbo/Auth/multi-world
+    #       transitions never mismatch javaChunks[] or javaBiomes[] lengths.
+    #     - Bounds-checks BlockEntityInfo Y/section lookups, custom-skull bedrockSectionY
+    #       lookups (fixing subChunkIndex & null FAWE empty-count sections), paletteId
+    #       indices, and BiomeTranslator palette indices so a single out-of-bounds
+    #       schematic block entity never aborts the entire LevelChunkPacket.
+    #     - Adds clean runtime/config toggle (purpurbedrock.customSkullsEnabled &
+    #       purpurbedrock.promptOptionalPacks) that disables custom skulls and suppresses
+    #       the Bedrock resource-pack download prompt without deleting player_skulls/*.png
+    #       or removing custom-skull support from the core.
+    # =========================================================================
+    replace_exact(
+        level_chunk_translator,
+        """        // Ensure that, if the player is using lower world heights, the position is not offset
+        int yOffset = session.getChunkCache().getChunkMinY();
+        int chunkSize = session.getChunkCache().getChunkHeightY();
+
+        DataPalette[] javaChunks = new DataPalette[chunkSize];
+        DataPalette[] javaBiomes = new DataPalette[chunkSize];
+
+        final BlockEntityInfo[] blockEntities = packet.getBlockEntities();
+        final List<NbtMap> bedrockBlockEntities = new ObjectArrayList<>(blockEntities.length);
+
+        BitSet waterloggedPaletteIds = new BitSet();
+        BitSet bedrockOnlyBlockEntityIds = new BitSet();
+
+        BedrockDimension bedrockDimension = session.getBedrockDimension();
+        int maxBedrockSectionY = (bedrockDimension.height() >> 4) - 1;
+
+        int sectionCount;
+        ByteBuf byteBuf = null;
+
+        // calculate the difference between the java dimension minY and the bedrock dimension minY as
+        // the java chunk sections may need to be placed higher up in the bedrock chunk section array
+        int sectionCountDiff = yOffset - (bedrockDimension.minY() >> 4);
+        GeyserChunkSection[] sections = new GeyserChunkSection[chunkSize + sectionCountDiff];
+
+        try {
+            ByteBuf in = Unpooled.wrappedBuffer(packet.getChunkData());
+            for (int sectionY = 0; sectionY < chunkSize; sectionY++) {
+                ChunkSection javaSection = MinecraftTypes.readChunkSection(in, BlockRegistries.BLOCK_STATES.get().size(),
+                    session.getRegistryCache().registry(JavaRegistries.BIOME).size());
+                javaChunks[sectionY] = javaSection.getBlockData();
+                javaBiomes[sectionY] = javaSection.getBiomeData();""",
+        """        if (session.getChunkCache().getChunkHeightY() <= 0 && session.getDimensionType() != null) {
+            ChunkUtils.loadDimension(session);
+        }
+        // Ensure that, if the player is using lower world heights, the position is not offset
+        int yOffset = session.getChunkCache().getChunkMinY();
+        int chunkSize = session.getChunkCache().getChunkHeightY();
+
+        final BlockEntityInfo[] blockEntities = packet.getBlockEntities();
+        final List<NbtMap> bedrockBlockEntities = new ObjectArrayList<>(blockEntities.length);
+
+        BitSet waterloggedPaletteIds = new BitSet();
+        BitSet bedrockOnlyBlockEntityIds = new BitSet();
+
+        BedrockDimension bedrockDimension = session.getBedrockDimension();
+        int maxBedrockSectionY = (bedrockDimension.height() >> 4) - 1;
+
+        int sectionCount;
+        ByteBuf byteBuf = null;
+
+        try {
+            ByteBuf in = Unpooled.wrappedBuffer(packet.getChunkData());
+            int blockStateRegistrySize = BlockRegistries.BLOCK_STATES.get().size();
+            int biomeRegistrySize = session.getRegistryCache().registry(JavaRegistries.BIOME).size();
+            ObjectArrayList<ChunkSection> decodedSections = new ObjectArrayList<>(chunkSize > 0 ? chunkSize : 24);
+            while (in.isReadable() && decodedSections.size() < 64) {
+                int readerBefore = in.readerIndex();
+                try {
+                    decodedSections.add(MinecraftTypes.readChunkSection(in, blockStateRegistrySize, biomeRegistrySize));
+                } catch (RuntimeException ex) {
+                    if (!decodedSections.isEmpty()) {
+                        in.readerIndex(readerBefore);
+                        break;
+                    }
+                    throw ex;
+                }
+                if (in.readerIndex() <= readerBefore) {
+                    break;
+                }
+            }
+
+            if (decodedSections.isEmpty()) {
+                ChunkUtils.sendEmptyChunk(session, packet.getX(), packet.getZ(), false);
+                return;
+            }
+
+            if (decodedSections.size() != chunkSize) {
+                int actualSize = decodedSections.size();
+                if (actualSize == 24 && bedrockDimension.minY() == -64) {
+                    yOffset = -4;
+                } else if (actualSize == 16 && yOffset < 0) {
+                    yOffset = 0;
+                }
+                chunkSize = actualSize;
+            }
+
+            DataPalette[] javaChunks = new DataPalette[chunkSize];
+            DataPalette[] javaBiomes = new DataPalette[chunkSize];
+
+            // calculate the difference between the java dimension minY and the bedrock dimension minY as
+            // the java chunk sections may need to be placed higher up in the bedrock chunk section array
+            int sectionCountDiff = yOffset - (bedrockDimension.minY() >> 4);
+            int maxAllocSections = Math.max(maxBedrockSectionY + 1, Math.max(0, chunkSize + sectionCountDiff));
+            GeyserChunkSection[] sections = new GeyserChunkSection[maxAllocSections];
+
+            for (int sectionY = 0; sectionY < chunkSize; sectionY++) {
+                ChunkSection javaSection = decodedSections.get(sectionY);
+                javaChunks[sectionY] = javaSection.getBlockData();
+                javaBiomes[sectionY] = javaSection.getBiomeData();""",
+        "JavaLevelChunkWithLightTranslator.safeDecodeAndDynamicHeight",
+    )
+    replace_exact(
+        level_chunk_translator,
+        """                if (bedrockSectionY < 0 || maxBedrockSectionY < bedrockSectionY) {
+                    // Ignore this chunk section since it goes outside the bounds accepted by the Bedrock client
+                    continue;
+                }""",
+        """                if (bedrockSectionY < 0 || maxBedrockSectionY < bedrockSectionY || bedrockSectionY >= sections.length) {
+                    // Ignore this chunk section since it goes outside the bounds accepted by the Bedrock client
+                    continue;
+                }""",
+        "JavaLevelChunkWithLightTranslator.guardBedrockSectionY",
+    )
+    replace_exact(
+        level_chunk_translator,
+        """                if (!bedrockOnlyBlockEntityIds.isEmpty()) {
+                    for (int yzx = 0; yzx < BlockStorage.SIZE; yzx++) {
+                        int paletteId = javaData.get(yzx);
+                        if (bedrockOnlyBlockEntityIds.get(paletteId)) {""",
+        """                if (javaPalette.size() <= 0 || javaData == null) {
+                    continue;
+                }
+
+                if (!bedrockOnlyBlockEntityIds.isEmpty()) {
+                    for (int yzx = 0; yzx < BlockStorage.SIZE; yzx++) {
+                        int paletteId = javaData.get(yzx);
+                        if (paletteId >= 0 && bedrockOnlyBlockEntityIds.get(paletteId)) {""",
+        "JavaLevelChunkWithLightTranslator.guardPaletteAndBitSet",
+    )
+    replace_exact(
+        level_chunk_translator,
+        """                // Convert data array from YZX to XZY coordinate order
+                if (waterloggedPaletteIds.isEmpty()) {
+                    // No blocks are waterlogged, simply convert coordinate order
+                    // This could probably be optimized further...
+                    for (int yzx = 0; yzx < BlockStorage.SIZE; yzx++) {
+                        int paletteId = javaData.get(yzx);
+                        int xzy = indexYZXtoXZY(yzx);
+                        bedrockData.set(xzy, paletteId);
+                    }
+
+                    layers = new BlockStorage[]{ layer0 };
+                } else {
+                    // The section contains waterlogged blocks, we need to convert coordinate order AND generate a V1 block storage for
+                    // layer 1 with palette ID 1 indicating water
+                    int[] layer1Data = new int[BlockStorage.SIZE >> 5];
+                    for (int yzx = 0; yzx < BlockStorage.SIZE; yzx++) {
+                        int paletteId = javaData.get(yzx);
+                        int xzy = indexYZXtoXZY(yzx);
+                        bedrockData.set(xzy, paletteId);
+
+                        if (waterloggedPaletteIds.get(paletteId)) {
+                            layer1Data[xzy >> 5] |= 1 << (xzy & 0x1F);
+                        }
+                    }""",
+        """                int maxValidPaletteId = bedrockPalette.size() - 1;
+                // Convert data array from YZX to XZY coordinate order
+                if (waterloggedPaletteIds.isEmpty()) {
+                    // No blocks are waterlogged, simply convert coordinate order
+                    for (int yzx = 0; yzx < BlockStorage.SIZE; yzx++) {
+                        int paletteId = javaData.get(yzx);
+                        if (paletteId < 0 || paletteId > maxValidPaletteId) {
+                            paletteId = 0;
+                        }
+                        int xzy = indexYZXtoXZY(yzx);
+                        bedrockData.set(xzy, paletteId);
+                    }
+
+                    layers = new BlockStorage[]{ layer0 };
+                } else {
+                    // The section contains waterlogged blocks, we need to convert coordinate order AND generate a V1 block storage for
+                    // layer 1 with palette ID 1 indicating water
+                    int[] layer1Data = new int[BlockStorage.SIZE >> 5];
+                    for (int yzx = 0; yzx < BlockStorage.SIZE; yzx++) {
+                        int paletteId = javaData.get(yzx);
+                        if (paletteId < 0 || paletteId > maxValidPaletteId) {
+                            paletteId = 0;
+                        }
+                        int xzy = indexYZXtoXZY(yzx);
+                        bedrockData.set(xzy, paletteId);
+
+                        if (waterloggedPaletteIds.get(paletteId)) {
+                            layer1Data[xzy >> 5] |= 1 << (xzy & 0x1F);
+                        }
+                    }""",
+        "JavaLevelChunkWithLightTranslator.clampPaletteIds",
+    )
+    replace_exact(
+        level_chunk_translator,
+        """                int x = blockEntity.getX(); // Relative to chunk
+                int y = blockEntity.getY();
+                int z = blockEntity.getZ(); // Relative to chunk
+
+                // Get the Java block state ID from block entity position
+                DataPalette section = javaChunks[(y >> 4) - yOffset];
+                BlockState blockState = BlockState.of(section.get(x, y & 0xF, z));
+
+                // Note that, since 1.20.5, tags can be null, but Bedrock still needs a default tag to render the item
+                // Also, some properties - like banner base colors - are part of the tag and is processed here.
+                BlockEntityTranslator blockEntityTranslator = BlockEntityUtils.getBlockEntityTranslator(type);
+
+                // The Java server can send block entity data for blocks that aren't actually those blocks.
+                // A Java client ignores these
+                if (type == blockState.block().blockEntityType()) {
+                    bedrockBlockEntities.add(blockEntityTranslator.getBlockEntityTag(session, type, x + chunkBlockX, y, z + chunkBlockZ, tag, blockState));
+
+                    // Check for custom skulls
+                    if (session.getPreferencesCache().showCustomSkulls() && type == BlockEntityType.SKULL && tag != null && tag.containsKey("profile")) {
+                        BlockDefinition blockDefinition = SkullBlockEntityTranslator.translateSkull(session, tag, Vector3i.from(x + chunkBlockX, y, z + chunkBlockZ), blockState);
+                        if (blockDefinition != null) {
+                            int bedrockSectionY = (y >> 4) - (bedrockDimension.minY() >> 4);
+                            int subChunkIndex = (y >> 4) + (bedrockDimension.minY() >> 4);
+                            if (0 <= bedrockSectionY && bedrockSectionY < maxBedrockSectionY) {
+                                // Custom skull is in a section accepted by Bedrock
+                                GeyserChunkSection bedrockSection = sections[bedrockSectionY];
+                                IntList palette = bedrockSection.getBlockStorageArray()[0].getPalette();
+                                if (palette instanceof IntImmutableList || palette instanceof IntLists.Singleton) {
+                                    // TODO there has to be a better way to expand the palette .-.
+                                    bedrockSection = bedrockSection.copy(subChunkIndex);
+                                    sections[bedrockSectionY] = bedrockSection;
+                                }
+                                bedrockSection.setFullBlock(x, y & 0xF, z, 0, blockDefinition.getRuntimeId());
+                            }
+                        }
+                    }
+                }""",
+        """                int x = blockEntity.getX() & 0xF; // Relative to chunk
+                int y = blockEntity.getY();
+                int z = blockEntity.getZ() & 0xF; // Relative to chunk
+
+                // Bounds-check block entity Y section so schematic/out-of-bounds/cross-world tile entities never throw AIOOBE
+                int javaSectionIdx = (y >> 4) - yOffset;
+                if (javaSectionIdx < 0 || javaSectionIdx >= javaChunks.length) {
+                    continue;
+                }
+                DataPalette section = javaChunks[javaSectionIdx];
+                if (section == null) {
+                    continue;
+                }
+                BlockState blockState = BlockState.of(section.get(x, y & 0xF, z));
+
+                // Note that, since 1.20.5, tags can be null, but Bedrock still needs a default tag to render the item
+                // Also, some properties - like banner base colors - are part of the tag and is processed here.
+                BlockEntityTranslator blockEntityTranslator = BlockEntityUtils.getBlockEntityTranslator(type);
+                if (blockEntityTranslator == null) {
+                    continue;
+                }
+
+                // The Java server can send block entity data for blocks that aren't actually those blocks.
+                // A Java client ignores these
+                if (type == blockState.block().blockEntityType()) {
+                    bedrockBlockEntities.add(blockEntityTranslator.getBlockEntityTag(session, type, x + chunkBlockX, y, z + chunkBlockZ, tag, blockState));
+
+                    // Check for custom skulls (respects runtime/config toggle purpurbedrock.customSkullsEnabled)
+                    if (Boolean.parseBoolean(System.getProperty("purpurbedrock.customSkullsEnabled", "true"))
+                            && session.getPreferencesCache().showCustomSkulls()
+                            && type == BlockEntityType.SKULL && tag != null && tag.containsKey("profile")) {
+                        BlockDefinition blockDefinition = SkullBlockEntityTranslator.translateSkull(session, tag, Vector3i.from(x + chunkBlockX, y, z + chunkBlockZ), blockState);
+                        if (blockDefinition != null) {
+                            int bedrockSectionY = (y >> 4) - (bedrockDimension.minY() >> 4);
+                            int subChunkIndex = (y >> 4);
+                            if (0 <= bedrockSectionY && bedrockSectionY <= maxBedrockSectionY && bedrockSectionY < sections.length) {
+                                // Custom skull is in a section accepted by Bedrock
+                                GeyserChunkSection bedrockSection = sections[bedrockSectionY];
+                                if (bedrockSection == null) {
+                                    bedrockSection = new GeyserChunkSection(session.getBlockMappings().getBedrockAir().getRuntimeId(), subChunkIndex);
+                                    sections[bedrockSectionY] = bedrockSection;
+                                }
+                                IntList palette = bedrockSection.getBlockStorageArray()[0].getPalette();
+                                if (palette instanceof IntImmutableList || palette instanceof IntLists.Singleton) {
+                                    bedrockSection = bedrockSection.copy(subChunkIndex);
+                                    sections[bedrockSectionY] = bedrockSection;
+                                }
+                                bedrockSection.setFullBlock(x, y & 0xF, z, 0, blockDefinition.getRuntimeId());
+                            }
+                        }
+                    }
+                }""",
+        "JavaLevelChunkWithLightTranslator.safeBlockEntityAndSkullBounds",
+    )
+    replace_exact(
+        level_chunk_translator,
+        """            int dimensionOffset = bedrockDimension.minY() >> 4;
+            for (int i = 0; i < biomeCount; i++) {
+                int biomeYOffset = dimensionOffset + i;
+                if (biomeYOffset < yOffset) {
+                    // Ignore this biome section since it goes below the height of the Java world
+                    byteBuf.writeBytes(ChunkUtils.EMPTY_BIOME_DATA);
+                    continue;
+                }
+                if (biomeYOffset >= (chunkSize + yOffset)) {
+                    // This biome section goes above the height of the Java world
+                    // The byte written here is a header that says to carry on the biome data from the previous chunk
+                    byteBuf.writeByte((127 << 1) | 1);
+                    continue;
+                }
+
+                BiomeTranslator.toNewBedrockBiome(session, javaBiomes[i + (dimensionOffset - yOffset)]).writeToNetwork(byteBuf);
+            }""",
+        """            int dimensionOffset = bedrockDimension.minY() >> 4;
+            for (int i = 0; i < biomeCount; i++) {
+                int biomeYOffset = dimensionOffset + i;
+                int javaBiomeIdx = i + (dimensionOffset - yOffset);
+                if (biomeYOffset < yOffset || javaBiomeIdx < 0) {
+                    // Ignore this biome section since it goes below the height of the Java world
+                    byteBuf.writeBytes(ChunkUtils.EMPTY_BIOME_DATA);
+                    continue;
+                }
+                if (biomeYOffset >= (chunkSize + yOffset) || javaBiomeIdx >= javaBiomes.length || javaBiomes[javaBiomeIdx] == null) {
+                    // Subchunk 0 has no previous subchunk to copy from; write full empty biome data if i == 0
+                    if (i == 0) {
+                        byteBuf.writeBytes(ChunkUtils.EMPTY_BIOME_DATA);
+                    } else {
+                        byteBuf.writeByte((127 << 1) | 1);
+                    }
+                    continue;
+                }
+
+                BiomeTranslator.toNewBedrockBiome(session, javaBiomes[javaBiomeIdx]).writeToNetwork(byteBuf);
+            }""",
+        "JavaLevelChunkWithLightTranslator.safeBiomeBounds",
+    )
+
+    biome_translator = root / "core/src/main/java/org/geysermc/geyser/translator/level/BiomeTranslator.java"
+    replace_exact(
+        biome_translator,
+        """                BitStorage bitStorage = biomeData.getStorage();
+                int size = palette.size();""",
+        """                BitStorage bitStorage = biomeData.getStorage();
+                int size = palette.size();
+                if (size <= 0 || bitStorage == null) {
+                    return new BlockStorage(SingletonBitArray.INSTANCE, IntLists.singleton(fallbackBiomeId(session.getDimensionType())));
+                }""",
+        "BiomeTranslator.guardEmptyBiomePalette",
+    )
+    replace_exact(
+        biome_translator,
+        """                    // Each section of biome corresponding to a chunk section contains 4 * 4 * 4 entries
+                    for (int i = 0; i < 64; i++) {
+                        int idx = bitStorage.get(i);""",
+        """                    // Each section of biome corresponding to a chunk section contains 4 * 4 * 4 entries
+                    for (int i = 0; i < 64; i++) {
+                        int idx = bitStorage.get(i);
+                        if (idx < 0 || idx >= size) {
+                            idx = 0;
+                        }""",
+        "BiomeTranslator.clampBiomePaletteIdx",
+    )
+
+    java_respawn_trans = root / "core/src/main/java/org/geysermc/geyser/translator/protocol/java/JavaRespawnTranslator.java"
+    replace_exact(
+        java_respawn_trans,
+        """            ChunkUtils.loadDimension(session);
+        }
+
+        session.sendDownstreamGamePacket(ServerboundPlayerLoadedPacket.INSTANCE);""",
+        """            ChunkUtils.loadDimension(session);
+        } else if (session.getChunkCache().getChunkHeightY() <= 0 && session.getDimensionType() != null) {
+            ChunkUtils.loadDimension(session);
+        }
+
+        session.sendDownstreamGamePacket(ServerboundPlayerLoadedPacket.INSTANCE);""",
+        "JavaRespawnTranslator.ensureDimensionLoadedOnSameWorldRespawn",
+    )
+
+    # Custom skulls & optional resource pack prompt toggle (preserves cached PNGs & core support)
+    replace_exact(
+        skull_populator,
+        """        if (!GeyserImpl.getInstance().config().gameplay().enableCustomContent()) {
+            return;
+        }""",
+        """        if (!GeyserImpl.getInstance().config().gameplay().enableCustomContent()
+                || !Boolean.parseBoolean(System.getProperty("purpurbedrock.customSkullsEnabled", "true"))) {
+            try {
+                Files.createDirectories(GeyserImpl.getInstance().getBootstrap().getConfigFolder().resolve("cache").resolve("player_skulls"));
+            } catch (IOException ignored) {
+            }
+            return;
+        }""",
+        "CustomSkullRegistryPopulator.respectCustomSkullsToggle",
+    )
+    replace_exact(
+        skull_pack_mgr,
+        """        Path packPath = cachePath.resolve("player_skulls.mcpack");
+        File packFile = packPath.toFile();
+        if (BlockRegistries.CUSTOM_SKULLS.get().isEmpty() || !GeyserImpl.getInstance().config().gameplay().enableCustomContent()) {
+            packFile.delete(); // No need to keep resource pack
+            return null;
+        }""",
+        """        Path packPath = cachePath.resolve("player_skulls.mcpack");
+        File packFile = packPath.toFile();
+        if (!Boolean.parseBoolean(System.getProperty("purpurbedrock.customSkullsEnabled", "true"))) {
+            // Preserve cached player_skulls.mcpack and player_skulls/*.png on disk for instant re-enable later,
+            // while returning null so players are never prompted to download the skull pack when disabled.
+            return null;
+        }
+        if (BlockRegistries.CUSTOM_SKULLS.get().isEmpty() || !GeyserImpl.getInstance().config().gameplay().enableCustomContent()) {
+            packFile.delete(); // No need to keep resource pack
+            return null;
+        }""",
+        "SkullResourcePackManager.skipPackWithoutDeletingWhenDisabled",
+    )
+
+    session_load_packs = root / "core/src/main/java/org/geysermc/geyser/event/type/SessionLoadResourcePacksEventImpl.java"
+    replace_exact(
+        session_load_packs,
+        """    public SessionLoadResourcePacksEventImpl(GeyserSession session) {
+        super(session);
+        this.session = session;
+        this.packs = new Object2ObjectLinkedOpenHashMap<>(Registries.RESOURCE_PACKS.get());
+        this.sessionPackOptionOverrides = new Object2ObjectOpenHashMap<>();
+    }""",
+        """    public SessionLoadResourcePacksEventImpl(GeyserSession session) {
+        super(session);
+        this.session = session;
+        this.packs = new Object2ObjectLinkedOpenHashMap<>(Registries.RESOURCE_PACKS.get());
+        this.sessionPackOptionOverrides = new Object2ObjectOpenHashMap<>();
+
+        boolean customSkullsEnabled = Boolean.parseBoolean(System.getProperty("purpurbedrock.customSkullsEnabled", "true"));
+        boolean promptOptionalPacks = Boolean.parseBoolean(System.getProperty("purpurbedrock.promptOptionalPacks", "true"));
+        boolean forcePacks = GeyserImpl.getInstance().config().gameplay().forceResourcePacks();
+        if (!customSkullsEnabled) {
+            this.packs.entrySet().removeIf(entry -> {
+                if (entry.getValue().codec() instanceof org.geysermc.geyser.api.pack.PathPackCodec pathCodec) {
+                    java.nio.file.Path fileName = pathCodec.path().getFileName();
+                    return fileName != null && "player_skulls.mcpack".equalsIgnoreCase(fileName.toString());
+                }
+                return false;
+            });
+        }
+        if (!forcePacks && (!promptOptionalPacks || !customSkullsEnabled)) {
+            this.packs.remove(INTEGRATED_PACK_UUID);
+        }
+    }""",
+        "SessionLoadResourcePacksEventImpl.suppressSkullAndOptionalPackPrompt",
+    )
+
+    skull_be_trans = root / "core/src/main/java/org/geysermc/geyser/translator/level/block/entity/SkullBlockEntityTranslator.java"
+    replace_exact(
+        skull_be_trans,
+        """    public static @Nullable BlockDefinition translateSkull(GeyserSession session, NbtMap javaNbt, Vector3i blockPosition, BlockState blockState) {
+        NbtMap profile = javaNbt.getCompound("profile");""",
+        """    public static @Nullable BlockDefinition translateSkull(GeyserSession session, NbtMap javaNbt, Vector3i blockPosition, BlockState blockState) {
+        if (!Boolean.parseBoolean(System.getProperty("purpurbedrock.customSkullsEnabled", "true"))) {
+            session.getSkullCache().removeSkull(blockPosition);
+            return null;
+        }
+        NbtMap profile = javaNbt.getCompound("profile");""",
+        "SkullBlockEntityTranslator.respectCustomSkullsToggle",
+    )
+
+    replace_exact(
+        skull_cache_cls,
+        """    public Skull putSkull(Vector3i position, UUID uuid, String skinUrl, String skinHash, BlockState blockState) {
+        Skull skull = skulls.computeIfAbsent(position, Skull::new);""",
+        """    public Skull putSkull(Vector3i position, UUID uuid, String skinUrl, String skinHash, BlockState blockState) {
+        if (!Boolean.parseBoolean(System.getProperty("purpurbedrock.customSkullsEnabled", "true"))) {
+            return null;
+        }
+        Skull skull = skulls.computeIfAbsent(position, Skull::new);""",
+        "SkullCache.putSkullRespectToggle",
+    )
+    replace_exact(
+        skull_cache_cls,
+        """    public void updateVisibleSkulls() {
+        if (cullingEnabled) {""",
+        """    public void updateVisibleSkulls() {
+        if (!Boolean.parseBoolean(System.getProperty("purpurbedrock.customSkullsEnabled", "true"))) {
+            if (!skulls.isEmpty()) {
+                clear();
+            }
+            return;
+        }
+        if (cullingEnabled) {""",
+        "SkullCache.updateVisibleSkullsRespectToggle",
+    )
+    replace_exact(
+        skull_cache_cls,
+        """        if (cullingEnabled) {
+            inRangeSkulls.remove(skull);
+            if (hadEntity && inRangeSkulls.size() >= maxVisibleSkulls) {
+                // Reassign entity to the closest skull without an entity
+                assignSkullEntity(inRangeSkulls.get(maxVisibleSkulls - 1));
+            }
+        }""",
+        """        if (cullingEnabled) {
+            inRangeSkulls.remove(skull);
+            if (hadEntity && maxVisibleSkulls > 0 && inRangeSkulls.size() >= maxVisibleSkulls) {
+                // Reassign entity to the closest skull without an entity
+                assignSkullEntity(inRangeSkulls.get(maxVisibleSkulls - 1));
+            }
+        }""",
+        "SkullCache.guardZeroMaxVisibleSkulls",
+    )
+
+    item_translator = root / "core/src/main/java/org/geysermc/geyser/translator/item/ItemTranslator.java"
+    replace_exact(
+        item_translator,
+        """    private static @Nullable CustomSkull getCustomSkull(@Nullable ResolvableProfile profile) {
+        if (profile == null) {
+            return null;
+        }""",
+        """    private static @Nullable CustomSkull getCustomSkull(@Nullable ResolvableProfile profile) {
+        if (profile == null || !Boolean.parseBoolean(System.getProperty("purpurbedrock.customSkullsEnabled", "true"))) {
+            return null;
+        }""",
+        "ItemTranslator.getCustomSkullRespectToggle",
+    )
+
 
 
 if __name__ == "__main__":
