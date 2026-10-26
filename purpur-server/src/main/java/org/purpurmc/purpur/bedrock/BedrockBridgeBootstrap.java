@@ -799,6 +799,9 @@ public final class BedrockBridgeBootstrap {
             cmdTransClass.getDeclaredField("PRIORITY_PLAYER_COMMANDS");
             Class<?> skullCacheClass = Class.forName("org.geysermc.geyser.session.cache.SkullCache", true, cl);
             skullCacheClass.getDeclaredField("DISTANCE_COMPARATOR");
+            Class<?> formCacheClass = Class.forName("org.geysermc.geyser.session.cache.FormCache", true, cl);
+            formCacheClass.getDeclaredField("userBusyRetries");
+            geyserSessionClass.getMethod("prepareForConfigurationForm");
             int activeStaticSkullCap = Integer.getInteger("purpurbedrock.maxCachedCustomSkulls", 16);
             if (activeStaticSkullCap < 0 || activeStaticSkullCap > 64) {
                 throw new IllegalStateException("Mobile-unsafe maxCachedCustomSkulls cap: " + activeStaticSkullCap);
@@ -806,7 +809,7 @@ public final class BedrockBridgeBootstrap {
 
             return "MULTIVERSION_685_TO_2193_SELFTEST_OK codecs=" + protocols.size()
                 + " versions=1.21.0..26.52 dialogWaitPopup=DISABLED chunkPublisher=RELIABLE ruLocale=OK"
-                + " pre818StartGame=OK attrSingleton=OK waypointFix=OK particleCap=" + activeParticleCap
+                + " pre818StartGame=OK attrSingleton=OK waypointFix=OK configDialogSafe=OK particleCap=" + activeParticleCap
                 + " mobileStaticSkulls=" + activeStaticSkullCap;
         } catch (Throwable t) {
             throw new RuntimeException("MULTIVERSION_SELFTEST_FAILED: " + t.getMessage(), t);

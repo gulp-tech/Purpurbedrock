@@ -5062,6 +5062,203 @@ import java.util.concurrent.ConcurrentHashMap;""",
         "BedrockRequestChunkRadiusTranslator.mobileSafeChunkRadius",
     )
 
+    # 16. Configuration-phase Dialog & USER_BUSY Form Resilience Suite:
+    # - FormCache: handle ModalFormCancelReason.USER_BUSY by keeping the form cached and
+    #   retrying 350ms later instead of firing closedOrInvalidResultHandler (which previously
+    #   either cancelled Configuration dialogs -> 30s Bedrock timeout or entered a 0ms reopen loop).
+    # - BedrockSetLocalPlayerAsInitializedTranslator: wait 350ms after SetLocalPlayerAsInitialized
+    #   before pushing queued Configuration/Auth forms so mobile clients finish dismissing the
+    #   "Loading world / Leave" screen without a C++ UI ScreenController crash.
+    # - DialogHolder: rate-limit non-escapable reopenDialog() by 250ms to prevent 0ms packet storms.
+    # - GeyserSession.prepareForConfigurationForm: publish a temporary 4-chunk view + 5x5 empty
+    #   chunks + SERVER_READY respawn at (0, 66, 0) without setting spawned=true or lastChunkPosition
+    #   so Bedrock clients immediately exit the loading screen during CONFIGURATION phase.
+    # - JavaLoginTranslator: flush sendPostStartGamePackets() and reset lastChunkPosition when
+    #   transitioning from prepareForConfigurationForm() (!needsSpawnPacket) into GAME state.
+    # - Dialog / DialogButton / JavaShowDialogueConfigurationTranslator: null-safe labels & titles
+    #   and exception guard so malformed plugin dialog NBT never crashes CONFIGURATION login.
+    form_cache_cls = root / "core/src/main/java/org/geysermc/geyser/session/cache/FormCache.java"
+    replace_exact(
+        form_cache_cls,
+        """    private final Int2ObjectMap<Form> forms = new Int2ObjectOpenHashMap<>();
+    private final GeyserSession session;""",
+        """    private final Int2ObjectMap<Form> forms = new Int2ObjectOpenHashMap<>();
+    private final java.util.concurrent.ConcurrentHashMap<Integer, Integer> userBusyRetries = new java.util.concurrent.ConcurrentHashMap<>();
+    private final GeyserSession session;""",
+        "FormCache.userBusyRetriesField",
+    )
+    replace_exact(
+        form_cache_cls,
+        """    public void handleResponse(ModalFormResponsePacket response) {
+        Form form = forms.remove(response.getFormId());
+        if (form == null) {
+            return;
+        }""",
+        """    public void handleResponse(ModalFormResponsePacket response) {
+        if (response.getCancelReason() != null
+                && response.getCancelReason().isPresent()
+                && response.getCancelReason().get() == org.cloudburstmc.protocol.bedrock.data.ModalFormCancelReason.USER_BUSY) {
+            Form busyForm = forms.get(response.getFormId());
+            if (busyForm != null) {
+                int retries = userBusyRetries.getOrDefault(response.getFormId(), 0);
+                if (retries < 25) {
+                    userBusyRetries.put(response.getFormId(), retries + 1);
+                    final int fid = response.getFormId();
+                    session.scheduleInEventLoop(() -> {
+                        Form current = forms.get(fid);
+                        if (current != null && session.getUpstream().isInitialized() && !session.isClosed()) {
+                            sendForm(fid, current);
+                        }
+                    }, 350, TimeUnit.MILLISECONDS);
+                    return;
+                }
+            }
+        }
+        userBusyRetries.remove(response.getFormId());
+
+        Form form = forms.remove(response.getFormId());
+        if (form == null) {
+            return;
+        }""",
+        "FormCache.handleUserBusyRetry",
+    )
+    replace_exact(
+        form_cache_cls,
+        """    public void closeForms() {
+        if (!this.forms.isEmpty()) {""",
+        """    public void closeForms() {
+        userBusyRetries.clear();
+        if (!this.forms.isEmpty()) {""",
+        "FormCache.clearUserBusyRetriesOnClose",
+    )
+
+    init_trans = root / "core/src/main/java/org/geysermc/geyser/translator/protocol/bedrock/BedrockSetLocalPlayerAsInitializedTranslator.java"
+    replace_exact(
+        init_trans,
+        """                    // What am I to expect - as of Bedrock 1.18
+                    session.getFormCache().resendAllForms();""",
+        """                    // Purpurbedrock: allow mobile clients 350ms to finish dismissing the "Loading world / Leave"
+                    // screen before pushing queued Configuration/Auth ModalFormRequestPackets onto the UI stack
+                    if (session.getFormCache().hasFormOpen()) {
+                        session.scheduleInEventLoop(() -> {
+                            if (!session.isClosed() && session.getFormCache().hasFormOpen()) {
+                                session.getFormCache().resendAllForms();
+                            }
+                        }, 350, java.util.concurrent.TimeUnit.MILLISECONDS);
+                    }""",
+        "BedrockSetLocalPlayerAsInitializedTranslator.delayedPostLoadFormSend",
+    )
+
+    replace_exact(
+        dialog_holder,
+        """        // If player should not have been able to close the dialog, reopen it with the last inputs
+        reopenDialog();""",
+        """        // Purpurbedrock: debounce non-escapable reopen by 250ms to prevent 0ms ModalFormRequest storms on mobile
+        session.scheduleInEventLoop(this::reopenDialog, 250, java.util.concurrent.TimeUnit.MILLISECONDS);""",
+        "DialogHolder.debounceNonEscapableReopen",
+    )
+
+    replace_exact(
+        geyser_session,
+        """    public void prepareForConfigurationForm() {
+        if (!sentSpawnPacket) {
+            connect();
+        }
+        // Disable time progression whilst the form is open
+        // Once logged into the game this is set correctly when receiving a time packet from the server
+        resetTimeParameters();
+    }""",
+        """    public void prepareForConfigurationForm() {
+        if (!sentSpawnPacket) {
+            connect();
+            upstream.sendPostStartGamePackets();
+
+            org.cloudburstmc.protocol.bedrock.packet.ChunkRadiusUpdatedPacket configRadiusPacket =
+                new org.cloudburstmc.protocol.bedrock.packet.ChunkRadiusUpdatedPacket();
+            configRadiusPacket.setRadius(4);
+            upstream.sendPacket(configRadiusPacket);
+
+            org.cloudburstmc.math.vector.Vector3i zeroPos = org.cloudburstmc.math.vector.Vector3i.from(0, 64, 0);
+            ChunkUtils.forceUpdateChunkPosition(this, zeroPos);
+            ChunkUtils.sendEmptyChunks(this, zeroPos, 2, false);
+
+            org.cloudburstmc.math.vector.Vector3f holdPos = org.cloudburstmc.math.vector.Vector3f.from(0, 66, 0);
+            org.cloudburstmc.protocol.bedrock.packet.RespawnPacket configRespawnPacket =
+                new org.cloudburstmc.protocol.bedrock.packet.RespawnPacket();
+            configRespawnPacket.setRuntimeEntityId(0);
+            configRespawnPacket.setPosition(holdPos);
+            configRespawnPacket.setState(org.cloudburstmc.protocol.bedrock.packet.RespawnPacket.State.SERVER_READY);
+            upstream.sendPacket(configRespawnPacket);
+
+            org.cloudburstmc.protocol.bedrock.packet.MovePlayerPacket configMovePacket =
+                new org.cloudburstmc.protocol.bedrock.packet.MovePlayerPacket();
+            configMovePacket.setRuntimeEntityId(playerEntity.geyserId());
+            configMovePacket.setPosition(holdPos);
+            configMovePacket.setRotation(org.cloudburstmc.math.vector.Vector3f.ZERO);
+            configMovePacket.setMode(org.cloudburstmc.protocol.bedrock.packet.MovePlayerPacket.Mode.RESPAWN);
+            upstream.sendPacket(configMovePacket);
+        }
+        // Disable time progression whilst the form is open
+        // Once logged into the game this is set correctly when receiving a time packet from the server
+        resetTimeParameters();
+    }""",
+        "GeyserSession.prepareForConfigurationFormExitLoadingScreen",
+    )
+
+    java_login_trans = root / "core/src/main/java/org/geysermc/geyser/translator/protocol/java/JavaLoginTranslator.java"
+    replace_exact(
+        java_login_trans,
+        """        } else {
+            SetPlayerGameTypePacket playerGameTypePacket = new SetPlayerGameTypePacket();
+            playerGameTypePacket.setGamemode(EntityUtils.toBedrockGamemode(spawnInfo.getGameMode()).ordinal());
+            session.sendUpstreamPacket(playerGameTypePacket);
+        }""",
+        """        } else {
+            SetPlayerGameTypePacket playerGameTypePacket = new SetPlayerGameTypePacket();
+            playerGameTypePacket.setGamemode(EntityUtils.toBedrockGamemode(spawnInfo.getGameMode()).ordinal());
+            session.sendUpstreamPacket(playerGameTypePacket);
+            session.getUpstream().sendPostStartGamePackets();
+            session.setLastChunkPosition(null);
+        }""",
+        "JavaLoginTranslator.postConfigDialogCleanup",
+    )
+
+    dialog_cls = root / "core/src/main/java/org/geysermc/geyser/session/dialog/Dialog.java"
+    replace_exact(
+        dialog_cls,
+        """        title = MessageTranslator.convertFromNullableNbtTag(session, map.get("title"));""",
+        """        title = Objects.requireNonNullElse(MessageTranslator.convertFromNullableNbtTag(session, map.get("title")), "");""",
+        "Dialog.nullSafeTitle",
+    )
+
+    dialog_btn_cls = root / "core/src/main/java/org/geysermc/geyser/session/dialog/DialogButton.java"
+    replace_exact(
+        dialog_btn_cls,
+        """        return Optional.of(new DialogButton(MessageTranslator.convertFromNullableNbtTag(session, map.get("label")), DialogAction.read(map.get("action"), idGetter)));""",
+        """        return Optional.of(new DialogButton(java.util.Objects.requireNonNullElse(MessageTranslator.convertFromNullableNbtTag(session, map.get("label")), ""), DialogAction.read(map.get("action"), idGetter)));""",
+        "DialogButton.nullSafeLabel",
+    )
+
+    show_dialog_cfg = root / "core/src/main/java/org/geysermc/geyser/translator/protocol/java/dialogues/JavaShowDialogueConfigurationTranslator.java"
+    replace_exact(
+        show_dialog_cfg,
+        """    @Override
+    public void translate(GeyserSession session, ClientboundShowDialogConfigurationPacket packet) {
+        session.prepareForConfigurationForm();
+        session.getDialogManager().openDialog(Holder.ofCustom(packet.getDialog()));
+    }""",
+        """    @Override
+    public void translate(GeyserSession session, ClientboundShowDialogConfigurationPacket packet) {
+        try {
+            session.prepareForConfigurationForm();
+            session.getDialogManager().openDialog(Holder.ofCustom(packet.getDialog()));
+        } catch (Throwable t) {
+            session.getGeyser().getLogger().warning("Failed to open configuration dialog for " + session.bedrockUsername() + ": " + t.getMessage());
+        }
+    }""",
+        "JavaShowDialogueConfigurationTranslator.safeOpenDialog",
+    )
+
 
 
 if __name__ == "__main__":
