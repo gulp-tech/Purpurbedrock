@@ -639,8 +639,20 @@ public final class BedrockBridgeBootstrap {
             java.lang.reflect.Method getLocaleIfPresent = mcLocaleClass.getMethod("getLocaleStringIfPresent", String.class, String.class);
             String ruSpawn = (String) getLocaleIfPresent.invoke(null, "block.minecraft.spawn.not_valid", "ru_ru");
             String ruJoined = (String) getLocaleIfPresent.invoke(null, "multiplayer.player.joined", "ru_ru");
-            if (ruSpawn == null || ruSpawn.contains("spawn.not_valid") || ruJoined == null || ruJoined.contains("multiplayer.player")) {
-                throw new IllegalStateException("Russian system locales not loaded: spawn=" + ruSpawn + " joined=" + ruJoined);
+            String ruPotion = (String) getLocaleIfPresent.invoke(null, "potion.withDuration", "ru_ru");
+            String ruSpeed = (String) getLocaleIfPresent.invoke(null, "effect.minecraft.speed", "ru_ru");
+            String ruAdvChallenge = (String) getLocaleIfPresent.invoke(null, "chat.type.advancement.challenge", "ru_ru");
+            String ruAdvGoal = (String) getLocaleIfPresent.invoke(null, "chat.type.advancement.goal", "ru_ru");
+            if (ruSpawn == null || ruSpawn.contains("spawn.not_valid")
+                || ruJoined == null || ruJoined.contains("multiplayer.player")
+                || ruPotion == null || !ruPotion.contains("%s")
+                || ruSpeed == null || ruSpeed.contains("effect.minecraft")
+                || ruAdvChallenge == null || ruAdvChallenge.contains("chat.type.advancement")
+                || ruAdvGoal == null || ruAdvGoal.contains("chat.type.advancement")) {
+                throw new IllegalStateException(
+                    "Russian system locales incomplete: potion=" + ruPotion + " speed=" + ruSpeed
+                    + " adv=" + ruAdvChallenge + "/" + ruAdvGoal
+                );
             }
 
             return "MULTIVERSION_685_TO_2193_SELFTEST_OK codecs=" + protocols.size()

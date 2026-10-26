@@ -730,6 +730,17 @@ project(":spigot").projectDir = file("bootstrap/spigot")""",
     asset_utils = root / "core/src/main/java/org/geysermc/geyser/util/AssetUtils.java"
     replace_exact(
         asset_utils,
+        """    public static CompletableFuture<Void> generateAssetCache() {
+        return CompletableFuture.supplyAsync(() -> {""",
+        """    public static CompletableFuture<Void> generateAssetCache() {
+        if (Boolean.parseBoolean(System.getProperty("purpurbedrock.offlineAssets", "true"))) {
+            return CompletableFuture.completedFuture(null);
+        }
+        return CompletableFuture.supplyAsync(() -> {""",
+        "AssetUtils.generateAssetCacheOfflineBypass",
+    )
+    replace_exact(
+        asset_utils,
         """                // Get the url for the latest version of the games manifest
                 String latestInfoURL = "";
                 for (Version version : versionManifest.getVersions()) {
@@ -834,7 +845,9 @@ project(":spigot").projectDir = file("bootstrap/spigot")""",
                 (stream) -> AssetUtils.saveFile(localeFile, stream),
                 () -> loadLocale("en_us")));
     }""",
-        """    public static void ensureEN_US() {
+        """    private static volatile boolean purpurBundledLoaded = false;
+
+    public static void ensureEN_US() {
         installBundledLocales();
         // en_us requires special treatment since it's included in Minecraft's JAR file
         Path localeFile = getPath("en_us");
@@ -843,41 +856,98 @@ project(":spigot").projectDir = file("bootstrap/spigot")""",
                 () -> loadLocale("en_us")));
     }
 
-    private static void installBundledLocales() {
-        if (LOCALE_FOLDER == null) {
+    private static synchronized void installBundledLocales() {
+        if (purpurBundledLoaded && LOCALE_MAPPINGS.containsKey("ru_ru") && LOCALE_MAPPINGS.containsKey("en_us")) {
             return;
         }
-        String[] bundled = new String[]{"deprecated", "en_us", "ru_ru", "uk_ua", "be_by", "kk_kz"};
         ClassLoader cl = MinecraftLocale.class.getClassLoader();
-        for (String code : bundled) {
-            Path target = getPath(code);
-            try {
-                if (!Files.exists(target) || Files.size(target) < 64L) {
-                    InputStream in = cl != null ? cl.getResourceAsStream("purpurbedrock/locales/" + code + ".json") : null;
-                    if (in == null && ("en_us".equals(code) || "deprecated".equals(code))) {
-                        try {
-                            Class<?> bukkitClass = Class.forName("org.bukkit.Bukkit");
-                            if (bukkitClass.getClassLoader() != null) {
-                                in = bukkitClass.getClassLoader().getResourceAsStream("assets/minecraft/lang/" + code + ".json");
-                            }
-                        } catch (Throwable ignored) {
+        // 1. Load deprecated.json directly from bundled JAR stream into REMOVED_KEYS & REPLACED_KEYS
+        try {
+            InputStream depIn = cl != null ? cl.getResourceAsStream("purpurbedrock/locales/deprecated.json") : null;
+            if (depIn == null) {
+                try {
+                    Class<?> bukkitClass = Class.forName("org.bukkit.Bukkit");
+                    if (bukkitClass.getClassLoader() != null) {
+                        depIn = bukkitClass.getClassLoader().getResourceAsStream("assets/minecraft/lang/deprecated.json");
+                    }
+                } catch (Throwable ignored) {
+                }
+            }
+            if (depIn != null) {
+                try (InputStream stream = depIn) {
+                    JsonObject localeObj = JsonUtils.fromJson(stream);
+                    JsonElement removed = localeObj.get("removed");
+                    if (removed != null && removed.isJsonArray()) {
+                        for (JsonElement removedElement : removed.getAsJsonArray()) {
+                            REMOVED_KEYS.add(removedElement.getAsString());
                         }
                     }
-                    if (in != null) {
-                        try (InputStream stream = in) {
-                            AssetUtils.saveFile(target, stream);
+                    JsonElement renamed = localeObj.get("renamed");
+                    if (renamed != null && renamed.isJsonObject()) {
+                        for (Map.Entry<String, JsonElement> renamedElement : renamed.getAsJsonObject().entrySet()) {
+                            REPLACED_KEYS.put(renamedElement.getKey(), renamedElement.getValue().getAsString());
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
+
+        // 2. Load en_us, ru_ru, uk_ua, be_by, kk_kz directly from JAR classpath into LOCALE_MAPPINGS in RAM
+        //    AND repair any missing/truncated (< 150 KB) files on disk from earlier failed Mojang downloads!
+        String[] langs = new String[]{"en_us", "ru_ru", "uk_ua", "be_by", "kk_kz"};
+        for (String code : langs) {
+            try {
+                InputStream in = cl != null ? cl.getResourceAsStream("purpurbedrock/locales/" + code + ".json") : null;
+                if (in == null && "en_us".equals(code)) {
+                    try {
+                        Class<?> bukkitClass = Class.forName("org.bukkit.Bukkit");
+                        if (bukkitClass.getClassLoader() != null) {
+                            in = bukkitClass.getClassLoader().getResourceAsStream("assets/minecraft/lang/en_us.json");
+                        }
+                    } catch (Throwable ignored) {
+                    }
+                }
+                if (in != null) {
+                    byte[] rawBytes;
+                    try (InputStream stream = in) {
+                        rawBytes = stream.readAllBytes();
+                    }
+                    if (LOCALE_FOLDER != null) {
+                        Path target = getPath(code);
+                        if (!Files.exists(target) || Files.size(target) < 150_000L) {
+                            Files.write(target, rawBytes);
+                        }
+                    }
+                    try (InputStream memStream = new java.io.ByteArrayInputStream(rawBytes)) {
+                        JsonObject localeObj = JsonUtils.fromJson(memStream);
+                        Map<String, String> langMap = new HashMap<>(8192);
+                        for (Map.Entry<String, JsonElement> entry : localeObj.entrySet()) {
+                            if (REMOVED_KEYS.contains(entry.getKey())) {
+                                continue;
+                            }
+                            String val = entry.getValue().getAsString();
+                            langMap.put(entry.getKey(), val);
+                            String repl = REPLACED_KEYS.get(entry.getKey());
+                            if (repl != null) {
+                                langMap.put(repl, val);
+                            }
+                        }
+                        if (LOCALE_FOLDER != null) {
+                            Path overridePath = getPath("overrides/" + code);
+                            if (Files.exists(overridePath) && Files.isReadable(overridePath)) {
+                                langMap.putAll(parseLangFile(overridePath, code));
+                            }
+                        }
+                        if (!langMap.isEmpty()) {
+                            LOCALE_MAPPINGS.put(code, langMap);
                         }
                     }
                 }
             } catch (Exception ignored) {
             }
         }
-        loadDeprecations();
-        for (String code : new String[]{"en_us", "ru_ru", "uk_ua", "be_by", "kk_kz"}) {
-            if (Files.exists(getPath(code))) {
-                loadLocale(code);
-            }
-        }
+        purpurBundledLoaded = true;
     }""",
         "MinecraftLocale.installBundledLocales",
     )
@@ -898,8 +968,11 @@ project(":spigot").projectDir = file("bootstrap/spigot")""",
         return null;
     }""",
         """    public static @Nullable String getLocaleStringIfPresent(String messageText, String locale) {
+        if (!purpurBundledLoaded) {
+            installBundledLocales();
+        }
         String normLocale = locale == null ? "ru_ru" : locale.toLowerCase(Locale.ROOT);
-        if (!LOCALE_MAPPINGS.containsKey(normLocale) && Files.exists(getPath(normLocale))) {
+        if (!LOCALE_MAPPINGS.containsKey(normLocale) && LOCALE_FOLDER != null && Files.exists(getPath(normLocale))) {
             loadLocale(normLocale);
         }
         String mappedKey = REPLACED_KEYS.getOrDefault(messageText, messageText);
@@ -936,16 +1009,21 @@ project(":spigot").projectDir = file("bootstrap/spigot")""",
     }
 
     private static @Nullable String lookupLegacySpawnOrSystemKey(String key, String normLocale) {
-        if ("block.minecraft.spawn.not_valid".equals(key)) {
-            if (normLocale.startsWith("ru") || normLocale.startsWith("be") || normLocale.startsWith("kk")) {
-                return "У вас нет кровати или заряженного якоря возрождения, либо доступ к ним затруднён";
-            }
-            if (normLocale.startsWith("uk")) {
-                return "У вас немає ліжка або зарядженого якоря відродження, або доступ до них перешкоджено";
-            }
-            return "You have no home bed or charged respawn anchor, or it was obstructed";
-        }
-        return null;
+        boolean isRu = normLocale.startsWith("ru") || normLocale.startsWith("be") || normLocale.startsWith("kk");
+        boolean isUk = normLocale.startsWith("uk");
+        return switch (key) {
+            case "potion.withDuration" -> "%s (%s)";
+            case "potion.withAmplifier" -> "%s %s";
+            case "effect.duration.infinite" -> "∞";
+            case "chat.type.advancement.task" -> isRu ? "%s получил достижение %s" : (isUk ? "%s здобув досягнення %s" : "%s has made the advancement %s");
+            case "chat.type.advancement.challenge" -> isRu ? "%s выполнил испытание %s" : (isUk ? "%s виконав випробування %s" : "%s has completed the challenge %s");
+            case "chat.type.advancement.goal" -> isRu ? "%s достиг цели %s" : (isUk ? "%s досяг мети %s" : "%s has reached the goal %s");
+            case "block.minecraft.spawn.not_valid" -> isRu
+                ? "У вас нет кровати или заряженного якоря возрождения, либо доступ к ним затруднён"
+                : (isUk ? "У вас немає ліжка або зарядженого якоря відродження, або доступ до них перешкоджено"
+                    : "You have no home bed or charged respawn anchor, or it was obstructed");
+            default -> null;
+        };
     }""",
         "MinecraftLocale.getLocaleStringIfPresent",
     )
