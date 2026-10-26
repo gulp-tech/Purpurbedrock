@@ -110,7 +110,7 @@ public final class BedrockChunkHelper {
 
     private static int sendChunkPublisherSyncPackets(ServerPlayer player) {
         int worldDist = Math.max(6, player.level().getWorld().getViewDistance());
-        int clientDist = player.getClientViewDistance();
+        int clientDist = player.getBukkitEntity().getClientViewDistance();
         int viewDist = clientDist > 0 ? Math.min(worldDist, Math.max(5, clientDist)) : worldDist;
         int chunkX = player.getBlockX() >> 4;
         int chunkZ = player.getBlockZ() >> 4;
