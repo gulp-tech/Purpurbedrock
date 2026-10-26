@@ -62,7 +62,19 @@ jobs:
             python3 "$GITHUB_WORKSPACE/scripts/bundle-bedrock-locales.py" /tmp/geyser-26.2
 
             echo "=== Compiling internal purpurbedrock-protocol.jar ==="
-            gradle -p /tmp/geyser-26.2 :spigot:shadowJar --no-daemon --stacktrace
+            # OpenCollab snapshot repository occasionally times out; preserve the Gradle cache and retry
+            # instead of failing an otherwise deterministic release build on one transient GET.
+            for attempt in 1 2 3; do
+              if gradle -p /tmp/geyser-26.2 :spigot:shadowJar --no-daemon --stacktrace; then
+                break
+              fi
+              if [ "$attempt" -eq 3 ]; then
+                echo "ERROR: Protocol engine build failed after 3 attempts"
+                exit 1
+              fi
+              echo "OpenCollab dependency download failed (attempt $attempt/3); retrying in 20s..."
+              sleep 20
+            done
 
             PROTO_JAR=$(find /tmp/geyser-26.2/bootstrap/spigot/build/libs -maxdepth 1 -name "Geyser-Spigot*.jar" ! -name "*-sources.jar" ! -name "*-javadoc.jar" | head -n 1)
             if [ -z "$PROTO_JAR" ]; then
