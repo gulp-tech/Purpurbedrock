@@ -1,6 +1,9 @@
 package org.purpurmc.purpur.anticheat;
 
 import org.bukkit.Bukkit;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandMap;
+import org.bukkit.command.CommandSender;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
@@ -24,14 +27,15 @@ import org.purpurmc.purpur.anticheat.util.BedrockBridgeInfo;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * PurpurBedrockAC 26.2 — Standalone adaptive anti-cheat plugin tailored specifically
- * for Purpurbedrock 26.2 (Geyser 26.2 + Bedrock 1.21.0 — 26.52 physics, Touch/PC/Controller inputs,
- * 21 calibrated checks, adaptive Sleep -> Wake CPU optimization, AVG holograms, and HolyWorld-style GUIs).
+ * PurpurBedrockAC 26.2.3 — Standalone adaptive anti-cheat plugin tailored specifically
+ * for Purpurbedrock 26.2 (Geyser 26.2 + Bedrock 1.21.0 — 26.52 physics, Touch/PC/Phone-KBM/Controller inputs,
+ * 25 calibrated checks, adaptive Sleep to Wake CPU optimization, instant 20Hz AVG holograms, and HolyWorld-style GUIs).
  */
 public final class PurpurBedrockACPlugin extends JavaPlugin {
     private final ACConfig config = new ACConfig();
@@ -41,6 +45,7 @@ public final class PurpurBedrockACPlugin extends JavaPlugin {
     private CheckRunner checkRunner;
     private AvgHologramManager hologramManager;
     private HolyHistoryMenu historyMenu;
+    private PACCommand pacCommandExecutor;
 
     @Override
     public void onEnable() {
@@ -50,16 +55,14 @@ public final class PurpurBedrockACPlugin extends JavaPlugin {
         this.checkRunner = new CheckRunner(this);
         this.hologramManager = new AvgHologramManager(this);
         this.historyMenu = new HolyHistoryMenu(this);
+        this.pacCommandExecutor = new PACCommand(this);
         BedrockBridgeInfo.bindPlugin(this);
 
         Bukkit.getPluginManager().registerEvents(new ACListener(this), this);
 
-        PluginCommand cmd = getCommand("purpurac");
-        if (cmd != null) {
-            PACCommand executor = new PACCommand(this);
-            cmd.setExecutor(executor);
-            cmd.setTabCompleter(executor);
-        }
+        bindAllCommands();
+        // Re-assert /pac and /purpurac in CommandMap after all other plugins finish enabling
+        Bukkit.getScheduler().runTaskLater(this, this::bindAllCommands, 20L);
 
         for (Player online : Bukkit.getOnlinePlayers()) {
             profile(online);
@@ -70,8 +73,55 @@ public final class PurpurBedrockACPlugin extends JavaPlugin {
         this.adaptiveEngine.start();
         getLogger().info(
             "PurpurBedrockAC 26.2 запущен! Адаптивный спящий режим активен ("
-            + config.countEnabledChecks() + " проверок Geyser/Bedrock, 0 ложных киков, AVG-голограмма, меню HolyWorld)."
+            + config.countEnabledChecks() + " проверок Geyser/Bedrock, 0 ложных киков, мгновенная AVG-голограмма, меню HolyWorld)."
         );
+    }
+
+    private void bindAllCommands() {
+        PluginCommand pacCmd = getCommand("pac");
+        PluginCommand purpurAcCmd = getCommand("purpurac");
+        if (pacCmd != null) {
+            pacCmd.setExecutor(this.pacCommandExecutor);
+            pacCmd.setTabCompleter(this.pacCommandExecutor);
+        }
+        if (purpurAcCmd != null) {
+            purpurAcCmd.setExecutor(this.pacCommandExecutor);
+            purpurAcCmd.setTabCompleter(this.pacCommandExecutor);
+        }
+        try {
+            CommandMap cmdMap = Bukkit.getCommandMap();
+            Map<String, Command> known = cmdMap.getKnownCommands();
+            if (pacCmd != null) {
+                known.put("pac", pacCmd);
+                known.put("purpurbedrockac:pac", pacCmd);
+            }
+            if (purpurAcCmd != null) {
+                known.put("purpurac", purpurAcCmd);
+                known.put("purpurbedrockac:purpurac", purpurAcCmd);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    public boolean ownsCommandInMap(String label) {
+        try {
+            Command found = Bukkit.getCommandMap().getKnownCommands().get(label.toLowerCase(Locale.ROOT));
+            if (found instanceof PluginCommand pc) {
+                return pc.getPlugin() == this;
+            }
+        } catch (Throwable ignored) {
+        }
+        return false;
+    }
+
+    public void executePacCommandDirect(CommandSender sender, String label, String[] args) {
+        PluginCommand cmd = getCommand("pac");
+        if (cmd == null) {
+            cmd = getCommand("purpurac");
+        }
+        if (cmd != null && this.pacCommandExecutor != null) {
+            this.pacCommandExecutor.onCommand(sender, cmd, label, args);
+        }
     }
 
     @Override
@@ -161,13 +211,16 @@ public final class PurpurBedrockACPlugin extends JavaPlugin {
     }
 
     /**
-     * Built-in end-to-end verification of all 21 checks, Grim-style Wi-Fi lag credit Timer bucket,
-     * 18-tick backtracked Ray/AABB Reach & HitBox, HolyWorld Green/Orange/Red GUI + bottom legend,
-     * Live 21-Check Configurator GUI, and zero-orphan hologram state.
+     * Built-in end-to-end verification of all 25 checks, Grim-style Wi-Fi lag credit Timer bucket,
+     * 18-tick backtracked Ray/AABB Reach and HitBox, HolyWorld Green/Orange/Red GUI + bottom legend,
+     * Live 25-Check Configurator GUI, instant 1-tick hologram config, and zero-orphan hologram state.
      */
     public String runSelfTest() {
-        if (ACConfig.ALL_CHECKS.size() != 21 || config.countEnabledChecks() != 21) {
-            throw new IllegalStateException("Expected 21 active Bedrock/Geyser check modules");
+        if (ACConfig.ALL_CHECKS.size() != 25 || config.countEnabledChecks() != 25) {
+            throw new IllegalStateException("Expected 25 active Bedrock/Geyser check modules");
+        }
+        if (config.hologramHeightOffset < 2.65 || config.hologramUpdateTicks != 1) {
+            throw new IllegalStateException("Expected raised instant hologram settings: h=" + config.hologramHeightOffset);
         }
         UUID testId = UUID.randomUUID();
         PlayerProfile demo = new PlayerProfile(testId, "BedrockTester");
@@ -175,7 +228,6 @@ public final class PurpurBedrockACPlugin extends JavaPlugin {
 
         // 1. Verify Grim-style Token Bucket Timer immunity to a 1500ms mobile Wi-Fi freeze + 30-packet flush!
         demo.advanceTimerBucket(t0, config.timerMaxLagCreditMs);
-        // Simulate 1500ms Wi-Fi stall followed by 30 queued packets arriving 1ms apart
         double bal = demo.advanceTimerBucket(t0 + 1500L, config.timerMaxLagCreditMs);
         for (int i = 1; i < 30; i++) {
             bal = demo.advanceTimerBucket(t0 + 1500L + i, config.timerMaxLagCreditMs);
@@ -197,11 +249,11 @@ public final class PurpurBedrockACPlugin extends JavaPlugin {
             throw new IllegalStateException("Backtracked Reach/HitBox ring buffer failed: dist=" + compDist + " ray=" + compRay);
         }
 
-        // 3. Verify HolyWorld 3-color history + bottom instruction legend + Live Checks GUI
+        // 3. Verify HolyWorld 3-color history + bottom instruction legend + Live 25-Checks GUI
         long now = System.currentTimeMillis();
-        demo.pushHistory(new HistoryEntry(now - 3000, SeverityColor.GREEN, "Чистая игра", "CPS=6 Reach=2.70", 0.0, 0.2, 32, 20.0, "📱 Телефон", "Сенсор", "Норма"), config.maxHistoryEntries);
-        demo.pushHistory(new HistoryEntry(now - 2000, SeverityColor.ORANGE, "Reach", "dist=4.35 max=4.15", 4.0, 3.4, 41, 20.0, "📱 Телефон", "Сенсор", "Отмена удара"), config.maxHistoryEntries);
-        demo.pushHistory(new HistoryEntry(now - 1000, SeverityColor.RED, "Fly (Motion/Ascend)", "dy=0.42 acc=0.00 air=16t", 8.0, 7.2, 41, 20.0, "📱 Телефон", "Сенсор", "Сетбэк"), config.maxHistoryEntries);
+        demo.pushHistory(new HistoryEntry(now - 3000, SeverityColor.GREEN, "Чистая игра", "CPS=6 Reach=2.70", 0.0, 0.2, 32, 20.0, "Android", "Сенсор", "Норма"), config.maxHistoryEntries);
+        demo.pushHistory(new HistoryEntry(now - 2000, SeverityColor.ORANGE, "Reach", "dist=4.35 max=4.15", 4.0, 3.4, 41, 20.0, "Android", "Сенсор", "Отмена удара"), config.maxHistoryEntries);
+        demo.pushHistory(new HistoryEntry(now - 1000, SeverityColor.RED, "ElytraFly (Speed)", "xz=2.45 dy=0.000", 8.0, 7.2, 41, 20.0, "Клавиатура + мышь", "Клавиатура + мышь", "Сетбэк"), config.maxHistoryEntries);
 
         engine().nudgeSuspicion(demo, 1.0);
         engine().nudgeSuspicion(demo, 2.0);
@@ -229,13 +281,13 @@ public final class PurpurBedrockACPlugin extends JavaPlugin {
             || legRed == null || legRed.getType() != config.matRed) {
             throw new IllegalStateException("Bottom HolyWorld instruction blocks missing in slots 46..48");
         }
-        if (checksInv.getItem(9) == null || checksInv.getItem(29) == null) {
-            throw new IllegalStateException("Checks configurator GUI missing module icons in slots 9..29");
+        if (checksInv.getItem(9) == null || checksInv.getItem(33) == null) {
+            throw new IllegalStateException("Checks configurator GUI missing module icons in slots 9..33");
         }
         if (hologramManager.getActiveEntityCount() != 0) {
             throw new IllegalStateException("Idle hologram entity count must be 0");
         }
         BedrockBridgeInfo.verifySelfTest();
-        return "PURPURBEDROCK_AC_SELFTEST_OK checks=21/21 wifiLagSafe=true gui=54 legend=GREEN_ORANGE_RED stage=" + demo.stage.name() + " idleHolo=0 devices=6";
+        return "PURPURBEDROCK_AC_SELFTEST_OK checks=25/25 wifiLagSafe=true gui=54 legend=GREEN_ORANGE_RED stage=" + demo.stage.name() + " idleHolo=0 devices=6";
     }
 }

@@ -9,6 +9,7 @@ import org.bukkit.entity.Display;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.TextDisplay;
 import org.bukkit.scheduler.BukkitTask;
+import org.bukkit.util.Vector;
 import org.purpurmc.purpur.anticheat.PurpurBedrockACPlugin;
 import org.purpurmc.purpur.anticheat.config.ACConfig;
 import org.purpurmc.purpur.anticheat.model.PlayerProfile;
@@ -24,27 +25,34 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Zero-lag, zero-hitbox AVG floating hologram above players.
+ * Instant 20Hz + event-synced zero-hitbox AVG floating hologram above players.
  *
  * - Visible ONLY to staff who hold {@code purpurac.hologram} and toggled it ON.
- * - Uses {@code setVisibleByDefault(false)} + {@code setPersistent(false)} before spawn:
- *   regular players never receive spawn packets, PvP hitboxes are 100% untouched on Bedrock,
- *   and when no staff has holograms enabled, ZERO entities and ZERO tasks run!
+ * - Updates position immediately inside {@code PlayerMoveEvent} AND every 1 tick with
+ *   velocity-lead compensation + {@code setTeleportDuration(0)}, eliminating trailing lag on Bedrock!
+ * - When no staff has holograms enabled, {@code hasViewers == false}: ZERO entities and ZERO tasks run!
  */
 public final class AvgHologramManager {
     private final PurpurBedrockACPlugin plugin;
     private final Set<UUID> activeViewers = ConcurrentHashMap.newKeySet();
     private final Map<UUID, TextDisplay> targetDisplays = new HashMap<>();
+    private volatile boolean hasViewers = false;
     private BukkitTask updateTask;
+    private long tickCounter = 0L;
 
     public AvgHologramManager(PurpurBedrockACPlugin plugin) {
         this.plugin = plugin;
+    }
+
+    public boolean hasActiveViewers() {
+        return hasViewers;
     }
 
     public void onPlayerJoin(Player player) {
         ACConfig cfg = plugin.cfg();
         if (cfg.hologramEnabled && cfg.hologramAutoEnableOnJoin && player.hasPermission(cfg.permHologram)) {
             activeViewers.add(player.getUniqueId());
+            hasViewers = true;
             ensureTaskState();
         }
     }
@@ -56,6 +64,42 @@ public final class AvgHologramManager {
         if (activeViewers.isEmpty()) {
             shutdownAllDisplays();
         }
+    }
+
+    /**
+     * Immediate same-tick hologram position sync on PlayerMoveEvent / PlayerTeleportEvent.
+     * Costs 0 ns when no moderator has /pac holo enabled.
+     */
+    public void onTargetMove(Player target, Location from, Location to) {
+        if (!hasViewers || to == null) {
+            return;
+        }
+        TextDisplay display = targetDisplays.get(target.getUniqueId());
+        if (display == null || !display.isValid() || display.getWorld() != to.getWorld()) {
+            return;
+        }
+        ACConfig cfg = plugin.cfg();
+        double lead = cfg.hologramVelocityLead;
+        double leadX = 0.0;
+        double leadY = 0.0;
+        double leadZ = 0.0;
+        if (from != null && from.getWorld() == to.getWorld() && lead > 0.0) {
+            double dx = to.getX() - from.getX();
+            double dy = to.getY() - from.getY();
+            double dz = to.getZ() - from.getZ();
+            if (dx * dx + dz * dz < 4.0) {
+                leadX = Math.clamp(dx * lead, -0.45, 0.45);
+                leadY = Math.clamp(dy * (lead * 0.55), -0.25, 0.30);
+                leadZ = Math.clamp(dz * lead, -0.45, 0.45);
+            }
+        }
+        Location holoLoc = new Location(
+            to.getWorld(),
+            to.getX() + leadX,
+            to.getY() + cfg.hologramHeightOffset + leadY,
+            to.getZ() + leadZ
+        );
+        display.teleport(holoLoc);
     }
 
     public boolean isEnabledFor(Player viewer) {
@@ -74,7 +118,9 @@ public final class AvgHologramManager {
             return false;
         }
         activeViewers.add(id);
+        hasViewers = true;
         ensureTaskState();
+        tickCounter = 0L;
         tickHolograms();
         return true;
     }
@@ -90,11 +136,13 @@ public final class AvgHologramManager {
     public void reload() {
         shutdownAllDisplays();
         if (!activeViewers.isEmpty() && plugin.cfg().hologramEnabled) {
+            hasViewers = true;
             ensureTaskState();
         }
     }
 
     public void shutdownAllDisplays() {
+        hasViewers = false;
         if (updateTask != null) {
             updateTask.cancel();
             updateTask = null;
@@ -128,9 +176,10 @@ public final class AvgHologramManager {
             shutdownAllDisplays();
             return;
         }
+        hasViewers = true;
         if (updateTask == null) {
-            int period = Math.max(4, cfg.hologramUpdateTicks);
-            updateTask = Bukkit.getScheduler().runTaskTimer(plugin, this::tickHolograms, 2L, period);
+            int period = Math.max(1, cfg.hologramUpdateTicks);
+            updateTask = Bukkit.getScheduler().runTaskTimer(plugin, this::tickHolograms, 1L, period);
         }
     }
 
@@ -141,24 +190,26 @@ public final class AvgHologramManager {
             return;
         }
 
-        // Validate online staff viewers who still have permission
-        Iterator<UUID> viewerIt = activeViewers.iterator();
-        while (viewerIt.hasNext()) {
-            UUID vid = viewerIt.next();
-            Player vp = Bukkit.getPlayer(vid);
-            if (vp == null || !vp.isOnline() || !vp.hasPermission(cfg.permHologram)) {
-                viewerIt.remove();
-                if (vp != null) {
-                    hideAllFromViewer(vp);
+        boolean refreshTextAndViewers = (tickCounter++ % 4L) == 0L;
+
+        if (refreshTextAndViewers) {
+            Iterator<UUID> viewerIt = activeViewers.iterator();
+            while (viewerIt.hasNext()) {
+                UUID vid = viewerIt.next();
+                Player vp = Bukkit.getPlayer(vid);
+                if (vp == null || !vp.isOnline() || !vp.hasPermission(cfg.permHologram)) {
+                    viewerIt.remove();
+                    if (vp != null) {
+                        hideAllFromViewer(vp);
+                    }
                 }
             }
-        }
-        if (activeViewers.isEmpty()) {
-            shutdownAllDisplays();
-            return;
+            if (activeViewers.isEmpty()) {
+                shutdownAllDisplays();
+                return;
+            }
         }
 
-        // Clean up displays for targets who went offline or died
         Iterator<Map.Entry<UUID, TextDisplay>> dispIt = targetDisplays.entrySet().iterator();
         while (dispIt.hasNext()) {
             Map.Entry<UUID, TextDisplay> en = dispIt.next();
@@ -173,17 +224,31 @@ public final class AvgHologramManager {
             }
         }
 
-        // Update or spawn displays only for targets near at least one active staff viewer
+        double lead = cfg.hologramVelocityLead;
         for (Player target : Bukkit.getOnlinePlayers()) {
             if (target.isDead()) {
                 continue;
             }
             World world = target.getWorld();
             Location tLoc = target.getLocation();
+
+            TextDisplay display = targetDisplays.get(target.getUniqueId());
+            if (!refreshTextAndViewers && display != null && display.isValid()) {
+                Vector vel = target.getVelocity();
+                Location holoLoc = new Location(
+                    world,
+                    tLoc.getX() + Math.clamp(vel.getX() * lead, -0.45, 0.45),
+                    tLoc.getY() + cfg.hologramHeightOffset,
+                    tLoc.getZ() + Math.clamp(vel.getZ() * lead, -0.45, 0.45)
+                );
+                display.teleport(holoLoc);
+                continue;
+            }
+
             boolean anyViewerNear = false;
             for (UUID vid : activeViewers) {
                 if (vid.equals(target.getUniqueId())) {
-                    continue; // Never float a hologram in front of the moderator's own camera
+                    continue;
                 }
                 Player viewer = Bukkit.getPlayer(vid);
                 if (viewer != null && viewer.getWorld() == world
@@ -198,11 +263,16 @@ public final class AvgHologramManager {
                 continue;
             }
 
-            Location holoLoc = tLoc.clone().add(0.0, cfg.hologramHeightOffset, 0.0);
+            Vector vel = target.getVelocity();
+            Location holoLoc = new Location(
+                world,
+                tLoc.getX() + Math.clamp(vel.getX() * lead, -0.45, 0.45),
+                tLoc.getY() + cfg.hologramHeightOffset,
+                tLoc.getZ() + Math.clamp(vel.getZ() * lead, -0.45, 0.45)
+            );
             PlayerProfile profile = plugin.profile(target);
             Component formattedText = formatHologramText(target, profile, cfg);
 
-            TextDisplay display = targetDisplays.get(target.getUniqueId());
             if (display == null || !display.isValid()) {
                 display = world.spawn(holoLoc, TextDisplay.class, d -> {
                     d.setVisibleByDefault(false);
@@ -211,8 +281,9 @@ public final class AvgHologramManager {
                     d.setShadowed(true);
                     d.setSeeThrough(false);
                     d.setDefaultBackground(false);
-                    d.setBackgroundColor(Color.fromARGB(110, 15, 15, 22));
-                    d.setTeleportDuration(Math.min(4, cfg.hologramUpdateTicks));
+                    d.setBackgroundColor(Color.fromARGB(115, 15, 15, 22));
+                    d.setTeleportDuration(0);
+                    d.setInterpolationDuration(0);
                     d.text(formattedText);
                 });
                 targetDisplays.put(target.getUniqueId(), display);

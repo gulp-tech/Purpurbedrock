@@ -21,7 +21,10 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockDamageEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityResurrectEvent;
+import org.bukkit.event.entity.EntityShootBowEvent;
 import org.bukkit.event.entity.EntityToggleGlideEvent;
+import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryType;
@@ -167,11 +170,23 @@ public final class CheckRunner {
         double dz = to.getZ() - from.getZ();
         double deltaXZ = Math.hypot(dx, dz);
 
+        trackRotationAndSnapBack(player, profile, to.getYaw(), to.getPitch(), cfg);
+
         if (deltaXZ < 1.0E-4 && Math.abs(dy) < 1.0E-4) {
             // Rotation-only packet: skip movement physics completely (0 CPU waste)
             return;
         }
         profile.lastActiveMoveMs = nowMs;
+
+        // ElytraFly / PacketElytra check BEFORE gliding exemption skips ground physics
+        if (player.isGliding() && !player.isRiptiding() && !player.getAllowFlight()
+            && player.getGameMode() != GameMode.CREATIVE && player.getGameMode() != GameMode.SPECTATOR
+            && nowMs >= profile.exemptUntilMs && Bukkit.getTPS()[0] >= cfg.minServerTps) {
+            checkElytraFly(player, profile, event, to, deltaXZ, dy, nowMs, cfg);
+        } else {
+            profile.elytraHoverTicks = 0;
+            profile.elytraAscendTicks = 0;
+        }
 
         if (isMovementExempt(player, profile, nowMs, cfg)) {
             profile.airTicks = 0;
@@ -1034,6 +1049,9 @@ public final class CheckRunner {
                 attackerProfile.decayBuffer("killaura", auraCfg.decay * 0.45);
             }
         }
+        if (!isSweep) {
+            checkCombatAim(attacker, attackerProfile, inputCat, currentYaw, attacker.getLocation().getPitch(), nowMs, event, cfg);
+        }
         attackerProfile.lastAttackTargetUuid = victim.getUniqueId();
         attackerProfile.lastAttackTimeMs = nowMs;
         attackerProfile.lastAttackYaw = currentYaw;
@@ -1405,6 +1423,267 @@ public final class CheckRunner {
         } else {
             profile.decayBuffer("inventory", invCfg.decay * 0.4);
         }
+    }
+
+    /**
+     * Check #22 (Aim / SnapRotations):
+     * 1) Tracks SilentAim snap-back after a high-angle snap attack (>58° in, >45° back within 2 packets).
+     * 2) Tracks robotic horizontal AimLock (rapid yaw tracking with exact 0.0 pitch change on KBM / Phone-KBM).
+     */
+    private void trackRotationAndSnapBack(Player player, PlayerProfile profile, float yaw, float pitch, ACConfig cfg) {
+        if (!profile.hasRotationSample) {
+            profile.lastYaw = yaw;
+            profile.lastPitch = pitch;
+            profile.hasRotationSample = true;
+            return;
+        }
+        float yawDelta = wrapAngleAbs(yaw - profile.lastYaw);
+        if (yawDelta < 1.0E-4f && Math.abs(pitch - profile.lastPitch) < 1.0E-4f) {
+            return;
+        }
+
+        ACConfig.CheckSettings aimCfg = cfg.check("aim");
+        if (aimCfg.enabled && profile.snapAttackPending) {
+            profile.snapMovesSinceAttack++;
+            float backDelta = wrapAngleAbs(yaw - profile.snapAttackYaw);
+            float returnDiff = wrapAngleAbs(yaw - profile.preSnapYaw);
+            if (profile.snapMovesSinceAttack <= 2 && backDelta >= cfg.aimSnapBackMinYawDeg && returnDiff <= 24.0f) {
+                profile.snapAttackPending = false;
+                plugin.engine().nudgeSuspicion(profile, 1.5);
+                if (profile.addBuffer("aim", 1.25) >= aimCfg.buffer) {
+                    plugin.alerts().handleViolation(
+                        player, profile, "aim", "Aim (SilentSnap)",
+                        String.format(Locale.US, "snapBack=%.0f° ret=%.0f°", backDelta, returnDiff),
+                        1.0, "Лог"
+                    );
+                }
+            } else if (profile.snapMovesSinceAttack >= 2) {
+                profile.snapAttackPending = false;
+                profile.decayBuffer("aim", aimCfg.decay * 0.4);
+            }
+        }
+
+        profile.prevMoveYawDelta = yawDelta;
+        profile.lastYaw = yaw;
+        profile.lastPitch = pitch;
+    }
+
+    private void checkCombatAim(
+        Player attacker,
+        PlayerProfile profile,
+        BedrockBridgeInfo.InputCategory inputCat,
+        float currentYaw,
+        float currentPitch,
+        long nowMs,
+        EntityDamageByEntityEvent event,
+        ACConfig cfg
+    ) {
+        ACConfig.CheckSettings aimCfg = cfg.check("aim");
+        if (!aimCfg.enabled || inputCat == BedrockBridgeInfo.InputCategory.TOUCH) {
+            return;
+        }
+
+        if (profile.prevMoveYawDelta >= cfg.aimSnapMinYawDeg) {
+            profile.snapAttackPending = true;
+            profile.snapAttackYaw = currentYaw;
+            profile.preSnapYaw = currentYaw - profile.prevMoveYawDelta;
+            profile.snapMovesSinceAttack = 0;
+        }
+
+        // Robotic horizontal lock on Keyboard+Mouse / Phone-KBM: rapid yaw tracking with exact 0.000 pitch delta
+        if (inputCat == BedrockBridgeInfo.InputCategory.KEYBOARD_MOUSE && nowMs - profile.lastAttackTimeMs < 650L) {
+            float hitYawDiff = wrapAngleAbs(currentYaw - profile.lastAttackYaw);
+            float pitchDiff = Math.abs(currentPitch - profile.lastPitch);
+            if (hitYawDiff > 6.5f && hitYawDiff < 120.0f && pitchDiff < 1.0E-5f && Math.abs(currentPitch) < 88.0f) {
+                profile.zeroPitchAimStreak++;
+                if (profile.zeroPitchAimStreak >= 10) {
+                    profile.zeroPitchAimStreak = 5;
+                    plugin.engine().nudgeSuspicion(profile, 1.3);
+                    if (profile.addBuffer("aim", 1.0) >= aimCfg.buffer) {
+                        if (aimCfg.cancelAction) {
+                            event.setCancelled(true);
+                        }
+                        plugin.alerts().handleViolation(
+                            attacker, profile, "aim", "Aim (AimLock)",
+                            String.format(Locale.US, "yaw=%.1f° dPitch=0.000", hitYawDiff),
+                            1.0, event.isCancelled() ? "Отмена удара" : "Лог"
+                        );
+                    }
+                }
+            } else if (pitchDiff > 0.02f) {
+                profile.zeroPitchAimStreak = Math.max(0, profile.zeroPitchAimStreak - 2);
+                profile.decayBuffer("aim", aimCfg.decay * 0.35);
+            }
+        }
+    }
+
+    /**
+     * Check #23 (AutoTotem): catches inhuman <65ms instant totem swap after pop OR offhand swap from inner slots while sprinting.
+     */
+    public void handleTotemResurrect(Player player, PlayerProfile profile, EntityResurrectEvent event) {
+        if (!event.isCancelled()) {
+            profile.lastTotemPopMs = System.currentTimeMillis();
+        }
+    }
+
+    public void handleOffhandTotemClick(Player player, PlayerProfile profile, InventoryClickEvent event) {
+        ACConfig cfg = plugin.cfg();
+        ACConfig.CheckSettings totemCfg = cfg.check("autototem");
+        if (!totemCfg.enabled || isBypassed(player, cfg) || player.getGameMode() == GameMode.CREATIVE) {
+            return;
+        }
+
+        boolean targetsOffhand = event.getSlot() == 40 || event.getRawSlot() == 45 || event.getClick() == ClickType.SWAP_OFFHAND;
+        ItemStack cursor = event.getCursor();
+        ItemStack current = event.getCurrentItem();
+        boolean involvesTotem = (cursor != null && cursor.getType() == Material.TOTEM_OF_UNDYING)
+            || (current != null && current.getType() == Material.TOTEM_OF_UNDYING);
+        if (!targetsOffhand && !(event.isShiftClick() && involvesTotem)) {
+            return;
+        }
+        if (!involvesTotem && event.getClick() == ClickType.SWAP_OFFHAND) {
+            ItemStack hotbar = event.getHotbarButton() >= 0 ? player.getInventory().getItem(event.getHotbarButton()) : null;
+            involvesTotem = hotbar != null && hotbar.getType() == Material.TOTEM_OF_UNDYING;
+        }
+        if (!involvesTotem) {
+            return;
+        }
+
+        long nowMs = System.currentTimeMillis();
+        long sincePopMs = nowMs - profile.lastTotemPopMs;
+        boolean instantPostPop = profile.lastTotemPopMs > 0L && sincePopMs >= 0L && sincePopMs < cfg.autoTotemMinPopDelayMs;
+        boolean sprintingInnerSwap = event.getSlot() >= 9 && event.getSlot() <= 35
+            && (nowMs - profile.lastActiveMoveMs < 120L) && profile.lastDeltaXZ > 0.23
+            && !profile.hasActiveBoostGrace(nowMs) && (nowMs - profile.lastVelocityMs > 1200L);
+
+        if (instantPostPop || sprintingInnerSwap) {
+            plugin.engine().nudgeSuspicion(profile, 1.5);
+            double weight = instantPostPop ? 1.5 : 1.0;
+            if (profile.addBuffer("autototem", weight) >= totemCfg.buffer) {
+                if (totemCfg.cancelAction) {
+                    event.setCancelled(true);
+                }
+                String detail = instantPostPop
+                    ? String.format(Locale.US, "popSwap=%dms", sincePopMs)
+                    : String.format(Locale.US, "sprintSwap xz=%.2f", profile.lastDeltaXZ);
+                plugin.alerts().handleViolation(
+                    player, profile, "autototem", "AutoTotem",
+                    detail, 1.0, event.isCancelled() ? "Отмена свапа" : "Лог"
+                );
+            }
+        } else {
+            profile.decayBuffer("autototem", totemCfg.decay);
+        }
+    }
+
+    /**
+     * Check #24 (FastBow) & Firework Rocket Boost tracker for Check #25 (ElytraFly).
+     */
+    public void handleRightClickItem(Player player, PlayerProfile profile, ItemStack item) {
+        if (item == null) {
+            return;
+        }
+        Material mat = item.getType();
+        long nowMs = System.currentTimeMillis();
+        if (mat == Material.BOW) {
+            profile.bowDrawStartMs = nowMs;
+        } else if (mat == Material.FIREWORK_ROCKET) {
+            profile.fireworkBoostUntilMs = nowMs + 4800L;
+        } else if (mat == Material.WIND_CHARGE) {
+            profile.explosionGraceUntilMs = Math.max(profile.explosionGraceUntilMs, nowMs + 3200L);
+        }
+    }
+
+    public void handleBowShoot(Player player, PlayerProfile profile, EntityShootBowEvent event) {
+        ACConfig cfg = plugin.cfg();
+        ACConfig.CheckSettings bowCfg = cfg.check("fastbow");
+        if (!bowCfg.enabled || isBypassed(player, cfg) || player.getGameMode() == GameMode.CREATIVE) {
+            return;
+        }
+        ItemStack bow = event.getBow();
+        if (bow == null || bow.getType() != Material.BOW) {
+            return;
+        }
+        float force = event.getForce();
+        long nowMs = System.currentTimeMillis();
+        long drawMs = profile.bowDrawStartMs > 0L ? (nowMs - profile.bowDrawStartMs) : 9999L;
+        profile.bowDrawStartMs = nowMs;
+
+        if (force >= 0.85f && drawMs < cfg.fastBowMinFullDrawMs) {
+            plugin.engine().nudgeSuspicion(profile, 1.4);
+            if (profile.addBuffer("fastbow", 1.25) >= bowCfg.buffer) {
+                if (bowCfg.cancelAction) {
+                    event.setCancelled(true);
+                }
+                plugin.alerts().handleViolation(
+                    player, profile, "fastbow", "FastBow",
+                    String.format(Locale.US, "draw=%dms force=%.2f", drawMs, force),
+                    1.0, event.isCancelled() ? "Отмена выстрела" : "Лог"
+                );
+            }
+        } else {
+            profile.decayBuffer("fastbow", bowCfg.decay);
+        }
+    }
+
+    /**
+     * Check #25 (ElytraFly / PacketElytra): catches unboosted Elytra hovering, continuous upward ascent, and speed hacks.
+     */
+    private void checkElytraFly(
+        Player player,
+        PlayerProfile profile,
+        PlayerMoveEvent event,
+        Location to,
+        double deltaXZ,
+        double dy,
+        long nowMs,
+        ACConfig cfg
+    ) {
+        ACConfig.CheckSettings efCfg = cfg.check("elytrafly");
+        if (!efCfg.enabled) {
+            return;
+        }
+        int ping = BedrockBridgeInfo.getPing(player);
+        if (nowMs < profile.fireworkBoostUntilMs || nowMs < profile.explosionGraceUntilMs
+            || nowMs < profile.slimeOrPistonGraceUntilMs || (nowMs - profile.lastVelocityMs) <= (1500L + ping)
+            || player.hasPotionEffect(PotionEffectType.LEVITATION)) {
+            profile.elytraHoverTicks = 0;
+            profile.elytraAscendTicks = 0;
+            profile.decayBuffer("elytrafly", efCfg.decay * 0.5);
+            return;
+        }
+
+        double maxSpeed = cfg.elytraMaxNoBoostSpeed + (ping > cfg.highPingLeniencyMs ? 0.25 : 0.0);
+        boolean speedHack = deltaXZ > maxSpeed;
+
+        if (Math.abs(dy) < 0.0018 && deltaXZ > 0.26) {
+            profile.elytraHoverTicks++;
+        } else {
+            profile.elytraHoverTicks = Math.max(0, profile.elytraHoverTicks - 2);
+        }
+
+        if (dy > 0.14 && dy >= profile.lastDeltaY - 0.004) {
+            profile.elytraAscendTicks++;
+        } else {
+            profile.elytraAscendTicks = Math.max(0, profile.elytraAscendTicks - 2);
+        }
+
+        if (speedHack || profile.elytraHoverTicks >= cfg.elytraHoverMinTicks || profile.elytraAscendTicks >= 16) {
+            plugin.engine().nudgeSuspicion(profile, 1.4);
+            if (profile.addBuffer("elytrafly", 1.0) >= efCfg.buffer) {
+                String mode = speedHack ? "Speed" : (profile.elytraHoverTicks >= cfg.elytraHoverMinTicks ? "Hover" : "Ascend");
+                String act = applySetback(player, profile, event, efCfg.setback, nowMs, cfg);
+                plugin.alerts().handleViolation(
+                    player, profile, "elytrafly", "ElytraFly (" + mode + ")",
+                    String.format(Locale.US, "xz=%.2f dy=%.3f", deltaXZ, dy),
+                    1.0, act
+                );
+            }
+        } else {
+            profile.decayBuffer("elytrafly", efCfg.decay * 0.4);
+        }
+        profile.lastDeltaXZ = deltaXZ;
+        profile.lastDeltaY = dy;
     }
 
     private static boolean isBedCompletelyEncased(Block bedPart) {

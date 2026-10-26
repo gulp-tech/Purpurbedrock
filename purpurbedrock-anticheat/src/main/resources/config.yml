@@ -1,15 +1,17 @@
 # ==============================================================================
-#  PurpurBedrockAC 26.2 — Адаптивный Античит под Purpurbedrock 26.2 / Geyser 26.2
+#  PurpurBedrockAC 26.2.3 — Адаптивный Античит под Purpurbedrock 26.2 / Geyser 26.2
 # ==============================================================================
 #  Разработан специально под физику Bedrock (1.21.0 — 26.52) и транслятор Geyser:
 #   • НЕ КИКАЕТ ПРОСТО ТАК: по умолчанию софт мгновенно блокируется сетбэками,
 #     отменой ударов и отменой ломания/установки блоков (auto-punish-enabled: false).
 #     При желании авто-кик включается одной кнопкой (/pac autopunish) и защищён
 #     предохранителями пинга и TPS!
-#   • 21 откалиброванная проверка против Horion, Solstice, ProtoHax, ProtoHaxNeo,
+#   • 25 откалиброванных проверок против Horion, Solstice, ProtoHax, ProtoHaxNeo,
 #     MuCuteClient, Lumina, Toolbox, Prax, PacketClient, Zephyr, Apollon и макросов.
 #   • Живая настройка прямо в игре: /pac checks (ЛКМ — модуль, ПКМ — сетбэк/отмена).
 # ==============================================================================
+
+config-version: 3
 
 permissions:
   alerts: "purpurac.alerts"
@@ -62,13 +64,14 @@ alerts:
     - "&e▶ Нажмите, чтобы открыть историю HolyWorld!"
   click-command: "/pac history {player}"
 
-# Компактная голограмма AVG над игроками (право: purpurac.hologram, команда: /pac holo)
+# Компактная быстрая голограмма AVG над игроками (право: purpurac.hologram, команда: /pac holo)
 hologram:
   enabled: true
   auto-enable-on-join: false
-  height-offset: 2.38
-  view-distance-blocks: 28.0
-  update-interval-ticks: 10
+  height-offset: 2.76
+  velocity-lead: 0.45
+  view-distance-blocks: 32.0
+  update-interval-ticks: 1
   format: "&8[&7AVG {avg_color}{avg} &8| &7VL {vl_color}{vl} &8| &7{ping}мс&8]"
   green-max-avg: 2.4
   orange-max-avg: 6.4
@@ -77,7 +80,7 @@ hologram:
 menu:
   overview-title: "&8🛡 PurpurAC • Игроки ({count})"
   history-title: "&8📜 История: &0{player} &8[{avg_color}AVG {avg}&8]"
-  checks-title: "&8⚙ PurpurAC • Настройка 21 проверки"
+  checks-title: "&8⚙ PurpurAC • Настройка 25 проверок"
   max-history-entries: 72
   materials:
     green: "LIME_STAINED_GLASS"
@@ -350,3 +353,49 @@ checks:
     max-vl: 8.0
     punish-commands:
       - "kick {player} &c[PurpurAC] Невалидные пакеты ({details})"
+
+  # 22. Aim / SnapRotations — ловит SilentAim довороты/отвороты и роботизированный AimLock (ПК + КМ с телефона)
+  aim:
+    enabled: true
+    snap-min-yaw-deg: 58.0
+    snap-back-min-yaw-deg: 45.0
+    buffer: 3.5
+    decay: 0.35
+    cancel-action: true
+    max-vl: 16.0
+    punish-commands:
+      - "kick {player} &c[PurpurAC] Обнаружен Aim / SilentAim ({details})"
+
+  # 23. AutoTotem — ловит мгновенный свап тотема (< 65 мс после сбития или на полном бегу)
+  autototem:
+    enabled: true
+    min-pop-delay-ms: 65
+    buffer: 2.5
+    decay: 0.30
+    cancel-action: true
+    max-vl: 14.0
+    punish-commands:
+      - "kick {player} &c[PurpurAC] Обнаружен AutoTotem ({details})"
+
+  # 24. FastBow — блокирует пулемётную стрельбу полным натягом лука быстрее физики ванили (< 620 мс)
+  fastbow:
+    enabled: true
+    min-full-draw-ms: 620
+    buffer: 2.5
+    decay: 0.35
+    cancel-action: true
+    max-vl: 14.0
+    punish-commands:
+      - "kick {player} &c[PurpurAC] Обнаружен FastBow ({details})"
+
+  # 25. ElytraFly / PacketElytra — блокирует зависание, взлёт и чит-скорость на элитрах без фейерверков
+  elytrafly:
+    enabled: true
+    max-noboost-speed: 1.95
+    min-hover-ticks: 12
+    buffer: 3.0
+    decay: 0.35
+    setback: true
+    max-vl: 15.0
+    punish-commands:
+      - "kick {player} &c[PurpurAC] Обнаружен ElytraFly ({details})"

@@ -101,6 +101,24 @@ public final class PlayerProfile {
     public long lastMoveSeqAtAttack = -1L;
     public double lastMeasuredReach = 0.0;
 
+    // Aim / SnapRotations state
+    public float lastYaw = 0.0f;
+    public float lastPitch = 0.0f;
+    public float prevMoveYawDelta = 0.0f;
+    public boolean hasRotationSample = false;
+    public boolean snapAttackPending = false;
+    public float preSnapYaw = 0.0f;
+    public float snapAttackYaw = 0.0f;
+    public int snapMovesSinceAttack = 0;
+    public int zeroPitchAimStreak = 0;
+
+    // AutoTotem & FastBow & ElytraFly state
+    public long lastTotemPopMs = 0L;
+    public long bowDrawStartMs = 0L;
+    public long fireworkBoostUntilMs = 0L;
+    public int elytraHoverTicks = 0;
+    public int elytraAscendTicks = 0;
+
     // Scaffold & Tower state
     public int towerStreak = 0;
     public long lastTowerPlaceMs = 0L;

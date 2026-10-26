@@ -13,7 +13,7 @@ import java.util.Map;
 
 /**
  * Pre-parsed primitive configuration for zero-overhead hot-path reads,
- * plus live in-game check toggle persistence to config.yml.
+ * automatic config migration, and live in-game check toggle persistence to config.yml.
  */
 public final class ACConfig {
 
@@ -22,12 +22,16 @@ public final class ACConfig {
 
     public static final List<CheckMeta> ALL_CHECKS = List.of(
         new CheckMeta("reach", "Reach (Дальность удара)", Material.DIAMOND_SWORD, "3D AABB + откат позиций цели на 18 тиков под пинг", false),
-        new CheckMeta("hitbox", "HitBox (Хитбоксы)", Material.SPECTRAL_ARROW, "Луч прицела на ПК/Геймпаде + конус экрана на Сенсоре", false),
+        new CheckMeta("hitbox", "HitBox (Хитбоксы)", Material.SPECTRAL_ARROW, "Луч прицела на ПК/КМ/Геймпаде + конус экрана на Сенсоре", false),
         new CheckMeta("killaura", "KillAura (Мульти/Стены/360°)", Material.NETHERITE_SWORD, "MultiAura, удар спиной, сквозь плотные стены и с сундуком", false),
+        new CheckMeta("aim", "Aim / SnapRotations (Аимбот)", Material.SPYGLASS, "Ловит резкие SilentAim-довороты и роботизированный AimLock", false),
         new CheckMeta("autoclicker", "AutoClicker / Макросы", Material.CLOCK, "Лимит боевых CPS + анализ разброса интервалов макроса", false),
         new CheckMeta("criticals", "Criticals (Пакетные криты)", Material.IRON_AXE, "Блокирует микро-подскоки Packet/EC Criticals без прыжка", false),
         new CheckMeta("velocity", "Velocity (Anti-Knockback)", Material.PISTON, "Динамическое окно отдачи с учётом пинга, потолка и воды", false),
-        new CheckMeta("fly", "Fly / MotionFly / Glide", Material.ELYTRA, "Закон гравитации (dy - lastDy) без ложных флагов на слизи", true),
+        new CheckMeta("autototem", "AutoTotem (Авто-Тотем)", Material.TOTEM_OF_UNDYING, "Блокирует мгновенный свап тотема < 65 мс и на бегу", false),
+        new CheckMeta("fastbow", "FastBow (Пулемёт из лука)", Material.BOW, "Блокирует мгновенный натяг лука быстрее физики ванили", false),
+        new CheckMeta("fly", "Fly / MotionFly / Glide", Material.FEATHER, "Закон гравитации (dy - lastDy) без ложных флагов на слизи", true),
+        new CheckMeta("elytrafly", "ElytraFly / PacketElytra", Material.ELYTRA, "Ловит чит-полёт и разгон на элитрах без фейерверков", true),
         new CheckMeta("airjump", "AirJump (Прыжки в воздухе)", Material.RABBIT_FOOT, "Ловит прыжки по воздуху без опоры и ветровых зарядов", true),
         new CheckMeta("speed", "Speed / BHop / Strafe", Material.SUGAR, "Физика скорости с учётом льда, зелий, элитр и трезубца", true),
         new CheckMeta("step", "Step (Высокий шаг > 1 бл.)", Material.QUARTZ_STAIRS, "Разрешает авто-шаг Bedrock 0.6, ловит Step 1.1..5.0", true),
@@ -35,7 +39,7 @@ public final class ACConfig {
         new CheckMeta("spider", "Spider (Лазание по стенам)", Material.COBWEB, "Ловит подъём по плоским стенам без лестниц и лиан", true),
         new CheckMeta("jesus", "Jesus (Хождение по воде)", Material.WATER_BUCKET, "Проверка 4 углов хитбокса, лодок, кувшинок и полублоков", true),
         new CheckMeta("noslow", "NoSlow (Бег с едой/луком)", Material.GOLDEN_APPLE, "Сброс при смене слота + игнор авто-щита при приседе", true),
-        new CheckMeta("nofall", "NoFall / ElytraGlitch", Material.FEATHER, "Ловит фейк-полёт элитрами без элитр и GroundSpoof", true),
+        new CheckMeta("nofall", "NoFall / ElytraGlitch", Material.HAY_BLOCK, "Ловит фейк-полёт элитрами без элитр и GroundSpoof", true),
         new CheckMeta("phase", "Phase / NoClip / VClip", Material.ENDER_PEARL, "Блокирует проход сквозь плотные стены, пол и потолок", true),
         new CheckMeta("timer", "Timer / Blink (Токен-бакет)", Material.COMPASS, "Кредит лагов Wi-Fi до 3.5 сек — 0 ложных флагов на телефоне", true),
         new CheckMeta("scaffold", "Scaffold / AirPlace / Tower", Material.SANDSTONE, "Разрешает спид-бридж Bedrock, ловит AirPlace и быстрый Tower", false),
@@ -111,6 +115,7 @@ public final class ACConfig {
     public boolean hologramEnabled;
     public boolean hologramAutoEnableOnJoin;
     public double hologramHeightOffset;
+    public double hologramVelocityLead;
     public double hologramViewDistanceSq;
     public int hologramUpdateTicks;
     public String hologramFormat;
@@ -145,10 +150,16 @@ public final class ACConfig {
     public long multiAuraWindowMs;
     public boolean killauraThroughWalls;
     public boolean killauraOpenInventory;
+    public float aimSnapMinYawDeg;
+    public float aimSnapBackMinYawDeg;
     public int maxCpsPc;
     public int maxCpsTouch;
     public double minClickStdDevMs;
     public double minVelocityRatio;
+    public long autoTotemMinPopDelayMs;
+    public long fastBowMinFullDrawMs;
+    public double elytraMaxNoBoostSpeed;
+    public int elytraHoverMinTicks;
     public int flyMinAirTicks;
     public int airJumpMinAirTicks;
     public double speedMaxHorizontalBase;
@@ -175,6 +186,30 @@ public final class ACConfig {
         plugin.saveDefaultConfig();
         plugin.reloadConfig();
         FileConfiguration c = plugin.getConfig();
+
+        // Auto-migrate older v1/v2 config.yml hologram speed & height once so existing servers get instant 1-tick + 2.76m height
+        int cfgVersion = c.getInt("config-version", 1);
+        boolean migrated = false;
+        if (cfgVersion < 3) {
+            if (c.getDouble("hologram.height-offset", 2.38) <= 2.45) {
+                c.set("hologram.height-offset", 2.76);
+            }
+            if (c.getInt("hologram.update-interval-ticks", 10) > 1) {
+                c.set("hologram.update-interval-ticks", 1);
+            }
+            if (!c.contains("hologram.velocity-lead")) {
+                c.set("hologram.velocity-lead", 0.45);
+            }
+            String oldMenuTitle = c.getString("menu.checks-title", "");
+            if (oldMenuTitle.contains("21 проверки")) {
+                c.set("menu.checks-title", "&8⚙ PurpurAC • Настройка 25 проверок");
+            }
+            c.set("config-version", 3);
+            migrated = true;
+        }
+        if (migrated) {
+            plugin.saveConfig();
+        }
 
         permAlerts = c.getString("permissions.alerts", "purpurac.alerts");
         permHologram = c.getString("permissions.hologram", "purpurac.hologram");
@@ -209,17 +244,18 @@ public final class ACConfig {
 
         hologramEnabled = c.getBoolean("hologram.enabled", true);
         hologramAutoEnableOnJoin = c.getBoolean("hologram.auto-enable-on-join", false);
-        hologramHeightOffset = c.getDouble("hologram.height-offset", 2.38);
-        double viewDist = Math.max(8.0, c.getDouble("hologram.view-distance-blocks", 28.0));
+        hologramHeightOffset = Math.clamp(c.getDouble("hologram.height-offset", 2.76), 1.8, 5.0);
+        hologramVelocityLead = Math.clamp(c.getDouble("hologram.velocity-lead", 0.45), 0.0, 1.2);
+        double viewDist = Math.max(8.0, c.getDouble("hologram.view-distance-blocks", 32.0));
         hologramViewDistanceSq = viewDist * viewDist;
-        hologramUpdateTicks = Math.max(4, c.getInt("hologram.update-interval-ticks", 10));
+        hologramUpdateTicks = Math.max(1, c.getInt("hologram.update-interval-ticks", 1));
         hologramFormat = c.getString("hologram.format", "&8[&7AVG {avg_color}{avg} &8| &7VL {vl_color}{vl} &8| &7{ping}мс&8]");
         hologramGreenMaxAvg = c.getDouble("hologram.green-max-avg", 2.4);
         hologramOrangeMaxAvg = c.getDouble("hologram.orange-max-avg", 6.4);
 
         menuOverviewTitle = c.getString("menu.overview-title", "&8🛡 PurpurAC • Игроки ({count})");
         menuHistoryTitle = c.getString("menu.history-title", "&8📜 История: &0{player} &8[{avg_color}AVG {avg}&8]");
-        menuChecksTitle = c.getString("menu.checks-title", "&8⚙ PurpurAC • Настройка 21 проверки");
+        menuChecksTitle = c.getString("menu.checks-title", "&8⚙ PurpurAC • Настройка 25 проверок");
         maxHistoryEntries = Math.clamp(c.getInt("menu.max-history-entries", 72), 18, 256);
         matGreen = parseMat(c.getString("menu.materials.green"), Material.LIME_STAINED_GLASS);
         matOrange = parseMat(c.getString("menu.materials.orange"), Material.ORANGE_STAINED_GLASS);
@@ -247,11 +283,19 @@ public final class ACConfig {
         killauraThroughWalls = c.getBoolean("checks.killaura.check-through-walls", true);
         killauraOpenInventory = c.getBoolean("checks.killaura.check-open-inventory", true);
 
+        aimSnapMinYawDeg = (float) c.getDouble("checks.aim.snap-min-yaw-deg", 58.0);
+        aimSnapBackMinYawDeg = (float) c.getDouble("checks.aim.snap-back-min-yaw-deg", 45.0);
+
         maxCpsPc = c.getInt("checks.autoclicker.max-cps-pc", 22);
         maxCpsTouch = c.getInt("checks.autoclicker.max-cps-touch", 19);
         minClickStdDevMs = c.getDouble("checks.autoclicker.min-stddev-ms", 2.0);
 
         minVelocityRatio = c.getDouble("checks.velocity.min-vertical-ratio", 0.14);
+        autoTotemMinPopDelayMs = c.getLong("checks.autototem.min-pop-delay-ms", 65L);
+        fastBowMinFullDrawMs = c.getLong("checks.fastbow.min-full-draw-ms", 620L);
+        elytraMaxNoBoostSpeed = c.getDouble("checks.elytrafly.max-noboost-speed", 1.95);
+        elytraHoverMinTicks = c.getInt("checks.elytrafly.min-hover-ticks", 12);
+
         flyMinAirTicks = c.getInt("checks.fly.min-air-ticks", 12);
         airJumpMinAirTicks = c.getInt("checks.airjump.min-air-ticks", 11);
         speedMaxHorizontalBase = c.getDouble("checks.speed.max-horizontal-base", 0.44);
@@ -302,6 +346,13 @@ public final class ACConfig {
                 );
             }
         }
+    }
+
+    public void setHologramHeightOffset(PurpurBedrockACPlugin plugin, double newHeight) {
+        double clamped = Math.clamp(newHeight, 1.8, 5.0);
+        plugin.getConfig().set("hologram.height-offset", clamped);
+        plugin.saveConfig();
+        this.hologramHeightOffset = clamped;
     }
 
     public CheckSettings check(String key) {

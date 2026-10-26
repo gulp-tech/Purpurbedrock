@@ -1,30 +1,33 @@
 name: PurpurBedrockAC
-version: "26.2.2"
+version: "26.2.3"
 main: org.purpurmc.purpur.anticheat.PurpurBedrockACPlugin
 api-version: "26.2"
 folia-supported: false
 authors:
   - Purpurbedrock
-description: "Адаптивный античит и анализатор устройств под Purpurbedrock 26.2 (21 модуль, 6 устройств + КМ с телефона, 0 ложных киков, голограмма AVG, меню HolyWorld)"
+description: "Адаптивный античит и анализатор устройств под Purpurbedrock 26.2 (25 модулей, 6 устройств + КМ с телефона, 0 ложных киков, мгновенная голограмма AVG, меню HolyWorld)"
 
 commands:
+  pac:
+    description: "Главная команда античита PurpurBedrockAC 26.2 (/pac)"
+    aliases: [anticheat, ac]
+    usage: "/pac <alerts|holo|holoheight|menu|checks|toggle|autopunish|history|info|top|devices|perms|status|reset|reload>"
   purpurac:
     description: "Управление античитом PurpurBedrockAC 26.2"
-    aliases: [pac, anticheat, ac]
-    usage: "/pac <alerts|holo|menu|checks|toggle|autopunish|history|info|devices|status|reset|reload>"
+    usage: "/purpurac <alerts|holo|holoheight|menu|checks|toggle|autopunish|history|info|top|devices|perms|status|reset|reload>"
 
 permissions:
   purpurac.alerts:
-    description: "Право на получение и переключение алертов античита (/pac alerts)"
+    description: "Право на получение и переключение алертов античита (/pac alerts, /pac status, /pac top, /pac devices)"
     default: op
   purpurac.hologram:
-    description: "Право на отображение небольшой голограммы AVG над игроками (/pac holo)"
+    description: "Право на отображение быстрой голограммы AVG над игроками (/pac holo)"
     default: op
   purpurac.menu:
-    description: "Право на открытие меню мониторинга и истории игрока HolyWorld (/pac menu, /pac history)"
+    description: "Право на открытие меню мониторинга и истории игрока HolyWorld (/pac menu, /pac history, /pac info)"
     default: op
   purpurac.admin:
-    description: "Полное управление античитом (/pac checks, /pac toggle, /pac autopunish, /pac reset, /pac reload)"
+    description: "Полное управление античитом (/pac checks, /pac toggle, /pac autopunish, /pac holoheight, /pac reset, /pac reload)"
     default: op
     children:
       purpurac.alerts: true

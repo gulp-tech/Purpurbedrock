@@ -1,5 +1,6 @@
 package org.purpurmc.purpur.anticheat.listener;
 
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
@@ -7,6 +8,7 @@ import org.bukkit.entity.Projectile;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockDamageEvent;
 import org.bukkit.event.block.BlockExplodeEvent;
@@ -14,6 +16,8 @@ import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
+import org.bukkit.event.entity.EntityResurrectEvent;
+import org.bukkit.event.entity.EntityShootBowEvent;
 import org.bukkit.event.entity.EntityToggleGlideEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
@@ -21,7 +25,9 @@ import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
+import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
@@ -33,10 +39,15 @@ import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.event.player.PlayerVelocityEvent;
 import org.bukkit.event.vehicle.VehicleExitEvent;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.plugin.Plugin;
 import org.bukkit.util.Vector;
 import org.purpurmc.purpur.anticheat.PurpurBedrockACPlugin;
 import org.purpurmc.purpur.anticheat.gui.ACHolder;
 import org.purpurmc.purpur.anticheat.model.PlayerProfile;
+
+import java.lang.reflect.Method;
+import java.util.Arrays;
+import java.util.Locale;
 
 public final class ACListener implements Listener {
     private final PurpurBedrockACPlugin plugin;
@@ -57,6 +68,71 @@ public final class ACListener implements Listener {
 
         plugin.alerts().onPlayerJoin(player);
         plugin.holograms().onPlayerJoin(player);
+
+        // Ensure Bedrock command tree always knows /pac and /purpurac
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (player.isOnline()) {
+                player.updateCommands();
+            }
+        }, 25L);
+    }
+
+    /**
+     * Fallback dispatcher when a third-party command-whitelist / command-blocker plugin cancels /pac or /purpurac,
+     * while strictly respecting AuthMe authentication state!
+     */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
+    public void onCommandPreprocessFallback(PlayerCommandPreprocessEvent event) {
+        String raw = event.getMessage();
+        if (raw == null || raw.length() < 4 || raw.charAt(0) != '/') {
+            return;
+        }
+        String withoutSlash = raw.substring(1).trim();
+        if (withoutSlash.isEmpty()) {
+            return;
+        }
+        String[] parts = withoutSlash.split("\\s+");
+        String label = parts[0].toLowerCase(Locale.ROOT);
+        boolean isPacCmd = switch (label) {
+            case "pac", "purpurac", "purpurbedrockac:pac", "purpurbedrockac:purpurac" -> true;
+            default -> false;
+        };
+        if (!isPacCmd) {
+            return;
+        }
+
+        // Only step in if another plugin cancelled the event OR replaced our command in CommandMap
+        if (!event.isCancelled() && plugin.ownsCommandInMap(label)) {
+            return;
+        }
+
+        Player player = event.getPlayer();
+        if (!isAuthMeAuthenticated(player)) {
+            return; // Never bypass AuthMe before login!
+        }
+
+        event.setCancelled(true);
+        String[] cmdArgs = parts.length > 1 ? Arrays.copyOfRange(parts, 1, parts.length) : new String[0];
+        plugin.executePacCommandDirect(player, label, cmdArgs);
+    }
+
+    private static boolean isAuthMeAuthenticated(Player player) {
+        try {
+            Plugin authMe = Bukkit.getPluginManager().getPlugin("AuthMe");
+            if (authMe == null || !authMe.isEnabled()) {
+                return true;
+            }
+            ClassLoader cl = authMe.getClass().getClassLoader();
+            Class<?> apiClass = Class.forName("fr.xephi.authme.api.v3.AuthMeApi", true, cl);
+            Object api = apiClass.getMethod("getInstance").invoke(null);
+            if (api == null) {
+                return true;
+            }
+            Method isAuth = apiClass.getMethod("isAuthenticated", Player.class);
+            return Boolean.TRUE.equals(isAuth.invoke(api, player));
+        } catch (Throwable ignored) {
+            return true;
+        }
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -69,7 +145,8 @@ public final class ACListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onTeleport(PlayerTeleportEvent event) {
-        PlayerProfile profile = plugin.profile(event.getPlayer());
+        Player player = event.getPlayer();
+        PlayerProfile profile = plugin.profile(player);
         long now = System.currentTimeMillis();
         profile.lastTeleportMs = now;
         profile.exemptUntilMs = Math.max(profile.exemptUntilMs, now + 1600L);
@@ -77,9 +154,13 @@ public final class ACListener implements Listener {
         profile.hoverTicks = 0;
         profile.wallClimbTicks = 0;
         profile.groundSpoofTicks = 0;
+        profile.elytraHoverTicks = 0;
+        profile.elytraAscendTicks = 0;
+        profile.snapAttackPending = false;
         profile.velocityCheckPending = false;
         profile.resetTimerBucket(now);
         profile.lastSafeLocation = event.getTo().clone();
+        plugin.holograms().onTargetMove(player, event.getFrom(), event.getTo());
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -92,6 +173,9 @@ public final class ACListener implements Listener {
         profile.hoverTicks = 0;
         profile.wallClimbTicks = 0;
         profile.groundSpoofTicks = 0;
+        profile.elytraHoverTicks = 0;
+        profile.elytraAscendTicks = 0;
+        profile.snapAttackPending = false;
         profile.velocityCheckPending = false;
         profile.resetTimerBucket(now);
         profile.lastSafeLocation = event.getRespawnLocation().clone();
@@ -106,6 +190,8 @@ public final class ACListener implements Listener {
         profile.airTicks = 0;
         profile.hoverTicks = 0;
         profile.wallClimbTicks = 0;
+        profile.elytraHoverTicks = 0;
+        profile.elytraAscendTicks = 0;
         profile.velocityCheckPending = false;
         profile.resetTimerBucket(now);
     }
@@ -139,11 +225,33 @@ public final class ACListener implements Listener {
         }
     }
 
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onTotemResurrect(EntityResurrectEvent event) {
+        if (event.getEntity() instanceof Player player) {
+            plugin.checks().handleTotemResurrect(player, plugin.profile(player), event);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onRightClickInteract(PlayerInteractEvent event) {
+        Action act = event.getAction();
+        if (act == Action.RIGHT_CLICK_AIR || act == Action.RIGHT_CLICK_BLOCK) {
+            Player player = event.getPlayer();
+            plugin.checks().handleRightClickItem(player, plugin.profile(player), event.getItem());
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onBowShoot(EntityShootBowEvent event) {
+        if (event.getEntity() instanceof Player player) {
+            plugin.checks().handleBowShoot(player, plugin.profile(player), event);
+        }
+    }
+
     @EventHandler(priority = EventPriority.MONITOR)
     public void onProjectileHit(ProjectileHitEvent event) {
         Projectile proj = event.getEntity();
         String typeName = proj.getType().name();
-        // Wind Charge, Breeze Wind Charge, Fireball, Dragon Fireball, Wither Skull all launch nearby players!
         if (typeName.contains("WIND_CHARGE") || typeName.contains("FIREBALL") || typeName.contains("WITHER_SKULL")) {
             grantExplosionGraceNear(proj.getLocation(), 7.5, 3200L);
         }
@@ -199,7 +307,6 @@ public final class ACListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onHotbarSwitch(PlayerItemHeldEvent event) {
-        // Prevent Geyser slot-switch hand-raised desync from ever triggering NoSlow
         plugin.profile(event.getPlayer()).usingItemSprintTicks = 0;
     }
 
@@ -217,6 +324,9 @@ public final class ACListener implements Listener {
     public void onMove(PlayerMoveEvent event) {
         Player player = event.getPlayer();
         plugin.checks().handleMove(player, plugin.profile(player), event);
+        if (!event.isCancelled()) {
+            plugin.holograms().onTargetMove(player, event.getFrom(), event.getTo());
+        }
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
@@ -282,7 +392,11 @@ public final class ACListener implements Listener {
             return;
         }
         if (!event.isCancelled() && event.getWhoClicked() instanceof Player player) {
-            plugin.checks().handleContainerStealClick(player, plugin.profile(player), top, event);
+            PlayerProfile prof = plugin.profile(player);
+            plugin.checks().handleOffhandTotemClick(player, prof, event);
+            if (!event.isCancelled()) {
+                plugin.checks().handleContainerStealClick(player, prof, top, event);
+            }
         }
     }
 

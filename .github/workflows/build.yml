@@ -323,7 +323,7 @@ jobs:
               "PAPI_EXPANSION_LIVE_REGISTERED_OK id=purpurbedrock persist=true ver=26.2 isBedrock=true ping=0",
               "Встроенные плейсхолдеры %purpurbedrock_*% зарегистрированы в PlaceholderAPI",
               "PurpurBedrockAC 26.2 запущен! Адаптивный спящий режим активен",
-              "PURPURBEDROCK_AC_SELFTEST_OK checks=21/21 wifiLagSafe=true gui=54 legend=GREEN_ORANGE_RED stage=AWAKE idleHolo=0",
+              "PURPURBEDROCK_AC_SELFTEST_OK checks=25/25 wifiLagSafe=true gui=54 legend=GREEN_ORANGE_RED stage=AWAKE idleHolo=0 devices=6",
               "Статус PurpurBedrockAC 26.2",
               "NetherNet LAN Discovery active on UDP",
               "Вход только с Bedrock (блок Java): ВКЛЮЧЁН",
@@ -356,9 +356,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v26.2.0-bedrock
-          name: "Purpurbedrock 26.2 FINAL + PurpurBedrockAC 26.2.2 (Русские системные сообщения + 6 устройств и КМ с телефона + Фикс sessionserver)"
+          name: "Purpurbedrock 26.2 FINAL + PurpurBedrockAC 26.2.3 (25 проверок + Быстрая AVG-голограмма + /pac + 6 устройств + Русские сообщения)"
           body: |
-            ## Purpurbedrock `26.2` FINAL (`purpurbedrock-26.2.jar`) + Отдельный античит `PurpurBedrockAC-26.2.jar` (`v26.2.2`)
+            ## Purpurbedrock `26.2` FINAL (`purpurbedrock-26.2.jar`) + Отдельный античит `PurpurBedrockAC-26.2.jar` (`v26.2.3`)
             Финальное автономное высокопроизводительное ядро на базе **Purpur `26.2` (`STABLE`)** и отдельный адаптивный античит, откалиброванный специально под него:
             - **Встроенные системные локали `26.2` (`ru_ru`, `uk_ua`, `be_by`, `kk_kz`, `en_us`, `deprecated` + `REPLACED_KEYS`)**:
               - Все ванильные ключи (`block.minecraft.spawn.not_valid`, вход/выход игроков, смерти, команды, кровати/якоря возрождения) переводятся в текст автоматически прямо из `purpurbedrock-26.2.jar` без докачки с серверов Mojang.
