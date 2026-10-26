@@ -39,6 +39,11 @@ public final class PlayerProfile {
     public double totalVl = 0.0;
     private final Map<String, Double> checkBuffers = new HashMap<>(24);
     private final Map<String, Double> checkVls = new HashMap<>(24);
+    // Temporal evidence gate: isolated translator/latency spikes never become moderator complaints.
+    private final Map<String, Long> evidenceWindowStarts = new HashMap<>(24);
+    private final Map<String, Long> evidenceLastSamples = new HashMap<>(24);
+    private final Map<String, Integer> evidenceCounts = new HashMap<>(24);
+    private final Map<String, Long> lastConfirmedViolations = new HashMap<>(24);
     private final Deque<HistoryEntry> history = new ArrayDeque<>(80);
 
     // Pre-allocated position history ring buffer (for ping-compensated 3D AABB Reach & HitBox)
@@ -397,6 +402,59 @@ public final class PlayerProfile {
         checkBuffers.put(checkKey, Math.max(0.0, val));
     }
 
+    /**
+     * Confirms that detector evidence is sustained rather than one isolated network/translation spike.
+     * Samples arriving too close together count as one physical incident. Once confirmed, continued
+     * evidence is rate-limited per check so staff history and VL cannot be flooded every movement tick.
+     */
+    public synchronized boolean confirmViolationEvidence(
+        String checkKey,
+        long nowMs,
+        int requiredSamples,
+        long minSeparationMs,
+        long windowMs,
+        long confirmedCooldownMs
+    ) {
+        long lastConfirmed = lastConfirmedViolations.getOrDefault(checkKey, 0L);
+        if (lastConfirmed > 0L) {
+            if (nowMs - lastConfirmed < confirmedCooldownMs) {
+                return false;
+            }
+            // A new report needs a new time-separated evidence sequence after the cooldown too.
+            lastConfirmedViolations.remove(checkKey);
+        }
+
+        if (requiredSamples <= 1) {
+            lastConfirmedViolations.put(checkKey, nowMs);
+            return true;
+        }
+
+        long start = evidenceWindowStarts.getOrDefault(checkKey, 0L);
+        long lastSample = evidenceLastSamples.getOrDefault(checkKey, 0L);
+        if (start == 0L || nowMs - start > windowMs) {
+            evidenceWindowStarts.put(checkKey, nowMs);
+            evidenceLastSamples.put(checkKey, nowMs);
+            evidenceCounts.put(checkKey, 1);
+            return false;
+        }
+        if (nowMs - lastSample < minSeparationMs) {
+            return false;
+        }
+
+        int count = evidenceCounts.getOrDefault(checkKey, 1) + 1;
+        evidenceLastSamples.put(checkKey, nowMs);
+        evidenceCounts.put(checkKey, count);
+        if (count < requiredSamples) {
+            return false;
+        }
+
+        evidenceWindowStarts.remove(checkKey);
+        evidenceLastSamples.remove(checkKey);
+        evidenceCounts.remove(checkKey);
+        lastConfirmedViolations.put(checkKey, nowMs);
+        return true;
+    }
+
     public double incrementVl(String checkKey, double amount) {
         double next = checkVls.getOrDefault(checkKey, 0.0) + amount;
         checkVls.put(checkKey, next);
@@ -445,6 +503,10 @@ public final class PlayerProfile {
     public synchronized void resetViolations() {
         checkBuffers.clear();
         checkVls.clear();
+        evidenceWindowStarts.clear();
+        evidenceLastSamples.clear();
+        evidenceCounts.clear();
+        lastConfirmedViolations.clear();
         history.clear();
         totalVl = 0.0;
         avgScore = 0.0;

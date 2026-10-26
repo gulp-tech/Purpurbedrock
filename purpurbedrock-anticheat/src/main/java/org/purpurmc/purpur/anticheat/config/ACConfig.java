@@ -105,6 +105,12 @@ public final class ACConfig {
     public boolean alertsAutoEnableOnJoin;
     public boolean consoleAlerts;
     public long alertMinIntervalMs;
+    public boolean alertConfirmationEnabled;
+    public int alertEvidenceRequired;
+    public long alertEvidenceMinSeparationMs;
+    public long alertEvidenceWindowMs;
+    public long alertSameCheckCooldownMs;
+    public int alertHighPingExtraEvidence;
     public boolean alertPlaySound;
     public String alertPrefix;
     public String alertFormat;
@@ -207,6 +213,20 @@ public final class ACConfig {
             c.set("config-version", 3);
             migrated = true;
         }
+        // v4 adds a temporal confirmation gate. A single Bedrock/Geyser interpolation spike is no longer
+        // written to history or broadcast as a staff complaint; real cheats repeat and confirm quickly.
+        if (cfgVersion < 4) {
+            if (!c.contains("alerts.confirmation.enabled")) {
+                c.set("alerts.confirmation.enabled", true);
+                c.set("alerts.confirmation.evidence-required", 2);
+                c.set("alerts.confirmation.min-separation-ms", 700L);
+                c.set("alerts.confirmation.window-ms", 8000L);
+                c.set("alerts.confirmation.same-check-cooldown-ms", 4000L);
+                c.set("alerts.confirmation.high-ping-extra-evidence", 1);
+            }
+            c.set("config-version", 4);
+            migrated = true;
+        }
         if (migrated) {
             plugin.saveConfig();
         }
@@ -236,6 +256,14 @@ public final class ACConfig {
         alertsAutoEnableOnJoin = c.getBoolean("alerts.auto-enable-on-join", true);
         consoleAlerts = c.getBoolean("alerts.console-alerts", true);
         alertMinIntervalMs = Math.max(100L, c.getLong("alerts.min-interval-ms", 650L));
+        alertConfirmationEnabled = c.getBoolean("alerts.confirmation.enabled", true);
+        alertEvidenceRequired = Math.clamp(c.getInt("alerts.confirmation.evidence-required", 2), 1, 5);
+        alertEvidenceMinSeparationMs = Math.clamp(c.getLong("alerts.confirmation.min-separation-ms", 700L), 100L, 5000L);
+        alertEvidenceWindowMs = Math.max(alertEvidenceMinSeparationMs,
+            c.getLong("alerts.confirmation.window-ms", 8000L));
+        alertSameCheckCooldownMs = Math.max(500L,
+            c.getLong("alerts.confirmation.same-check-cooldown-ms", 4000L));
+        alertHighPingExtraEvidence = Math.clamp(c.getInt("alerts.confirmation.high-ping-extra-evidence", 1), 0, 3);
         alertPlaySound = c.getBoolean("alerts.play-sound", true);
         alertPrefix = c.getString("alerts.prefix", "&#A855F7&lP&#EC4899&lA&#F43F5E&lC &8» ");
         alertFormat = c.getString("alerts.format", "{prefix}&f{player} &7флагнул {severity_color}{check} &8(&7VL: {severity_color}{vl}&8, &7AVG: {avg_color}{avg}&8) &8[&7{details}&8]");

@@ -83,9 +83,29 @@ public final class AlertManager {
     ) {
         ACConfig cfg = plugin.cfg();
         ACConfig.CheckSettings settings = cfg.check(checkKey);
-        double checkVl = profile.incrementVl(checkKey, vlAdded);
         long nowMs = System.currentTimeMillis();
         int ping = BedrockBridgeInfo.getPing(player);
+
+        // Do not turn a single Geyser interpolation correction, mobile frame hitch, or Wi-Fi burst
+        // into a moderator complaint. Every detector already passed its local buffer; this second,
+        // time-separated gate confirms that the behaviour persists as real cheat evidence.
+        boolean impossiblePacket = "badpackets".equalsIgnoreCase(checkKey);
+        int evidenceRequired = cfg.alertConfirmationEnabled ? cfg.alertEvidenceRequired : 1;
+        if (!impossiblePacket && ping > cfg.highPingLeniencyMs) {
+            evidenceRequired = Math.min(5, evidenceRequired + cfg.alertHighPingExtraEvidence);
+        }
+        if (!profile.confirmViolationEvidence(
+            checkKey,
+            nowMs,
+            impossiblePacket ? 1 : evidenceRequired,
+            cfg.alertEvidenceMinSeparationMs,
+            cfg.alertEvidenceWindowMs,
+            cfg.alertSameCheckCooldownMs
+        )) {
+            return;
+        }
+
+        double checkVl = profile.incrementVl(checkKey, vlAdded);
         double tps = Math.min(20.0, Bukkit.getTPS()[0]);
         String device = BedrockBridgeInfo.getDevice(player);
         String input = BedrockBridgeInfo.getInputDisplay(player);

@@ -1,5 +1,5 @@
 # ==============================================================================
-#  PurpurBedrockAC 26.2.3 — Адаптивный Античит под Purpurbedrock 26.2 / Geyser 26.2
+#  PurpurBedrockAC 26.2.4 — Адаптивный Античит под Purpurbedrock 26.2 / Geyser 26.2
 # ==============================================================================
 #  Разработан специально под физику Bedrock (1.21.0 — 26.52) и транслятор Geyser:
 #   • НЕ КИКАЕТ ПРОСТО ТАК: по умолчанию софт мгновенно блокируется сетбэками,
@@ -11,7 +11,7 @@
 #   • Живая настройка прямо в игре: /pac checks (ЛКМ — модуль, ПКМ — сетбэк/отмена).
 # ==============================================================================
 
-config-version: 3
+config-version: 4
 
 permissions:
   alerts: "purpurac.alerts"
@@ -50,6 +50,16 @@ alerts:
   auto-enable-on-join: true
   console-alerts: true
   min-interval-ms: 650
+  # Anti-False-Alert: одиночный скачок сети/интерполяции не считается жалобой.
+  # Настоящий чит повторяет детект и подтверждается через 0.7–8 секунд.
+  confirmation:
+    enabled: true
+    evidence-required: 2
+    min-separation-ms: 700
+    window-ms: 8000
+    same-check-cooldown-ms: 4000
+    # При пинге выше high-ping-leniency-ms требуется ещё одно независимое подтверждение.
+    high-ping-extra-evidence: 1
   play-sound: true
   prefix: "&#A855F7&lP&#EC4899&lA&#F43F5E&lC &8» "
   format: "{prefix}&f{player} &7флагнул {severity_color}{check} &8(&7VL: {severity_color}{vl}&8, &7AVG: {avg_color}{avg}&8) &8[&7{details}&8]"

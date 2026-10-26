@@ -33,7 +33,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * PurpurBedrockAC 26.2.3 — Standalone adaptive anti-cheat plugin tailored specifically
+ * PurpurBedrockAC 26.2.4 — Standalone adaptive anti-cheat plugin tailored specifically
  * for Purpurbedrock 26.2 (Geyser 26.2 + Bedrock 1.21.0 — 26.52 physics, Touch/PC/Phone-KBM/Controller inputs,
  * 25 calibrated checks, adaptive Sleep to Wake CPU optimization, instant 20Hz AVG holograms, and HolyWorld-style GUIs).
  */
@@ -249,7 +249,21 @@ public final class PurpurBedrockACPlugin extends JavaPlugin {
             throw new IllegalStateException("Backtracked Reach/HitBox ring buffer failed: dist=" + compDist + " ray=" + compRay);
         }
 
-        // 3. Verify HolyWorld 3-color history + bottom instruction legend + Live 25-Checks GUI
+        // 3. Verify temporal anti-false-alert confirmation and per-check flood cooldown.
+        PlayerProfile evidenceDemo = new PlayerProfile(UUID.randomUUID(), "EvidenceSelfTest");
+        long evidenceNow = 10_000L;
+        boolean evidenceFirst = evidenceDemo.confirmViolationEvidence("speed", evidenceNow, 2, 700L, 8000L, 4000L);
+        boolean evidenceBurst = evidenceDemo.confirmViolationEvidence("speed", evidenceNow + 50L, 2, 700L, 8000L, 4000L);
+        boolean evidenceConfirmed = evidenceDemo.confirmViolationEvidence("speed", evidenceNow + 750L, 2, 700L, 8000L, 4000L);
+        boolean evidenceCooldown = evidenceDemo.confirmViolationEvidence("speed", evidenceNow + 900L, 2, 700L, 8000L, 4000L);
+        boolean evidenceFreshFirst = evidenceDemo.confirmViolationEvidence("speed", evidenceNow + 4800L, 2, 700L, 8000L, 4000L);
+        boolean evidenceFreshConfirmed = evidenceDemo.confirmViolationEvidence("speed", evidenceNow + 5550L, 2, 700L, 8000L, 4000L);
+        if (evidenceFirst || evidenceBurst || !evidenceConfirmed || evidenceCooldown
+            || evidenceFreshFirst || !evidenceFreshConfirmed) {
+            throw new IllegalStateException("Anti-false-alert temporal confirmation gate mismatch");
+        }
+
+        // 4. Verify HolyWorld 3-color history + bottom instruction legend + Live 25-Checks GUI
         long now = System.currentTimeMillis();
         demo.pushHistory(new HistoryEntry(now - 3000, SeverityColor.GREEN, "Чистая игра", "CPS=6 Reach=2.70", 0.0, 0.2, 32, 20.0, "Android", "Сенсор", "Норма"), config.maxHistoryEntries);
         demo.pushHistory(new HistoryEntry(now - 2000, SeverityColor.ORANGE, "Reach", "dist=4.35 max=4.15", 4.0, 3.4, 41, 20.0, "Android", "Сенсор", "Отмена удара"), config.maxHistoryEntries);
@@ -288,6 +302,6 @@ public final class PurpurBedrockACPlugin extends JavaPlugin {
             throw new IllegalStateException("Idle hologram entity count must be 0");
         }
         BedrockBridgeInfo.verifySelfTest();
-        return "PURPURBEDROCK_AC_SELFTEST_OK checks=25/25 wifiLagSafe=true gui=54 legend=GREEN_ORANGE_RED stage=" + demo.stage.name() + " idleHolo=0 devices=6";
+        return "PURPURBEDROCK_AC_SELFTEST_OK checks=25/25 wifiLagSafe=true antiFalseAlerts=CONFIRMED gui=54 legend=GREEN_ORANGE_RED stage=" + demo.stage.name() + " idleHolo=0 devices=6";
     }
 }
