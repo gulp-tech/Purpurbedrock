@@ -25,11 +25,11 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Instant 20Hz + event-synced zero-hitbox AVG floating hologram above players.
+ * Device-, network-, and TPS-adaptive zero-hitbox AVG floating hologram above players.
  *
  * - Visible ONLY to staff who hold {@code purpurac.hologram} and toggled it ON.
- * - Updates position immediately inside {@code PlayerMoveEvent} AND every 1 tick with
- *   velocity-lead compensation + {@code setTeleportDuration(0)}, eliminating trailing lag on Bedrock!
+ * - Mobile, console and desktop viewers receive separate distance/entity budgets; the shared update
+ *   cadence follows the weakest active viewer so a phone never gets a 20 Hz TextDisplay packet flood.
  * - When no staff has holograms enabled, {@code hasViewers == false}: ZERO entities and ZERO tasks run!
  */
 public final class AvgHologramManager {
@@ -39,6 +39,10 @@ public final class AvgHologramManager {
     private volatile boolean hasViewers = false;
     private BukkitTask updateTask;
     private long tickCounter = 0L;
+    private long renderPassCounter = 0L;
+
+    private record RenderingBudget(int updateTicks, double viewDistanceSq, int maxTargets) {
+    }
 
     public AvgHologramManager(PurpurBedrockACPlugin plugin) {
         this.plugin = plugin;
@@ -79,6 +83,11 @@ public final class AvgHologramManager {
             return;
         }
         ACConfig cfg = plugin.cfg();
+        // Adaptive mode intentionally coalesces movement into scheduled render passes. Calling
+        // TextDisplay#teleport for every PlayerMoveEvent was the main hologram packet/CPU burst.
+        if (cfg.hologramAdaptiveRendering) {
+            return;
+        }
         double lead = cfg.hologramVelocityLead;
         double leadX = 0.0;
         double leadY = 0.0;
@@ -178,7 +187,8 @@ public final class AvgHologramManager {
         }
         hasViewers = true;
         if (updateTask == null) {
-            int period = Math.max(1, cfg.hologramUpdateTicks);
+            // Adaptive cadence is decided per pass from live device/RTT/TPS data.
+            int period = cfg.hologramAdaptiveRendering ? 1 : Math.max(1, cfg.hologramUpdateTicks);
             updateTask = Bukkit.getScheduler().runTaskTimer(plugin, this::tickHolograms, 1L, period);
         }
     }
@@ -190,7 +200,11 @@ public final class AvgHologramManager {
             return;
         }
 
-        boolean refreshTextAndViewers = (tickCounter++ % 4L) == 0L;
+        RenderingBudget sharedBudget = sharedRenderingBudget(cfg);
+        if ((tickCounter++ % Math.max(1, sharedBudget.updateTicks())) != 0L) {
+            return;
+        }
+        boolean refreshTextAndViewers = (renderPassCounter++ % 4L) == 0L;
 
         if (refreshTextAndViewers) {
             Iterator<UUID> viewerIt = activeViewers.iterator();
@@ -225,15 +239,20 @@ public final class AvgHologramManager {
         }
 
         double lead = cfg.hologramVelocityLead;
+        int renderedTargets = 0;
         for (Player target : Bukkit.getOnlinePlayers()) {
             if (target.isDead()) {
+                continue;
+            }
+            if (renderedTargets >= sharedBudget.maxTargets()) {
+                removeTargetDisplay(target.getUniqueId());
                 continue;
             }
             World world = target.getWorld();
             Location tLoc = target.getLocation();
 
             TextDisplay display = targetDisplays.get(target.getUniqueId());
-            if (!refreshTextAndViewers && display != null && display.isValid()) {
+            if (!cfg.hologramAdaptiveRendering && !refreshTextAndViewers && display != null && display.isValid()) {
                 Vector vel = target.getVelocity();
                 Location holoLoc = new Location(
                     world,
@@ -251,8 +270,9 @@ public final class AvgHologramManager {
                     continue;
                 }
                 Player viewer = Bukkit.getPlayer(vid);
+                RenderingBudget viewerBudget = viewer != null ? renderingBudget(viewer, cfg) : null;
                 if (viewer != null && viewer.getWorld() == world
-                    && viewer.getLocation().distanceSquared(tLoc) <= cfg.hologramViewDistanceSq) {
+                    && viewer.getLocation().distanceSquared(tLoc) <= viewerBudget.viewDistanceSq()) {
                     anyViewerNear = true;
                     break;
                 }
@@ -262,6 +282,7 @@ public final class AvgHologramManager {
                 removeTargetDisplay(target.getUniqueId());
                 continue;
             }
+            renderedTargets++;
 
             Vector vel = target.getVelocity();
             Location holoLoc = new Location(
@@ -282,8 +303,8 @@ public final class AvgHologramManager {
                     d.setSeeThrough(false);
                     d.setDefaultBackground(false);
                     d.setBackgroundColor(Color.fromARGB(115, 15, 15, 22));
-                    d.setTeleportDuration(0);
-                    d.setInterpolationDuration(0);
+                    d.setTeleportDuration(Math.clamp(sharedBudget.updateTicks(), 0, 59));
+                    d.setInterpolationDuration(Math.clamp(sharedBudget.updateTicks(), 0, 59));
                     d.text(formattedText);
                 });
                 targetDisplays.put(target.getUniqueId(), display);
@@ -297,15 +318,83 @@ public final class AvgHologramManager {
                 if (viewer == null) {
                     continue;
                 }
+                RenderingBudget viewerBudget = renderingBudget(viewer, cfg);
                 if (!vid.equals(target.getUniqueId())
                     && viewer.getWorld() == world
-                    && viewer.getLocation().distanceSquared(tLoc) <= cfg.hologramViewDistanceSq) {
+                    && viewer.getLocation().distanceSquared(tLoc) <= viewerBudget.viewDistanceSq()) {
                     viewer.showEntity(plugin, display);
                 } else {
                     viewer.hideEntity(plugin, display);
                 }
             }
         }
+    }
+
+    private RenderingBudget sharedRenderingBudget(ACConfig cfg) {
+        if (!cfg.hologramAdaptiveRendering) {
+            return new RenderingBudget(1, cfg.hologramViewDistanceSq, Integer.MAX_VALUE);
+        }
+        int updateTicks = 1;
+        double distanceSq = cfg.hologramViewDistanceSq;
+        int maxTargets = Integer.MAX_VALUE;
+        boolean found = false;
+        for (UUID viewerId : activeViewers) {
+            Player viewer = Bukkit.getPlayer(viewerId);
+            if (viewer == null || !viewer.isOnline()) {
+                continue;
+            }
+            RenderingBudget budget = renderingBudget(viewer, cfg);
+            // Shared TextDisplay transforms must respect the weakest active viewer.
+            updateTicks = Math.max(updateTicks, budget.updateTicks());
+            distanceSq = found ? Math.min(distanceSq, budget.viewDistanceSq()) : budget.viewDistanceSq();
+            maxTargets = Math.min(maxTargets, budget.maxTargets());
+            found = true;
+        }
+        if (!found) {
+            return new RenderingBudget(10, 64.0, 1);
+        }
+        return new RenderingBudget(updateTicks, distanceSq, Math.max(1, maxTargets));
+    }
+
+    private RenderingBudget renderingBudget(Player viewer, ACConfig cfg) {
+        if (!cfg.hologramAdaptiveRendering) {
+            return new RenderingBudget(1, cfg.hologramViewDistanceSq, Integer.MAX_VALUE);
+        }
+        String device = BedrockBridgeInfo.getDeviceId(viewer);
+        int ticks;
+        double distanceSq;
+        int maxTargets;
+        switch (device) {
+            case "android", "ios", "phone_kbm" -> {
+                ticks = cfg.hologramMobileUpdateTicks;
+                distanceSq = cfg.hologramMobileViewDistanceSq;
+                maxTargets = cfg.hologramMobileMaxTargets;
+            }
+            case "xbox", "ps4_5" -> {
+                ticks = cfg.hologramConsoleUpdateTicks;
+                distanceSq = cfg.hologramConsoleViewDistanceSq;
+                maxTargets = cfg.hologramConsoleMaxTargets;
+            }
+            default -> {
+                ticks = cfg.hologramDesktopUpdateTicks;
+                distanceSq = cfg.hologramDesktopViewDistanceSq;
+                maxTargets = cfg.hologramDesktopMaxTargets;
+            }
+        }
+
+        int ping = BedrockBridgeInfo.getPing(viewer);
+        if (ping >= cfg.hologramDegradedPingMs) {
+            ticks = Math.min(20, ticks + 2);
+            distanceSq *= cfg.hologramDegradedDistanceMultiplier * cfg.hologramDegradedDistanceMultiplier;
+            maxTargets = Math.max(2, (int) Math.floor(maxTargets * 0.65));
+        }
+        double tps = Math.min(20.0, Bukkit.getTPS()[0]);
+        if (tps < cfg.hologramPressureTps) {
+            ticks = Math.max(ticks, 8);
+            distanceSq *= 0.56; // 0.75 distance, squared
+            maxTargets = Math.max(2, maxTargets / 2);
+        }
+        return new RenderingBudget(ticks, distanceSq, maxTargets);
     }
 
     private Component formatHologramText(Player target, PlayerProfile profile, ACConfig cfg) {

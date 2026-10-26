@@ -2429,10 +2429,10 @@ import java.util.concurrent.ConcurrentHashMap;""",
         java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
 
     public static int computePublisherBlockRadius(GeyserSession session) {
-        int serverDist = Math.max(session.getServerRenderDistance(), 8);
-        int clientDist = session.getClientRenderDistance() > 0 ? Math.min(session.getClientRenderDistance(), 32) : serverDist;
-        int effectiveChunks = Math.max(serverDist, Math.min(clientDist, serverDist + 2));
-        return (squareToCircle(effectiveChunks) + 3) << 4;
+        int effectiveChunks = session.purpurAdaptiveRenderDistance();
+        // Two-chunk publisher margin is sufficient; larger margins make mobile clients queue
+        // hundreds of chunks they cannot decode before the login watchdog expires.
+        return (squareToCircle(effectiveChunks) + 2) << 4;
     }
 
     public static Vector3i clampPublisherY(GeyserSession session, Vector3i position) {
@@ -2536,7 +2536,7 @@ import java.util.concurrent.ConcurrentHashMap;""",
                 chunkRadiusUpdatedPacket.setRadius(session.getServerRenderDistance());
                 session.sendUpstreamPacket(chunkRadiusUpdatedPacket);""",
         """                ChunkRadiusUpdatedPacket chunkRadiusUpdatedPacket = new ChunkRadiusUpdatedPacket();
-                chunkRadiusUpdatedPacket.setRadius(ChunkUtils.squareToCircle(Math.max(session.getServerRenderDistance(), 8)));
+                chunkRadiusUpdatedPacket.setRadius(session.purpurAdaptiveRenderDistance());
                 session.sendUpstreamPacket(chunkRadiusUpdatedPacket);""",
         "JavaPlayerPositionTranslator.dimensionRadiusCircle",
     )
@@ -2582,7 +2582,15 @@ import java.util.concurrent.ConcurrentHashMap;""",
             ? session.getClientData().getDeviceOs().name()
             : "";
         boolean mobileClient = "GOOGLE".equals(devOs) || "IOS".equals(devOs) || "AMAZON".equals(devOs) || "NX".equals(devOs);
-        session.sendDownstreamGamePacket(new ServerboundChunkBatchReceivedPacket(mobileClient ? 14f : 28f));""",
+        boolean consoleClient = "XBOX".equals(devOs) || "PS4".equals(devOs) || "SWITCH".equals(devOs);
+        int rtt = session.ping();
+        float chunksPerSecond = mobileClient ? 10f : (consoleClient ? 16f : 24f);
+        if (rtt >= 220) {
+            chunksPerSecond = Math.min(chunksPerSecond, 10f);
+        } else if (rtt >= 140) {
+            chunksPerSecond = Math.min(chunksPerSecond, 14f);
+        }
+        session.sendDownstreamGamePacket(new ServerboundChunkBatchReceivedPacket(chunksPerSecond));""",
         "JavaChunkBatchFinishedTranslator.higherChunkBatchRate",
     )
 
@@ -2637,14 +2645,35 @@ import java.util.concurrent.ConcurrentHashMap;""",
         chunkRadiusUpdatedPacket.setRadius(renderDistance);
         upstream.sendPacket(chunkRadiusUpdatedPacket);
     }""",
-        """    private void recalculateBedrockRenderDistance() {
-        int serverDist = Math.max(this.serverRenderDistance, 8);
+        """    private int purpurDeviceRenderCap() {
+        String os = (this.getClientData() != null && this.getClientData().getDeviceOs() != null)
+            ? this.getClientData().getDeviceOs().name()
+            : "UNKNOWN";
+        int cap = switch (os) {
+            case "GOOGLE", "IOS", "AMAZON", "NX" -> 6;
+            case "XBOX", "PS4", "SWITCH" -> 8;
+            default -> 10;
+        };
+        int rtt = ping();
+        if (rtt >= 220) {
+            cap = Math.min(cap, 6);
+        } else if (rtt >= 140) {
+            cap = Math.min(cap, 8);
+        }
+        return cap;
+    }
+
+    public int purpurAdaptiveRenderDistance() {
+        return getRenderDistance();
+    }
+
+    private void recalculateBedrockRenderDistance() {
+        int serverDist = Math.max(this.serverRenderDistance, 6);
+        int deviceCap = purpurDeviceRenderCap();
         int effectiveClientDist = this.clientRenderDistance != -1
-            ? Math.min(Math.max(this.clientRenderDistance, 5), serverDist)
-            : serverDist;
-        int renderDistance = this.clientRenderDistance != -1 && this.clientRenderDistance <= serverDist
-            ? Math.max(5, this.clientRenderDistance)
-            : ChunkUtils.squareToCircle(effectiveClientDist);
+            ? Math.min(Math.max(this.clientRenderDistance, 5), Math.min(serverDist, deviceCap))
+            : Math.min(serverDist, deviceCap);
+        int renderDistance = Math.max(5, effectiveClientDist);
         ChunkRadiusUpdatedPacket chunkRadiusUpdatedPacket = new ChunkRadiusUpdatedPacket();
         chunkRadiusUpdatedPacket.setRadius(renderDistance);
         upstream.sendPacket(chunkRadiusUpdatedPacket);
@@ -2670,12 +2699,13 @@ import java.util.concurrent.ConcurrentHashMap;""",
         return 2; // unfortunate default until we got more info
     }""",
         """    private int getRenderDistance() {
+        int cap = purpurDeviceRenderCap();
         if (clientRenderDistance != -1) {
-            return Math.max(5, clientRenderDistance);
+            return Math.max(5, Math.min(clientRenderDistance, cap));
         } else if (serverRenderDistance != -1) {
-            return Math.max(6, serverRenderDistance);
+            return Math.max(5, Math.min(serverRenderDistance, cap));
         }
-        return 8;
+        return Math.min(6, cap);
     }""",
         "GeyserSession.preventTinyInitialRenderDistance",
     )

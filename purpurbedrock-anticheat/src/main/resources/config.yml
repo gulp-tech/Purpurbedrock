@@ -1,5 +1,5 @@
 # ==============================================================================
-#  PurpurBedrockAC 26.2.4 — Адаптивный Античит под Purpurbedrock 26.2 / Geyser 26.2
+#  PurpurBedrockAC 26.2.5 — Адаптивный Античит под Purpurbedrock 26.2 / Geyser 26.2
 # ==============================================================================
 #  Разработан специально под физику Bedrock (1.21.0 — 26.52) и транслятор Geyser:
 #   • НЕ КИКАЕТ ПРОСТО ТАК: по умолчанию софт мгновенно блокируется сетбэками,
@@ -11,7 +11,7 @@
 #   • Живая настройка прямо в игре: /pac checks (ЛКМ — модуль, ПКМ — сетбэк/отмена).
 # ==============================================================================
 
-config-version: 4
+config-version: 5
 
 permissions:
   alerts: "purpurac.alerts"
@@ -82,6 +82,25 @@ hologram:
   velocity-lead: 0.45
   view-distance-blocks: 32.0
   update-interval-ticks: 1
+  # Автоматически снижает частоту, дальность и число AVG-голограмм под устройство
+  # модератора, его RTT и TPS сервера. Это не затрагивает обычные игровые сущности.
+  adaptive-rendering:
+    enabled: true
+    mobile:
+      update-interval-ticks: 5
+      view-distance-blocks: 16.0
+      max-targets: 8
+    console:
+      update-interval-ticks: 3
+      view-distance-blocks: 24.0
+      max-targets: 12
+    desktop:
+      update-interval-ticks: 2
+      view-distance-blocks: 32.0
+      max-targets: 20
+    degraded-ping-ms: 180
+    degraded-distance-multiplier: 0.75
+    server-pressure-tps: 18.5
   format: "&8[&7AVG {avg_color}{avg} &8| &7VL {vl_color}{vl} &8| &7{ping}мс&8]"
   green-max-avg: 2.4
   orange-max-avg: 6.4

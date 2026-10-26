@@ -320,6 +320,7 @@ jobs:
               "CHUNK_263_PARSE_SELFTEST_OK",
               "MULTIVERSION_685_TO_2193_SELFTEST_OK codecs=23 versions=1.21.0..26.52 dialogWaitPopup=DISABLED chunkPublisher=RELIABLE",
               "PLACEHOLDER_PAPI_SELFTEST_OK",
+              "adaptiveProfiles=SAFE|BALANCED|HIGH",
               "PAPI_EXPANSION_LIVE_REGISTERED_OK id=purpurbedrock persist=true ver=26.2 isBedrock=true ping=0",
               "Встроенные плейсхолдеры %purpurbedrock_*% зарегистрированы в PlaceholderAPI",
               "PurpurBedrockAC 26.2 запущен! Адаптивный спящий режим активен",
@@ -359,9 +360,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v26.2.0-bedrock
-          name: "Purpurbedrock 26.2 FINAL + PurpurBedrockAC 26.2.4 (Anti-False-Alert + 25 проверок + Быстрая AVG-голограмма + /pac + 6 устройств)"
+          name: "Purpurbedrock 26.2 FINAL + PurpurBedrockAC 26.2.5 (Device-Adaptive Rendering + Anti-False-Alert + 25 проверок + /pac)"
           body: |
-            ## Purpurbedrock `26.2` FINAL (`purpurbedrock-26.2.jar`) + Отдельный античит `PurpurBedrockAC-26.2.jar` (`v26.2.4`)
+            ## Purpurbedrock `26.2` FINAL (`purpurbedrock-26.2.jar`) + Отдельный античит `PurpurBedrockAC-26.2.jar` (`v26.2.5`)
             Финальное автономное высокопроизводительное ядро на базе **Purpur `26.2` (`STABLE`)** и отдельный адаптивный античит, откалиброванный специально под него:
             - **Встроенные системные локали `26.2` (`ru_ru`, `uk_ua`, `be_by`, `kk_kz`, `en_us`, `deprecated` + `REPLACED_KEYS`)**:
               - Все ванильные ключи (`block.minecraft.spawn.not_valid`, вход/выход игроков, смерти, команды, кровати/якоря возрождения) переводятся в текст автоматически прямо из `purpurbedrock-26.2.jar` без докачки с серверов Mojang.
@@ -373,7 +374,8 @@ jobs:
               - **Адаптивный спящий режим (`DORMANT → SLEEPING → WAKING → AWAKE`)**: в тишине спит (`0% CPU`), при первых аномалиях плавно и не спеша просыпается только для подозрительного игрока, не нагружая сервер.
               - **Anti-False-Alert v2**: одиночные скачки Geyser, мобильного FPS и Wi-Fi больше не попадают в жалобы/историю/VL — требуется 2 разнесённых во времени подтверждения, 3 при высоком пинге; повтор одного модуля ограничен раз в 4 секунды. Невозможные `BadPackets` блокируются сразу.
               - **25 проверок с защитой от ложных флагов на Bedrock** (учитывает Сенсор / ПК / Геймпад, спид-бриджинг и реальный RTT пинг): `Reach` (3D AABB + компенсация пинга), `HitBox`, `KillAura`, `Aim`, `AutoClicker`, `Criticals`, `Velocity`, `AutoTotem`, `FastBow`, `Fly`, `ElytraFly`, `AirJump`, `Speed/BHop`, `Step`, `HighJump`, `Spider`, `Jesus`, `NoSlow`, `NoFall`, `Phase`, `Timer`, `Scaffold`, `FastBreak`, `Inventory`, `BadPackets`.
-              - **Небольшая голограмма `AVG` над игроками (`/pac holo`, право `purpurac.hologram`)**: пакетно-изолированный `TextDisplay` без хитбокса, видимый только модераторам (при 0 включивших — `0` сущностей в мире).
+              - **Device-Adaptive Rendering (`SAFE / BALANCED / HIGH`)**: по ОС, типу ввода и реальному RTT автоматически ограничивает радиус чанков, темп chunk batch, повторные login-refresh и AVG-голограммы; при просадке TPS дополнительно снижает частоту обновлений без кика игрока.
+              - **Небольшая голограмма `AVG` (`/pac holo`)**: Android/iOS/телефон+КМ — до 8 целей, 16 блоков, 4 Гц; консоли — 12/24/≈7 Гц; Windows — 20/32/10 Гц. Видна только модераторам, а без зрителей создаёт 0 сущностей и 0 задач.
               - **Меню истории игрока в стиле HolyWorld (`/pac menu`, `/pac history <ник>`, право `purpurac.menu`)**: `54` слота с **зелёными 🟢 / оранжевыми 🟠 / красными 🔴** блоками истории и **блоками-инструкциями внизу меню**.
             - **Исправлена погрузка чанков на Bedrock (Moonrise + `NetworkChunkPublisherUpdatePacket` Sync)**:
               - Гарантированная синхронизация `NetworkChunkPublisherUpdatePacket` при входе, стоянии на месте, полёте, любых телепортациях (`/tp`, `/spawn`, `/warp`, `/rtp`, `AuthMe`), смене измерений и изменении ползунка дальности прорисовки на клиенте (`ensureChunkPublished` никогда не даёт клиенту Bedrock отбросить пришедший `LevelChunkPacket`).

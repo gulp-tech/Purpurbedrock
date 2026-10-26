@@ -33,7 +33,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * PurpurBedrockAC 26.2.4 — Standalone adaptive anti-cheat plugin tailored specifically
+ * PurpurBedrockAC 26.2.5 — Standalone adaptive anti-cheat plugin tailored specifically
  * for Purpurbedrock 26.2 (Geyser 26.2 + Bedrock 1.21.0 — 26.52 physics, Touch/PC/Phone-KBM/Controller inputs,
  * 25 calibrated checks, adaptive Sleep to Wake CPU optimization, instant 20Hz AVG holograms, and HolyWorld-style GUIs).
  */
@@ -302,6 +302,12 @@ public final class PurpurBedrockACPlugin extends JavaPlugin {
             throw new IllegalStateException("Idle hologram entity count must be 0");
         }
         BedrockBridgeInfo.verifySelfTest();
-        return "PURPURBEDROCK_AC_SELFTEST_OK checks=25/25 wifiLagSafe=true antiFalseAlerts=CONFIRMED gui=54 legend=GREEN_ORANGE_RED stage=" + demo.stage.name() + " idleHolo=0 devices=6";
+        if (!config.hologramAdaptiveRendering
+            || config.hologramMobileUpdateTicks < config.hologramDesktopUpdateTicks
+            || config.hologramMobileViewDistanceSq > config.hologramDesktopViewDistanceSq
+            || config.hologramMobileMaxTargets > config.hologramDesktopMaxTargets) {
+            throw new IllegalStateException("Device-adaptive hologram budget mismatch");
+        }
+        return "PURPURBEDROCK_AC_SELFTEST_OK checks=25/25 wifiLagSafe=true antiFalseAlerts=CONFIRMED adaptiveRender=OK gui=54 legend=GREEN_ORANGE_RED stage=" + demo.stage.name() + " idleHolo=0 devices=6";
     }
 }

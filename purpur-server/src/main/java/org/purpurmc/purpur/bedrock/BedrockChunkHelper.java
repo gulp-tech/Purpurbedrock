@@ -133,6 +133,8 @@ public final class BedrockChunkHelper {
         if (server == null || playerUuid == null) {
             return;
         }
+        // Spread reconnect storms over 0.4s instead of refreshing every joining player on one tick.
+        long jitterMs = Math.floorMod(playerUuid.hashCode(), 401);
         CHUNK_RESYNC_SCHEDULER.schedule(() -> {
             try {
                 server.processQueue.add(() -> {
@@ -149,7 +151,7 @@ public final class BedrockChunkHelper {
                 });
             } catch (Throwable ignored) {
             }
-        }, delayMs, TimeUnit.MILLISECONDS);
+        }, delayMs + jitterMs, TimeUnit.MILLISECONDS);
     }
 
     private static void forceGeyserPublisherUpdate(ServerPlayer player) {
@@ -204,7 +206,7 @@ public final class BedrockChunkHelper {
         int centerX = player.getBlockX() >> 4;
         int centerZ = player.getBlockZ() >> 4;
         List<ServerPlayer> singleTarget = List.of(player);
-        int clampedRadius = Math.max(1, Math.min(radius, 3));
+        int clampedRadius = adaptiveRefreshRadius(player.getBukkitEntity(), radius);
 
         // Send center chunk first so the ground right beneath the player's feet appears immediately
         LevelChunk centerChunk = level.getChunkIfLoaded(centerX, centerZ);
@@ -226,6 +228,18 @@ public final class BedrockChunkHelper {
         }
     }
 
+    private static int adaptiveRefreshRadius(Player player, int requestedRadius) {
+        int radius = Math.max(1, Math.min(requestedRadius, 3));
+        String profile = BedrockPlaceholderHook.analyzePerformanceProfile(player);
+        if ("SAFE".equals(profile)) {
+            return Math.min(radius, 1);
+        }
+        if ("BALANCED".equals(profile)) {
+            return Math.min(radius, 2);
+        }
+        return Math.min(radius, 2); // never burst a 7x7 duplicate refresh during login
+    }
+
     private static void ensureBukkitAuthListenerRegistered() {
         if (AUTH_LISTENER_REGISTERED.get()) {
             return;
@@ -242,8 +256,16 @@ public final class BedrockChunkHelper {
 
     private static int sendChunkPublisherSyncPackets(ServerPlayer player) {
         int worldDist = Math.max(6, player.level().getWorld().getViewDistance());
-        int clientDist = player.getBukkitEntity().getClientViewDistance();
-        int viewDist = clientDist > 0 ? Math.min(worldDist, Math.max(5, clientDist)) : worldDist;
+        Player bukkitPlayer = player.getBukkitEntity();
+        int clientDist = bukkitPlayer.getClientViewDistance();
+        int requestedDist = clientDist > 0 ? Math.min(worldDist, Math.max(5, clientDist)) : worldDist;
+        String performance = BedrockPlaceholderHook.analyzePerformanceProfile(bukkitPlayer);
+        int deviceCap = switch (performance) {
+            case "SAFE" -> 6;
+            case "BALANCED" -> 8;
+            default -> 10;
+        };
+        int viewDist = Math.max(5, Math.min(requestedDist, deviceCap));
         int chunkX = player.getBlockX() >> 4;
         int chunkZ = player.getBlockZ() >> 4;
         player.connection.send(new ClientboundSetChunkCacheRadiusPacket(viewDist));

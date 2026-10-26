@@ -124,6 +124,19 @@ public final class ACConfig {
     public double hologramVelocityLead;
     public double hologramViewDistanceSq;
     public int hologramUpdateTicks;
+    public boolean hologramAdaptiveRendering;
+    public int hologramMobileUpdateTicks;
+    public double hologramMobileViewDistanceSq;
+    public int hologramMobileMaxTargets;
+    public int hologramConsoleUpdateTicks;
+    public double hologramConsoleViewDistanceSq;
+    public int hologramConsoleMaxTargets;
+    public int hologramDesktopUpdateTicks;
+    public double hologramDesktopViewDistanceSq;
+    public int hologramDesktopMaxTargets;
+    public int hologramDegradedPingMs;
+    public double hologramDegradedDistanceMultiplier;
+    public double hologramPressureTps;
     public String hologramFormat;
     public double hologramGreenMaxAvg;
     public double hologramOrangeMaxAvg;
@@ -227,6 +240,26 @@ public final class ACConfig {
             c.set("config-version", 4);
             migrated = true;
         }
+        // v5 makes AVG hologram rendering follow the viewer device, RTT and live server TPS.
+        if (cfgVersion < 5) {
+            if (!c.contains("hologram.adaptive-rendering.enabled")) {
+                c.set("hologram.adaptive-rendering.enabled", true);
+                c.set("hologram.adaptive-rendering.mobile.update-interval-ticks", 5);
+                c.set("hologram.adaptive-rendering.mobile.view-distance-blocks", 16.0);
+                c.set("hologram.adaptive-rendering.mobile.max-targets", 8);
+                c.set("hologram.adaptive-rendering.console.update-interval-ticks", 3);
+                c.set("hologram.adaptive-rendering.console.view-distance-blocks", 24.0);
+                c.set("hologram.adaptive-rendering.console.max-targets", 12);
+                c.set("hologram.adaptive-rendering.desktop.update-interval-ticks", 2);
+                c.set("hologram.adaptive-rendering.desktop.view-distance-blocks", 32.0);
+                c.set("hologram.adaptive-rendering.desktop.max-targets", 20);
+                c.set("hologram.adaptive-rendering.degraded-ping-ms", 180);
+                c.set("hologram.adaptive-rendering.degraded-distance-multiplier", 0.75);
+                c.set("hologram.adaptive-rendering.server-pressure-tps", 18.5);
+            }
+            c.set("config-version", 5);
+            migrated = true;
+        }
         if (migrated) {
             plugin.saveConfig();
         }
@@ -277,6 +310,22 @@ public final class ACConfig {
         double viewDist = Math.max(8.0, c.getDouble("hologram.view-distance-blocks", 32.0));
         hologramViewDistanceSq = viewDist * viewDist;
         hologramUpdateTicks = Math.max(1, c.getInt("hologram.update-interval-ticks", 1));
+        hologramAdaptiveRendering = c.getBoolean("hologram.adaptive-rendering.enabled", true);
+        hologramMobileUpdateTicks = Math.clamp(c.getInt("hologram.adaptive-rendering.mobile.update-interval-ticks", 5), 2, 20);
+        double mobileView = Math.clamp(c.getDouble("hologram.adaptive-rendering.mobile.view-distance-blocks", 16.0), 8.0, 48.0);
+        hologramMobileViewDistanceSq = mobileView * mobileView;
+        hologramMobileMaxTargets = Math.clamp(c.getInt("hologram.adaptive-rendering.mobile.max-targets", 8), 1, 32);
+        hologramConsoleUpdateTicks = Math.clamp(c.getInt("hologram.adaptive-rendering.console.update-interval-ticks", 3), 1, 20);
+        double consoleView = Math.clamp(c.getDouble("hologram.adaptive-rendering.console.view-distance-blocks", 24.0), 8.0, 64.0);
+        hologramConsoleViewDistanceSq = consoleView * consoleView;
+        hologramConsoleMaxTargets = Math.clamp(c.getInt("hologram.adaptive-rendering.console.max-targets", 12), 1, 48);
+        hologramDesktopUpdateTicks = Math.clamp(c.getInt("hologram.adaptive-rendering.desktop.update-interval-ticks", 2), 1, 20);
+        double desktopView = Math.clamp(c.getDouble("hologram.adaptive-rendering.desktop.view-distance-blocks", 32.0), 8.0, 96.0);
+        hologramDesktopViewDistanceSq = desktopView * desktopView;
+        hologramDesktopMaxTargets = Math.clamp(c.getInt("hologram.adaptive-rendering.desktop.max-targets", 20), 1, 64);
+        hologramDegradedPingMs = Math.clamp(c.getInt("hologram.adaptive-rendering.degraded-ping-ms", 180), 80, 1000);
+        hologramDegradedDistanceMultiplier = Math.clamp(c.getDouble("hologram.adaptive-rendering.degraded-distance-multiplier", 0.75), 0.35, 1.0);
+        hologramPressureTps = Math.clamp(c.getDouble("hologram.adaptive-rendering.server-pressure-tps", 18.5), 12.0, 20.0);
         hologramFormat = c.getString("hologram.format", "&8[&7AVG {avg_color}{avg} &8| &7VL {vl_color}{vl} &8| &7{ping}мс&8]");
         hologramGreenMaxAvg = c.getDouble("hologram.green-max-avg", 2.4);
         hologramOrangeMaxAvg = c.getDouble("hologram.orange-max-avg", 6.4);

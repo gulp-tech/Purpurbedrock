@@ -150,7 +150,8 @@ public final class PurpurBedrockCommand extends Command {
                 sender.sendMessage(Component.text("   %purpurbedrock_ping%         -> " + BedrockPlaceholderHook.resolveOnline(target, "ping") + " мс", NamedTextColor.WHITE));
             } else {
                 sender.sendMessage(Component.text(" • Устройства: Windows | Android | IOS | Xbox | PS 4-5 | Клавиатура + мышь", NamedTextColor.AQUA));
-                sender.sendMessage(Component.text(" • Доступно: %purpurbedrock_device%, %purpurbedrock_device_id%, %purpurbedrock_is_phone_kbm%, %purpurbedrock_input%, %purpurbedrock_version%, %purpurbedrock_ping%", NamedTextColor.AQUA));
+                sender.sendMessage(Component.text("   %purpurbedrock_performance%  -> " + BedrockPlaceholderHook.resolveOnline(target, "performance"), NamedTextColor.WHITE));
+                sender.sendMessage(Component.text(" • Доступно: %purpurbedrock_device%, %purpurbedrock_device_id%, %purpurbedrock_performance%, %purpurbedrock_is_phone_kbm%, %purpurbedrock_input%, %purpurbedrock_version%, %purpurbedrock_ping%", NamedTextColor.AQUA));
             }
             return true;
         }

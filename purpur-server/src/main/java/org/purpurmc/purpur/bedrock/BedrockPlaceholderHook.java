@@ -206,6 +206,30 @@ public final class BedrockPlaceholderHook {
         return player != null && "phone_kbm".equals(analyzeDeviceId(player));
     }
 
+    /**
+     * Device-aware rendering/network profile used by built-in chunk streaming and optional plugins.
+     * It deliberately uses only reliable Bedrock metadata and live RTT; it never guesses device RAM.
+     */
+    public static String analyzePerformanceProfile(@Nullable Player player) {
+        if (player == null) {
+            return "SAFE";
+        }
+        String deviceId = analyzeDeviceId(player);
+        int ping = resolvePingMillis(findGeyserSession(player.getUniqueId()), player);
+        return classifyPerformanceProfile(deviceId, ping);
+    }
+
+    public static String classifyPerformanceProfile(@Nullable String deviceId, int ping) {
+        String id = deviceId == null ? "unknown" : deviceId;
+        if (ping >= 220 || "android".equals(id) || "ios".equals(id) || "phone_kbm".equals(id)) {
+            return "SAFE";
+        }
+        if (ping >= 140 || "xbox".equals(id) || "ps4_5".equals(id) || "unknown".equals(id)) {
+            return "BALANCED";
+        }
+        return "HIGH";
+    }
+
     public static @Nullable String resolveOffline(@Nullable OfflinePlayer player, String params) {
         if (params == null) {
             return null;
@@ -286,6 +310,17 @@ public final class BedrockPlaceholderHook {
                 yield onlinePlayer != null ? Bukkit.getMinecraftVersion() : "—";
             }
             case "ping" -> Integer.toString(resolvePingMillis(session, onlinePlayer));
+            case "performance", "performance_profile", "render_profile" -> {
+                String deviceId;
+                if (session != null) {
+                    deviceId = classifySessionDeviceId(uuid, session);
+                } else {
+                    FloodgateSnapshot fg = uuid != null ? readFloodgateSnapshot(uuid) : null;
+                    deviceId = fg != null ? classifyDeviceId(uuid, fg.deviceOs, fg.inputMode, "UNKNOWN", "") : "android";
+                }
+                int ping = resolvePingMillis(session, onlinePlayer);
+                yield classifyPerformanceProfile(deviceId, ping);
+            }
             case "ping_colored" -> {
                 int ping = resolvePingMillis(session, onlinePlayer);
                 String color = ping <= 60 ? "§a" : (ping <= 130 ? "§e" : "§c");
@@ -754,13 +789,19 @@ public final class BedrockPlaceholderHook {
             throw new IllegalStateException("Device analyzer 6-category mapping mismatch");
         }
         recentMobileKbmUntilMs.remove(mobileUser);
+        if (!"SAFE".equals(classifyPerformanceProfile("android", 35))
+            || !"BALANCED".equals(classifyPerformanceProfile("xbox", 45))
+            || !"BALANCED".equals(classifyPerformanceProfile("windows", 180))
+            || !"HIGH".equals(classifyPerformanceProfile("windows", 35))) {
+            throw new IllegalStateException("Adaptive performance profile mismatch");
+        }
         if (!"Сенсор".equals(formatInput("TOUCH", "GOOGLE"))
             || !"Клавиатура + мышь".equals(formatInput("KEYBOARD_MOUSE", "UWP"))
             || !"Контроллер".equals(formatInput("CONTROLLER", "PS4"))) {
             throw new IllegalStateException("Input placeholder mapping mismatch");
         }
         return "PLACEHOLDER_PAPI_SELFTEST_OK bytecode=" + bytecode.length
-            + "B devices=6(Windows|Android|IOS|Xbox|PS 4-5|Клавиатура + мышь)";
+            + "B devices=6(Windows|Android|IOS|Xbox|PS 4-5|Клавиатура + мышь) adaptiveProfiles=SAFE|BALANCED|HIGH";
     }
 
     private static final class PapiBridgeClassLoader extends ClassLoader {
