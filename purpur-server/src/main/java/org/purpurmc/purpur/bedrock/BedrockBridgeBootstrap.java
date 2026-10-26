@@ -129,6 +129,12 @@ public final class BedrockBridgeBootstrap {
             if (System.getProperty("Geyser.MaxConnectionsPerAddress") == null) {
                 System.setProperty("Geyser.MaxConnectionsPerAddress", Integer.toString(PurpurConfig.bedrockRakMaxConnectionsPerIp));
             }
+            if (System.getProperty("purpurbedrock.asyncPrewarm") == null) {
+                System.setProperty("purpurbedrock.asyncPrewarm", Boolean.toString(PurpurConfig.bedrockAsyncGeyserPrewarm));
+            }
+            if (System.getProperty("purpurbedrock.eagerAllPalettes") == null) {
+                System.setProperty("purpurbedrock.eagerAllPalettes", Boolean.toString(!PurpurConfig.bedrockLazyLegacyPalettes));
+            }
 
             syncInternalEngineConfig(bedrockCfg, server, engineDir, floodgateReady);
 
@@ -676,6 +682,11 @@ public final class BedrockBridgeBootstrap {
             Object resolvedOs = clientDataClass.getMethod("getDeviceOs").invoke(gdkData);
             if (!(resolvedOs instanceof Enum<?> osEnum) || !"UWP".equals(osEnum.name())) {
                 throw new IllegalStateException("Windows GDK DeviceOS=16 did not resolve to UWP: " + resolvedOs);
+            }
+
+            java.util.BitSet chunkBlockEntities = (java.util.BitSet) blockRegistriesClass.getField("BEDROCK_CHUNK_BLOCK_ENTITIES").get(null);
+            if (chunkBlockEntities == null || chunkBlockEntities.isEmpty()) {
+                throw new IllegalStateException("BEDROCK_CHUNK_BLOCK_ENTITIES BitSet was not populated!");
             }
 
             return "MULTIVERSION_685_TO_2193_SELFTEST_OK codecs=" + protocols.size()
