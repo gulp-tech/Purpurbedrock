@@ -834,7 +834,16 @@ project(":spigot").projectDir = file("bootstrap/spigot")""",
                 (stream) -> AssetUtils.saveFile(localeFile, stream),
                 () -> loadLocale("en_us")));
     }""",
-        """    private static void installBundledLocales() {
+        """    public static void ensureEN_US() {
+        installBundledLocales();
+        // en_us requires special treatment since it's included in Minecraft's JAR file
+        Path localeFile = getPath("en_us");
+        AssetUtils.addTask(!Files.exists(localeFile), new AssetUtils.ClientJarTask("assets/minecraft/lang/en_us.json",
+                (stream) -> AssetUtils.saveFile(localeFile, stream),
+                () -> loadLocale("en_us")));
+    }
+
+    private static void installBundledLocales() {
         if (LOCALE_FOLDER == null) {
             return;
         }
@@ -869,15 +878,6 @@ project(":spigot").projectDir = file("bootstrap/spigot")""",
                 loadLocale(code);
             }
         }
-    }
-
-    public static void ensureEN_US() {
-        installBundledLocales();
-        // en_us requires special treatment since it's included in Minecraft's JAR file
-        Path localeFile = getPath("en_us");
-        AssetUtils.addTask(!Files.exists(localeFile), new AssetUtils.ClientJarTask("assets/minecraft/lang/en_us.json",
-                (stream) -> AssetUtils.saveFile(localeFile, stream),
-                () -> loadLocale("en_us")));
     }""",
         "MinecraftLocale.installBundledLocales",
     )
@@ -897,20 +897,7 @@ project(":spigot").projectDir = file("bootstrap/spigot")""",
         }
         return null;
     }""",
-        """    private static @Nullable String lookupLegacySpawnOrSystemKey(String key, String normLocale) {
-        if ("block.minecraft.spawn.not_valid".equals(key)) {
-            if (normLocale.startsWith("ru") || normLocale.startsWith("be") || normLocale.startsWith("kk")) {
-                return "У вас нет кровати или заряженного якоря возрождения, либо доступ к ним затруднён";
-            }
-            if (normLocale.startsWith("uk")) {
-                return "У вас немає ліжка або зарядженого якоря відродження, або доступ до них перешкоджено";
-            }
-            return "You have no home bed or charged respawn anchor, or it was obstructed";
-        }
-        return null;
-    }
-
-    public static @Nullable String getLocaleStringIfPresent(String messageText, String locale) {
+        """    public static @Nullable String getLocaleStringIfPresent(String messageText, String locale) {
         String normLocale = locale == null ? "ru_ru" : locale.toLowerCase(Locale.ROOT);
         if (!LOCALE_MAPPINGS.containsKey(normLocale) && Files.exists(getPath(normLocale))) {
             loadLocale(normLocale);
@@ -946,6 +933,19 @@ project(":spigot").projectDir = file("bootstrap/spigot")""",
             }
         }
         return lookupLegacySpawnOrSystemKey(messageText, normLocale);
+    }
+
+    private static @Nullable String lookupLegacySpawnOrSystemKey(String key, String normLocale) {
+        if ("block.minecraft.spawn.not_valid".equals(key)) {
+            if (normLocale.startsWith("ru") || normLocale.startsWith("be") || normLocale.startsWith("kk")) {
+                return "У вас нет кровати или заряженного якоря возрождения, либо доступ к ним затруднён";
+            }
+            if (normLocale.startsWith("uk")) {
+                return "У вас немає ліжка або зарядженого якоря відродження, або доступ до них перешкоджено";
+            }
+            return "You have no home bed or charged respawn anchor, or it was obstructed";
+        }
+        return null;
     }""",
         "MinecraftLocale.getLocaleStringIfPresent",
     )
