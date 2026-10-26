@@ -2645,6 +2645,93 @@ import java.util.concurrent.ConcurrentHashMap;""",
         "GeyserSession.measureLatencyStackRtt",
     )
 
+    # 11. RaknetServer.java & BedrockClientData.java:
+    #     - Prevent Cloudburst RakServerRateLimiter (default 120 datagrams/10ms) from blacklisting legitimate
+    #       26.52 PC/CGNAT players during resource-pack (.mcpack), chunk-burst, or high-CPS gameplay.
+    #     - Support Microsoft Windows GDK DeviceOS ordinal (16+) in Bedrock 26.x so PC clients (e.g. ZET Gaming / ASUS / MSI)
+    #       resolve to DeviceOs.UWP ("Windows") instead of DeviceOs.UNKNOWN (which caused VoidTab to show kbmouse!).
+    raknet_server = root / "core/src/main/java/org/geysermc/geyser/network/RaknetServer.java"
+    replace_exact(
+        raknet_server,
+        """        int rakPacketLimit = positivePropOrDefault("Geyser.RakPacketLimit", DEFAULT_PACKET_LIMIT);
+        this.geyser.getLogger().debug("Setting RakNet packet limit to " + rakPacketLimit);
+
+        int rakGlobalPacketLimit = positivePropOrDefault("Geyser.RakGlobalPacketLimit", DEFAULT_GLOBAL_PACKET_LIMIT);
+        this.geyser.getLogger().debug("Setting RakNet global packet limit to " + rakGlobalPacketLimit);
+
+        boolean rakSendCookie = Boolean.parseBoolean(System.getProperty("Geyser.RakSendCookie", "true"));
+        this.geyser.getLogger().debug("Setting RakNet send cookie to " + rakSendCookie);
+
+        int maxConnectionsPerAddress =  positivePropOrDefault("Geyser.MaxConnectionsPerAddress", 10);""",
+        """        int rakPacketLimit = positivePropOrDefault("Geyser.RakPacketLimit", Math.max(3000, DEFAULT_PACKET_LIMIT));
+        this.geyser.getLogger().debug("Setting RakNet packet limit to " + rakPacketLimit);
+
+        int rakGlobalPacketLimit = positivePropOrDefault("Geyser.RakGlobalPacketLimit", Math.max(300000, DEFAULT_GLOBAL_PACKET_LIMIT));
+        this.geyser.getLogger().debug("Setting RakNet global packet limit to " + rakGlobalPacketLimit);
+
+        boolean rakSendCookie = Boolean.parseBoolean(System.getProperty("Geyser.RakSendCookie", "true"));
+        this.geyser.getLogger().debug("Setting RakNet send cookie to " + rakSendCookie);
+
+        int maxConnectionsPerAddress = positivePropOrDefault("Geyser.MaxConnectionsPerAddress", 32);""",
+        "RaknetServer.safeRateLimitsForPackAndCgnat",
+    )
+
+    client_data = root / "core/src/main/java/org/geysermc/geyser/session/auth/BedrockClientData.java"
+    replace_exact(
+        client_data,
+        """    public DeviceOs getDeviceOs() {
+        return deviceOs != null ? deviceOs : DeviceOs.UNKNOWN;
+    }""",
+        """    public DeviceOs getDeviceOs() {
+        if (deviceOs != null && deviceOs != DeviceOs.UNKNOWN) {
+            return deviceOs;
+        }
+        String modelUpper = deviceModel == null ? "" : deviceModel.trim().toUpperCase(java.util.Locale.ROOT);
+        if (modelUpper.contains("PLAYSTATION") || modelUpper.startsWith("PS4") || modelUpper.startsWith("PS5")) {
+            return DeviceOs.PS4;
+        }
+        if (modelUpper.contains("XBOX")) {
+            return DeviceOs.XBOX;
+        }
+        if (modelUpper.startsWith("IPHONE") || modelUpper.startsWith("IPAD")) {
+            return DeviceOs.IOS;
+        }
+        if (defaultInputMode == InputMode.KEYBOARD_MOUSE
+            || currentInputMode == InputMode.KEYBOARD_MOUSE
+            || uiProfile == UiProfile.CLASSIC) {
+            // Bedrock 26.x Microsoft GDK for Windows sends DeviceOS >= 16 (outside legacy Floodgate enum)
+            return DeviceOs.UWP;
+        }
+        if (defaultInputMode == InputMode.CONTROLLER || currentInputMode == InputMode.CONTROLLER) {
+            return DeviceOs.XBOX;
+        }
+        return DeviceOs.UNKNOWN;
+    }""",
+        "BedrockClientData.windowsGdkGetDeviceOs",
+    )
+    replace_exact(
+        client_data,
+        """                public T read(JsonReader in) throws IOException {
+                    int ordinal = in.nextInt();
+                    if (ordinal < 0 || ordinal >= constants.length) {
+                        return null;
+                    }
+                    return constants[ordinal];
+                }""",
+        """                @SuppressWarnings("unchecked")
+                public T read(JsonReader in) throws IOException {
+                    int ordinal = in.nextInt();
+                    if (ordinal < 0 || ordinal >= constants.length) {
+                        if (rawType == DeviceOs.class && ordinal >= constants.length) {
+                            return (T) DeviceOs.UWP;
+                        }
+                        return null;
+                    }
+                    return constants[ordinal];
+                }""",
+        "BedrockClientData.windowsGdkOrdinalMapping",
+    )
+
 
 
 if __name__ == "__main__":

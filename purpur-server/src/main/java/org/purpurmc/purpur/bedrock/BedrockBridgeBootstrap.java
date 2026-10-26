@@ -119,6 +119,17 @@ public final class BedrockBridgeBootstrap {
             System.setProperty("purpurbedrock.lanDiscoveryPort", Integer.toString(lanPort));
             System.setProperty("purpurbedrock.lanIcePort", Integer.toString(lanIcePort));
 
+            // Prevent RakServerRateLimiter (default 120 datagrams/10ms) from kicking legitimate 26.52 PC/CGNAT players
+            if (System.getProperty("Geyser.RakPacketLimit") == null) {
+                System.setProperty("Geyser.RakPacketLimit", Integer.toString(PurpurConfig.bedrockRakPacketLimit));
+            }
+            if (System.getProperty("Geyser.RakGlobalPacketLimit") == null) {
+                System.setProperty("Geyser.RakGlobalPacketLimit", Integer.toString(PurpurConfig.bedrockRakGlobalPacketLimit));
+            }
+            if (System.getProperty("Geyser.MaxConnectionsPerAddress") == null) {
+                System.setProperty("Geyser.MaxConnectionsPerAddress", Integer.toString(PurpurConfig.bedrockRakMaxConnectionsPerIp));
+            }
+
             syncInternalEngineConfig(bedrockCfg, server, engineDir, floodgateReady);
 
             if (externalGeyserJarPresent) {
@@ -653,6 +664,18 @@ public final class BedrockBridgeBootstrap {
                     "Russian system locales incomplete: potion=" + ruPotion + " speed=" + ruSpeed
                     + " adv=" + ruAdvChallenge + "/" + ruAdvGoal
                 );
+            }
+
+            // Verify Windows GDK 26.52 DeviceOS=16 (e.g. ZET Gaming desktop) resolves to UWP ("Windows") instead of UNKNOWN
+            Class<?> clientDataClass = Class.forName("org.geysermc.geyser.session.auth.BedrockClientData", true, cl);
+            com.google.gson.Gson gson = new com.google.gson.Gson();
+            Object gdkData = gson.fromJson(
+                "{\"DeviceOS\":16,\"DeviceModel\":\"WARD H281 ZET Gaming\",\"CurrentInputMode\":1,\"DefaultInputMode\":1,\"UIProfile\":0}",
+                clientDataClass
+            );
+            Object resolvedOs = clientDataClass.getMethod("getDeviceOs").invoke(gdkData);
+            if (!(resolvedOs instanceof Enum<?> osEnum) || !"UWP".equals(osEnum.name())) {
+                throw new IllegalStateException("Windows GDK DeviceOS=16 did not resolve to UWP: " + resolvedOs);
             }
 
             return "MULTIVERSION_685_TO_2193_SELFTEST_OK codecs=" + protocols.size()

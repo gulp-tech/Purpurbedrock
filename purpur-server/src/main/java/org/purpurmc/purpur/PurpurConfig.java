@@ -656,6 +656,9 @@ public class PurpurConfig {
     public static String bedrockPlaceholderInputController = "Контроллер";
     public static boolean bedrockAllowNewerChunkDataVersion = true;
     public static boolean bedrockAllowNewerMinorPluginApi = true;
+    public static int bedrockRakPacketLimit = 3000;
+    public static int bedrockRakGlobalPacketLimit = 300000;
+    public static int bedrockRakMaxConnectionsPerIp = 32;
 
     private static void bedrockCoreSettings() {
         bedrockOnlyAllowBedrock = getBoolean("bedrock.only-allow-bedrock", bedrockOnlyAllowBedrock);
@@ -697,6 +700,9 @@ public class PurpurConfig {
         bedrockPlaceholderInputController = getString("bedrock.placeholders.input.controller", bedrockPlaceholderInputController);
         bedrockAllowNewerChunkDataVersion = getBoolean("bedrock.compatibility.allow-newer-chunk-data-version", bedrockAllowNewerChunkDataVersion);
         bedrockAllowNewerMinorPluginApi = getBoolean("bedrock.compatibility.allow-newer-26x-plugin-api", bedrockAllowNewerMinorPluginApi);
+        bedrockRakPacketLimit = Math.max(500, getInt("bedrock.network.raknet-packet-limit", bedrockRakPacketLimit));
+        bedrockRakGlobalPacketLimit = Math.max(20000, getInt("bedrock.network.raknet-global-packet-limit", bedrockRakGlobalPacketLimit));
+        bedrockRakMaxConnectionsPerIp = Math.max(8, getInt("bedrock.network.raknet-max-connections-per-ip", bedrockRakMaxConnectionsPerIp));
     }
     // Purpurbedrock end
 }
