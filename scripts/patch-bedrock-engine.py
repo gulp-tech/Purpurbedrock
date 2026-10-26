@@ -4053,7 +4053,7 @@ import java.util.concurrent.ConcurrentHashMap;""",
     }""",
         """    @Override
     public int getBlockAt(GeyserSession session, int x, int y, int z) {
-        java.util.UUID uuid = session.getPlayerEntity().getUuid();
+        java.util.UUID uuid = session.getPlayerEntity().uuid();
         Player player = uuid != null ? Bukkit.getPlayer(uuid) : Bukkit.getPlayerExact(session.getPlayerEntity().getUsername());
         if (player == null) {
             return Block.JAVA_AIR_ID;
