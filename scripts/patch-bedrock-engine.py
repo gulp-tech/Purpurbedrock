@@ -1250,46 +1250,59 @@ import org.cloudburstmc.netty.channel.nethernet.signaling.NetherNetServerSignali
             }
         });
 
-        // Purpurbedrock: auto-discover pre-cached HeadDatabase skull PNGs in bedrock/cache/player_skulls/
+        // Purpurbedrock: auto-discover pre-cached HeadDatabase skull PNGs in bedrock/cache/player_skulls/,
+        // capped strictly to maxStaticSkulls (default 16 = 336 states) so mobile phones (e.g. Galaxy A07)
+        // never crash or freeze from 30,000+ CustomSkull VoxelShapes/Molang permutations in StartGamePacket!
+        int maxStaticSkulls = Math.max(0, Integer.getInteger("purpurbedrock.maxCachedCustomSkulls", 16));
         Path cachedSkullsDir = GeyserImpl.getInstance().getBootstrap().getConfigFolder().resolve("cache").resolve("player_skulls");
         try {
             Files.createDirectories(cachedSkullsDir);
-            int maxAutoSkulls = Math.max(64, Integer.getInteger("purpurbedrock.maxCachedCustomSkulls", 2048));
-            java.util.HashSet<String> seenHashes = new java.util.HashSet<>(skinHashes);
-            java.util.ArrayList<Path> candidateFiles = new java.util.ArrayList<>();
-            try (java.util.stream.Stream<Path> cachedFiles = Files.list(cachedSkullsDir)) {
-                cachedFiles.forEach(file -> {
-                    String fileName = file.getFileName().toString();
-                    if (Files.isRegularFile(file) && fileName.endsWith(".png") && fileName.length() > 4) {
-                        String candidateHash = fileName.substring(0, fileName.length() - 4);
-                        if (SKULL_HASH_PATTERN.matcher(candidateHash).matches() && !seenHashes.contains(candidateHash)) {
-                            candidateFiles.add(file);
+            int remainingBudget = Math.max(0, maxStaticSkulls - skinHashes.size());
+            if (remainingBudget > 0) {
+                java.util.HashSet<String> seenHashes = new java.util.HashSet<>(skinHashes);
+                java.util.ArrayList<Path> candidateFiles = new java.util.ArrayList<>();
+                try (java.util.stream.Stream<Path> cachedFiles = Files.list(cachedSkullsDir)) {
+                    cachedFiles.forEach(file -> {
+                        String fileName = file.getFileName().toString();
+                        if (Files.isRegularFile(file) && fileName.endsWith(".png") && fileName.length() > 4) {
+                            String candidateHash = fileName.substring(0, fileName.length() - 4);
+                            if (SKULL_HASH_PATTERN.matcher(candidateHash).matches() && !seenHashes.contains(candidateHash)) {
+                                candidateFiles.add(file);
+                            }
                         }
-                    }
-                });
-            }
-            if (candidateFiles.size() > maxAutoSkulls) {
-                candidateFiles.sort((a, b) -> {
-                    try {
-                        return Files.getLastModifiedTime(b).compareTo(Files.getLastModifiedTime(a));
-                    } catch (IOException ex) {
-                        return 0;
-                    }
-                });
-            }
-            int addedAuto = 0;
-            for (Path file : candidateFiles) {
-                if (addedAuto >= maxAutoSkulls) {
-                    break;
+                    });
                 }
-                String fileName = file.getFileName().toString();
-                String candidateHash = fileName.substring(0, fileName.length() - 4);
-                if (seenHashes.add(candidateHash)) {
-                    skinHashes.add(candidateHash);
-                    addedAuto++;
+                if (candidateFiles.size() > remainingBudget) {
+                    candidateFiles.sort((a, b) -> {
+                        try {
+                            return Files.getLastModifiedTime(b).compareTo(Files.getLastModifiedTime(a));
+                        } catch (IOException ex) {
+                            return 0;
+                        }
+                    });
+                }
+                int addedAuto = 0;
+                for (Path file : candidateFiles) {
+                    if (addedAuto >= remainingBudget) {
+                        break;
+                    }
+                    String fileName = file.getFileName().toString();
+                    String candidateHash = fileName.substring(0, fileName.length() - 4);
+                    if (seenHashes.add(candidateHash)) {
+                        skinHashes.add(candidateHash);
+                        addedAuto++;
+                    }
                 }
             }
         } catch (IOException ignored) {
+        }
+        if (skinHashes.size() > maxStaticSkulls) {
+            int droppedCount = skinHashes.size() - maxStaticSkulls;
+            skinHashes.subList(maxStaticSkulls, skinHashes.size()).clear();
+            GeyserImpl.getInstance().getLogger().info(
+                "Capped static custom skull blocks to " + maxStaticSkulls + " (deferred " + droppedCount
+                + " skulls to dynamic SkullCache to prevent mobile Bedrock client crashes)."
+            );
         }""",
         "CustomSkullRegistryPopulator.autoDiscoverPlayerSkulls",
     )
@@ -2565,7 +2578,11 @@ import java.util.concurrent.ConcurrentHashMap;""",
     replace_exact(
         chunk_batch_translator,
         """        session.sendDownstreamGamePacket(new ServerboundChunkBatchReceivedPacket(20));""",
-        """        session.sendDownstreamGamePacket(new ServerboundChunkBatchReceivedPacket(32f));""",
+        """        String devOs = (session.getClientData() != null && session.getClientData().getDeviceOs() != null)
+            ? session.getClientData().getDeviceOs().name()
+            : "";
+        boolean mobileClient = "GOOGLE".equals(devOs) || "IOS".equals(devOs) || "AMAZON".equals(devOs) || "NX".equals(devOs);
+        session.sendDownstreamGamePacket(new ServerboundChunkBatchReceivedPacket(mobileClient ? 14f : 28f));""",
         "JavaChunkBatchFinishedTranslator.higherChunkBatchRate",
     )
 
@@ -4689,9 +4706,14 @@ import java.util.concurrent.ConcurrentHashMap;""",
 
     replace_exact(
         upstream_handler,
-        """        resourcePacksInfo.setForcedToAccept(GeyserImpl.getInstance().config().gameplay().forceResourcePacks() ||
+        """        resourcePacksInfo.setVibrantVisualsForceDisabled(!session.isAllowVibrantVisuals());
+
+        resourcePacksInfo.setForcedToAccept(GeyserImpl.getInstance().config().gameplay().forceResourcePacks() ||
             resourcePackLoadEvent.isIntegratedPackActive());""",
-        """        resourcePacksInfo.setForcedToAccept(GeyserImpl.getInstance().config().gameplay().forceResourcePacks());""",
+        """        boolean allowVibrant = Boolean.getBoolean("purpurbedrock.allowVibrantVisuals") && session.isAllowVibrantVisuals();
+        resourcePacksInfo.setVibrantVisualsForceDisabled(!allowVibrant);
+
+        resourcePacksInfo.setForcedToAccept(GeyserImpl.getInstance().config().gameplay().forceResourcePacks());""",
         "UpstreamPacketHandler.nonBlockingIntegratedPack",
     )
     replace_exact(
@@ -4781,6 +4803,263 @@ import java.util.concurrent.ConcurrentHashMap;""",
             messages = java.util.Collections.emptyList();
         }""",
         "SignBlockEntityTranslator.safeHeterogeneousNbtSignList",
+    )
+
+    # =========================================================================
+    # 15. Mobile Anti-Crash & Instant-Join Suite (Galaxy A07 / 3-4GB RAM Android & iOS):
+    #     - Upstream #6698 CustomSkull / SkullCache allocation optimization + thread-safe SkullSkinManager.
+    #     - Slim AvailableCommandsPacket on 50+ plugin servers (strips plugin:cmd duplicates & caps at 96).
+    #     - UTF-8 byte-safe BossBar title truncation (<= 236 UTF-8 bytes for 2-byte Cyrillic + hex gradients).
+    #     - Mobile render-distance clamp (<= 8 chunks on Android/iOS/Switch; PC & Xbox/PS5 uncapped).
+    # =========================================================================
+    custom_skull_cls = root / "core/src/main/java/org/geysermc/geyser/registry/type/CustomSkull.java"
+    replace_exact(
+        custom_skull_cls,
+        """    private static final int[] ROTATIONS = {0, -90, 180, 90};""",
+        """    private static final int[] ROTATIONS = {0, -90, 180, 90};
+    private static final String[] QUADRANT_NAMES = {"a", "b", "c", "d"};""",
+        "CustomSkull.staticQuadrantNames",
+    )
+    replace_exact(
+        custom_skull_cls,
+        """                .intProperty(BITS_A_PROPERTY, IntStream.rangeClosed(0, 6).boxed().toList()) // This gives us exactly 21 block states
+                .intProperty(BITS_B_PROPERTY, IntStream.rangeClosed(0, 2).boxed().toList())""",
+        """                .intProperty(BITS_A_PROPERTY, List.of(0, 1, 2, 3, 4, 5, 6)) // This gives us exactly 21 block states
+                .intProperty(BITS_B_PROPERTY, List.of(0, 1, 2))""",
+        "CustomSkull.staticPropertyLists",
+    )
+    replace_exact(
+        custom_skull_cls,
+        """    private void addFloorPermutations(List<CustomBlockPermutation> permutations) {
+        String[] quadrantNames = {"a", "b", "c", "d"};
+
+        for (int quadrant = 0; quadrant < 4; quadrant++) {
+            for (int i = 0; i < 4; i++) {
+                int floorRotation = 4 * quadrant + i;
+                CustomBlockComponents components = new GeyserCustomBlockComponents.Builder()
+                        .selectionBox(FLOOR_BOX)
+                        .collisionBox(FLOOR_BOX)
+                        .geometry(new GeyserGeometryComponent.Builder()
+                                .identifier("geometry.geyser.player_skull_floor_" + quadrantNames[i])""",
+        """    private void addFloorPermutations(List<CustomBlockPermutation> permutations) {
+        for (int quadrant = 0; quadrant < 4; quadrant++) {
+            for (int i = 0; i < 4; i++) {
+                int floorRotation = 4 * quadrant + i;
+                CustomBlockComponents components = new GeyserCustomBlockComponents.Builder()
+                        .selectionBox(FLOOR_BOX)
+                        .collisionBox(FLOOR_BOX)
+                        .geometry(new GeyserGeometryComponent.Builder()
+                                .identifier("geometry.geyser.player_skull_floor_" + QUADRANT_NAMES[i])""",
+        "CustomSkull.useStaticQuadrants",
+    )
+
+    skull_cache_cls = root / "core/src/main/java/org/geysermc/geyser/session/cache/SkullCache.java"
+    replace_exact(
+        skull_cache_cls,
+        """public class SkullCache {
+    private final int maxVisibleSkulls;""",
+        """public class SkullCache {
+    private static final Comparator<Skull> DISTANCE_COMPARATOR = Comparator.comparingInt(Skull::getDistanceSquared);
+    private final int maxVisibleSkulls;""",
+        "SkullCache.staticDistanceComparator",
+    )
+    replace_exact(
+        skull_cache_cls,
+        """                int i = Collections.binarySearch(inRangeSkulls, skull, Comparator.comparingInt(Skull::getDistanceSquared));""",
+        """                int i = Collections.binarySearch(inRangeSkulls, skull, DISTANCE_COMPARATOR);""",
+        "SkullCache.binarySearchStaticComparator",
+    )
+    replace_exact(
+        skull_cache_cls,
+        """            inRangeSkulls.sort(Comparator.comparingInt(Skull::getDistanceSquared));""",
+        """            inRangeSkulls.sort(DISTANCE_COMPARATOR);""",
+        "SkullCache.sortStaticComparator",
+    )
+
+    skull_skin_mgr = root / "core/src/main/java/org/geysermc/geyser/skin/SkullSkinManager.java"
+    replace_exact(
+        skull_skin_mgr,
+        """            .geometryDataEngineVersion(session.getClientData().getGameVersion())""",
+        """            .geometryDataEngineVersion(session.getClientData() != null && session.getClientData().getGameVersion() != null ? session.getClientData().getGameVersion() : "")""",
+        "SkullSkinManager.nullSafeEngineVersion",
+    )
+    replace_exact(
+        skull_skin_mgr,
+        """        BiConsumer<Skin, Throwable> applySkin = (skin, throwable) -> {
+            SerializedSkin serializedSkin = buildSkullEntryManually(session, skin.textureUrl(), skin.skinData());
+            // Since 1.21.130: PlayerSkinPacket only works if player entity is listed
+            PlayerListUtils.sendSkinUsingPlayerList(session, PlayerListUtils.forSkullPlayerEntity(entity, serializedSkin), entity, false);
+
+            if (skinConsumer != null) {
+                skinConsumer.accept(skin);
+            }
+        };""",
+        """        BiConsumer<Skin, Throwable> applySkin = (skin, throwable) -> {
+            if (throwable != null || skin == null || session.isClosed()) {
+                return;
+            }
+            session.ensureInEventLoop(() -> {
+                if (session.isClosed()) {
+                    return;
+                }
+                SerializedSkin serializedSkin = buildSkullEntryManually(session, skin.textureUrl(), skin.skinData());
+                // Since 1.21.130: PlayerSkinPacket only works if player entity is listed
+                PlayerListUtils.sendSkinUsingPlayerList(session, PlayerListUtils.forSkullPlayerEntity(entity, serializedSkin), entity, false);
+
+                if (skinConsumer != null) {
+                    skinConsumer.accept(skin);
+                }
+            });
+        };""",
+        "SkullSkinManager.eventLoopAndNullSafeApplySkin",
+    )
+
+    commands_translator = root / "core/src/main/java/org/geysermc/geyser/translator/protocol/java/JavaCommandsTranslator.java"
+    replace_exact(
+        commands_translator,
+        """    private static final String[] ENUM_BOOLEAN = {"true", "false"};""",
+        """    private static final String[] ENUM_BOOLEAN = {"true", "false"};
+    private static final Set<String> PRIORITY_PLAYER_COMMANDS = Set.of(
+        "reg", "register", "l", "login", "changepassword", "logout",
+        "spawn", "hub", "lobby", "rtp", "wild", "tpa", "tpahere", "tpaccept", "tpdeny", "tpyes", "tpno",
+        "home", "homes", "sethome", "delhome", "warp", "warps", "back", "near",
+        "shop", "menu", "donate", "cases", "pay", "bal", "balance", "money",
+        "ah", "auc", "auction", "clan", "clans", "kit", "kits",
+        "msg", "tell", "w", "r", "reply", "ignore", "bc",
+        "ec", "enderchest", "craft", "wb", "anvil", "repair", "fix", "feed", "heal", "fly",
+        "pvp", "duel", "rules", "report", "list", "help", "pb", "purpurbedrock"
+    );""",
+        "JavaCommandsTranslator.priorityPlayerCommands",
+    )
+    replace_exact(
+        commands_translator,
+        """        // Loop through the root nodes to get all commands
+        for (int nodeIndex : rootNode.getChildIndices()) {
+            CommandNode node = nodes[nodeIndex];
+
+            // Make sure we don't have duplicated commands (happens if there is more than 1 root node)
+            if (!commandNodes.add(nodeIndex) || !knownAliases.add(node.getName().toLowerCase(Locale.ROOT))) continue;
+
+            // Get and update the commandArgs list with the found arguments
+            if (node.getChildIndices().length >= 1) {
+                for (int childIndex : node.getChildIndices()) {
+                    commandArgs.computeIfAbsent(nodeIndex, ($) -> new ArrayList<>()).add(nodes[childIndex]);
+                }
+            }
+
+            // Get and parse all params
+            CommandOverloadData[] params = getParams(session, nodes[nodeIndex], nodes);
+
+            // Insert the alias name into the command list
+            String name = node.getName().toLowerCase(Locale.ROOT);
+            String description = registry.description(name, session.locale());
+            BedrockCommandInfo info = new BedrockCommandInfo(name, description, params);
+            commands.computeIfAbsent(info, $ -> new HashSet<>()).add(name);
+
+            // Add the command to the command lists
+            knownCommands.add(name);
+            if (node.isAllowsRestricted()) { // Name is a bit confusing - this is what we want
+                restrictedCommands.add(name);
+            }
+        }""",
+        """        int maxClientCommands = Math.max(32, Integer.getInteger("purpurbedrock.maxClientCommands", 96));
+        int advertisedCount = 0;
+        // Loop through the root nodes to get all commands
+        for (int nodeIndex : rootNode.getChildIndices()) {
+            CommandNode node = nodes[nodeIndex];
+            String name = node.getName().toLowerCase(Locale.ROOT);
+
+            // Make sure we don't have duplicated commands (happens if there is more than 1 root node)
+            if (!commandNodes.add(nodeIndex) || !knownAliases.add(name)) continue;
+
+            // Always keep 100% of commands in server-side knownCommands
+            knownCommands.add(name);
+            if (node.isAllowsRestricted()) {
+                restrictedCommands.add(name);
+            }
+
+            // Skip plugin:command namespaced duplicates and WorldEdit //-commands in client packet to prevent mobile crashes
+            if (name.indexOf(':') >= 0 || name.startsWith("/")) {
+                continue;
+            }
+            if (advertisedCount >= maxClientCommands && !PRIORITY_PLAYER_COMMANDS.contains(name)) {
+                continue;
+            }
+
+            // Get and update the commandArgs list with the found arguments
+            if (node.getChildIndices().length >= 1) {
+                for (int childIndex : node.getChildIndices()) {
+                    commandArgs.computeIfAbsent(nodeIndex, ($) -> new ArrayList<>()).add(nodes[childIndex]);
+                }
+            }
+
+            // Get and parse all params
+            CommandOverloadData[] params = getParams(session, nodes[nodeIndex], nodes);
+            String description = registry.description(name, session.locale());
+            BedrockCommandInfo info = new BedrockCommandInfo(name, description, params);
+            commands.computeIfAbsent(info, $ -> new HashSet<>()).add(name);
+            advertisedCount++;
+        }""",
+        "JavaCommandsTranslator.slimPluginCommandsForMobile",
+    )
+
+    boss_bar_cls = root / "core/src/main/java/org/geysermc/geyser/session/cache/BossBar.java"
+    replace_exact(
+        boss_bar_cls,
+        """    private String bossbarTitle(Component title) {
+        String message = MessageTranslator.convertMessage(title, session.locale()).replace("%", "%%%%");
+
+        if (message.length() > 256) {
+            GeyserImpl.getInstance().getLogger().debug(session, "Bossbar with a length higher than 256! Limiting length.");
+            message = message.substring(0, 253) + "...";
+        }
+
+        return message;
+    }""",
+        """    private String bossbarTitle(Component title) {
+        String message = MessageTranslator.convertMessage(title, session.locale()).replace("%", "%%%%");
+        byte[] utf8 = message.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        if (utf8.length <= 236) {
+            return message;
+        }
+        GeyserImpl.getInstance().getLogger().debug(session, "Bossbar UTF-8 byte length > 236 (" + utf8.length + "B)! Limiting length.");
+        int byteCount = 0;
+        int endIdx = 0;
+        while (endIdx < message.length()) {
+            int cp = message.codePointAt(endIdx);
+            int cpBytes = cp <= 0x7F ? 1 : (cp <= 0x7FF ? 2 : (cp <= 0xFFFF ? 3 : 4));
+            if (byteCount + cpBytes > 233) {
+                break;
+            }
+            byteCount += cpBytes;
+            endIdx += Character.charCount(cp);
+        }
+        if (endIdx > 0 && message.charAt(endIdx - 1) == '\\u00a7') {
+            endIdx--;
+        }
+        return message.substring(0, endIdx) + "...";
+    }""",
+        "BossBar.utf8ByteSafeCyrillicTitleCap",
+    )
+
+    req_chunk_radius = root / "core/src/main/java/org/geysermc/geyser/translator/protocol/bedrock/BedrockRequestChunkRadiusTranslator.java"
+    replace_exact(
+        req_chunk_radius,
+        """    @Override
+    public void translate(GeyserSession session, RequestChunkRadiusPacket packet) {
+        session.setClientRenderDistance(packet.getRadius());""",
+        """    @Override
+    public void translate(GeyserSession session, RequestChunkRadiusPacket packet) {
+        int requested = packet.getRadius();
+        String devOs = (session.getClientData() != null && session.getClientData().getDeviceOs() != null)
+            ? session.getClientData().getDeviceOs().name()
+            : "";
+        if ("GOOGLE".equals(devOs) || "IOS".equals(devOs) || "AMAZON".equals(devOs) || "NX".equals(devOs)) {
+            int maxMobileDist = Math.max(5, Integer.getInteger("purpurbedrock.maxMobileRenderDistance", 8));
+            requested = Math.min(requested, maxMobileDist);
+        }
+        session.setClientRenderDistance(requested);""",
+        "BedrockRequestChunkRadiusTranslator.mobileSafeChunkRadius",
     )
 
 

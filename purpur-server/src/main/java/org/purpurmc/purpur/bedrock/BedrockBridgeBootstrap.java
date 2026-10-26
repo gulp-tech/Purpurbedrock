@@ -142,8 +142,26 @@ public final class BedrockBridgeBootstrap {
                 System.setProperty("purpurbedrock.maxParticlesPerPacket", Integer.toString(PurpurConfig.bedrockMaxParticlesPerPacket));
             }
             if (System.getProperty("purpurbedrock.maxCachedCustomSkulls") == null) {
-                int maxCachedSkulls = Math.max(64, bedrockCfg.getInt("performance.max-cached-custom-skulls", 2048));
+                int maxCachedSkulls = Math.max(0, bedrockCfg.getInt("performance.max-cached-custom-skulls", 16));
                 System.setProperty("purpurbedrock.maxCachedCustomSkulls", Integer.toString(maxCachedSkulls));
+            }
+            if (System.getProperty("purpurbedrock.allowVibrantVisuals") == null) {
+                System.setProperty(
+                    "purpurbedrock.allowVibrantVisuals",
+                    Boolean.toString(bedrockCfg.getBoolean("gameplay.allow-vibrant-visuals", false))
+                );
+            }
+            if (System.getProperty("purpurbedrock.maxMobileRenderDistance") == null) {
+                System.setProperty(
+                    "purpurbedrock.maxMobileRenderDistance",
+                    Integer.toString(PurpurConfig.bedrockMaxMobileRenderDistance)
+                );
+            }
+            if (System.getProperty("purpurbedrock.maxClientCommands") == null) {
+                System.setProperty(
+                    "purpurbedrock.maxClientCommands",
+                    Integer.toString(PurpurConfig.bedrockMaxClientCommands)
+                );
             }
 
             syncInternalEngineConfig(bedrockCfg, server, engineDir, floodgateReady);
@@ -338,31 +356,20 @@ public final class BedrockBridgeBootstrap {
         cfg.addDefault("gameplay.command-suggestions", true);
         cfg.addDefault("gameplay.show-cooldown", "false");
         cfg.addDefault("gameplay.disable-bedrock-scaffolding", false);
+        cfg.addDefault("gameplay.allow-vibrant-visuals", false);
         cfg.addDefault("performance.mtu", 1200);
         cfg.addDefault("performance.compression-level", 4);
         cfg.addDefault("performance.cache-images", 7);
-        cfg.addDefault("performance.max-visible-custom-skulls", 24);
-        cfg.addDefault("performance.custom-skull-render-distance", 16);
-        cfg.addDefault("performance.max-cached-custom-skulls", 2048);
+        cfg.addDefault("performance.max-visible-custom-skulls", 12);
+        cfg.addDefault("performance.custom-skull-render-distance", 12);
+        cfg.addDefault("performance.max-cached-custom-skulls", 16);
         cfg.addDefault("packs.force-resource-packs", false);
         cfg.addDefault("packs.enable-integrated-pack", true);
         cfg.addDefault("advanced.download-mojang-assets", false);
-        cfg.addDefault("config-schema", 4);
+        cfg.addDefault("config-schema", 5);
         int existingSchema = cfg.getInt("config-schema", 1);
         if (file.exists() && existingSchema < 2) {
             cfg.set("packs.enable-integrated-pack", true);
-        }
-        if (file.exists() && existingSchema < 3) {
-            int curSkulls = cfg.getInt("performance.max-visible-custom-skulls", 0);
-            if (curSkulls == 0 || curSkulls == 128) {
-                cfg.set("performance.max-visible-custom-skulls", 24);
-            }
-            if (cfg.getInt("performance.custom-skull-render-distance", 0) == 0) {
-                cfg.set("performance.custom-skull-render-distance", 16);
-            }
-            if (cfg.getInt("performance.max-cached-custom-skulls", 0) == 0) {
-                cfg.set("performance.max-cached-custom-skulls", 2048);
-            }
         }
         if (file.exists() && existingSchema < 4) {
             // Migrate MTU 1350 -> 1200 for Russian mobile LTE / PPPoE / VPN / Amnezia compatibility,
@@ -373,7 +380,24 @@ public final class BedrockBridgeBootstrap {
             if (cfg.getBoolean("packs.force-resource-packs", true)) {
                 cfg.set("packs.force-resource-packs", false);
             }
-            cfg.set("config-schema", 4);
+        }
+        if (file.exists() && existingSchema < 5) {
+            // Migrate max-cached-custom-skulls 2048 -> 16 so 1,459+ HeadDatabase PNGs never generate
+            // 30,639+ CustomSkull VoxelShapes/Molang permutations that crash 3-4GB RAM phones (e.g. Galaxy A07)
+            int curStaticSkulls = cfg.getInt("performance.max-cached-custom-skulls", 2048);
+            if (curStaticSkulls == 0 || curStaticSkulls > 32) {
+                cfg.set("performance.max-cached-custom-skulls", 16);
+            }
+            int curVisSkulls = cfg.getInt("performance.max-visible-custom-skulls", 24);
+            if (curVisSkulls == 0 || curVisSkulls >= 24) {
+                cfg.set("performance.max-visible-custom-skulls", 12);
+            }
+            int curSkullDist = cfg.getInt("performance.custom-skull-render-distance", 16);
+            if (curSkullDist == 0 || curSkullDist >= 16) {
+                cfg.set("performance.custom-skull-render-distance", 12);
+            }
+            cfg.set("gameplay.allow-vibrant-visuals", false);
+            cfg.set("config-schema", 5);
         }
         cfg.options().copyDefaults(true);
         cfg.save(file);
@@ -493,8 +517,8 @@ public final class BedrockBridgeBootstrap {
         int mtu = bedrockCfg.getInt("performance.mtu", 1200);
         int compressionLevel = bedrockCfg.getInt("performance.compression-level", 4);
         int cacheImages = bedrockCfg.getInt("performance.cache-images", 7);
-        int maxSkulls = bedrockCfg.getInt("performance.max-visible-custom-skulls", 24);
-        int skullRenderDist = Math.max(8, Math.min(64, bedrockCfg.getInt("performance.custom-skull-render-distance", 16)));
+        int maxSkulls = bedrockCfg.getInt("performance.max-visible-custom-skulls", 12);
+        int skullRenderDist = Math.max(8, Math.min(64, bedrockCfg.getInt("performance.custom-skull-render-distance", 12)));
         boolean forcePacks = bedrockCfg.getBoolean("packs.force-resource-packs", false);
         boolean integratedPack = bedrockCfg.getBoolean("packs.enable-integrated-pack", true);
 
@@ -771,10 +795,19 @@ public final class BedrockBridgeBootstrap {
             if (activeParticleCap <= 0 || activeParticleCap > 64) {
                 throw new IllegalStateException("Unexpected MAX_PARTICLES cap: " + activeParticleCap);
             }
+            Class<?> cmdTransClass = Class.forName("org.geysermc.geyser.translator.protocol.java.JavaCommandsTranslator", true, cl);
+            cmdTransClass.getDeclaredField("PRIORITY_PLAYER_COMMANDS");
+            Class<?> skullCacheClass = Class.forName("org.geysermc.geyser.session.cache.SkullCache", true, cl);
+            skullCacheClass.getDeclaredField("DISTANCE_COMPARATOR");
+            int activeStaticSkullCap = Integer.getInteger("purpurbedrock.maxCachedCustomSkulls", 16);
+            if (activeStaticSkullCap < 0 || activeStaticSkullCap > 64) {
+                throw new IllegalStateException("Mobile-unsafe maxCachedCustomSkulls cap: " + activeStaticSkullCap);
+            }
 
             return "MULTIVERSION_685_TO_2193_SELFTEST_OK codecs=" + protocols.size()
                 + " versions=1.21.0..26.52 dialogWaitPopup=DISABLED chunkPublisher=RELIABLE ruLocale=OK"
-                + " pre818StartGame=OK attrSingleton=OK waypointFix=OK particleCap=" + activeParticleCap;
+                + " pre818StartGame=OK attrSingleton=OK waypointFix=OK particleCap=" + activeParticleCap
+                + " mobileStaticSkulls=" + activeStaticSkullCap;
         } catch (Throwable t) {
             throw new RuntimeException("MULTIVERSION_SELFTEST_FAILED: " + t.getMessage(), t);
         }

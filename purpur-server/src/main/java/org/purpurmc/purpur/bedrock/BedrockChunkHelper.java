@@ -69,18 +69,19 @@ public final class BedrockChunkHelper {
             return;
         }
         if (global.chunkLoadingAdvanced != null) {
-            // Respect per-device RequestChunkRadius (GeyserSession clamps >= 5) so budget phones don't mesh 400+ chunks
+            // Respect per-device RequestChunkRadius (mobile clamped <= 8) so 3GB phones (Galaxy A07) never OOM
             global.chunkLoadingAdvanced.autoConfigSendDistance = true;
             if (global.chunkLoadingAdvanced.playerMaxConcurrentChunkLoads == 0
-                || global.chunkLoadingAdvanced.playerMaxConcurrentChunkLoads > 6) {
-                global.chunkLoadingAdvanced.playerMaxConcurrentChunkLoads = 6;
+                || global.chunkLoadingAdvanced.playerMaxConcurrentChunkLoads > 4) {
+                global.chunkLoadingAdvanced.playerMaxConcurrentChunkLoads = 4;
             }
         }
         if (global.chunkLoadingBasic != null) {
             double targetSendRate = PurpurConfig.bedrockMaxChunkSendRate;
             if (global.chunkLoadingBasic.playerMaxChunkSendRate <= 0.0
                 || global.chunkLoadingBasic.playerMaxChunkSendRate > targetSendRate
-                || global.chunkLoadingBasic.playerMaxChunkSendRate == 120.0) {
+                || global.chunkLoadingBasic.playerMaxChunkSendRate == 120.0
+                || global.chunkLoadingBasic.playerMaxChunkSendRate == 45.0) {
                 global.chunkLoadingBasic.playerMaxChunkSendRate = targetSendRate;
             }
             if (global.chunkLoadingBasic.playerMaxChunkLoadRate > 0.0
