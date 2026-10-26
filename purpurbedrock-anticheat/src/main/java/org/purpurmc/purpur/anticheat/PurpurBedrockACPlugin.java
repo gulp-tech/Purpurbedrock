@@ -19,6 +19,7 @@ import org.purpurmc.purpur.anticheat.listener.ACListener;
 import org.purpurmc.purpur.anticheat.model.HistoryEntry;
 import org.purpurmc.purpur.anticheat.model.PlayerProfile;
 import org.purpurmc.purpur.anticheat.model.SeverityColor;
+import org.purpurmc.purpur.anticheat.util.BedrockBridgeInfo;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -49,6 +50,7 @@ public final class PurpurBedrockACPlugin extends JavaPlugin {
         this.checkRunner = new CheckRunner(this);
         this.hologramManager = new AvgHologramManager(this);
         this.historyMenu = new HolyHistoryMenu(this);
+        BedrockBridgeInfo.bindPlugin(this);
 
         Bukkit.getPluginManager().registerEvents(new ACListener(this), this);
 
@@ -233,6 +235,7 @@ public final class PurpurBedrockACPlugin extends JavaPlugin {
         if (hologramManager.getActiveEntityCount() != 0) {
             throw new IllegalStateException("Idle hologram entity count must be 0");
         }
-        return "PURPURBEDROCK_AC_SELFTEST_OK checks=21/21 wifiLagSafe=true gui=54 legend=GREEN_ORANGE_RED stage=" + demo.stage.name() + " idleHolo=0";
+        BedrockBridgeInfo.verifySelfTest();
+        return "PURPURBEDROCK_AC_SELFTEST_OK checks=21/21 wifiLagSafe=true gui=54 legend=GREEN_ORANGE_RED stage=" + demo.stage.name() + " idleHolo=0 devices=6";
     }
 }

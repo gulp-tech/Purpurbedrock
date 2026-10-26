@@ -724,18 +724,49 @@ project(":spigot").projectDir = file("bootstrap/spigot")""",
         "NewsHandler.constructor",
     )
 
-    # 3. AssetUtils.java: load en_us.json directly from Purpur 26.2 server classpath without 50MB download
+    # 3. AssetUtils.java & MinecraftLocale.java: instant offline en_us + ru_ru/uk_ua/be_by/kk_kz + deprecated
+    #    translations from Bukkit/bundled classpath without downloading 50MB client.jar, plus quiet async
+    #    Mojang asset index lookup for all other client languages.
     asset_utils = root / "core/src/main/java/org/geysermc/geyser/util/AssetUtils.java"
     replace_exact(
         asset_utils,
-        """    public static CompletableFuture<Void> generateAssetCache() {
-        return CompletableFuture.supplyAsync(() -> {""",
-        """    public static CompletableFuture<Void> generateAssetCache() {
-        if (Boolean.parseBoolean(System.getProperty("purpurbedrock.offlineAssets", "true"))) {
-            return CompletableFuture.completedFuture(null);
-        }
-        return CompletableFuture.supplyAsync(() -> {""",
-        "AssetUtils.generateAssetCache",
+        """                // Get the url for the latest version of the games manifest
+                String latestInfoURL = "";
+                for (Version version : versionManifest.getVersions()) {
+                    if (version.getId().equals(GameProtocol.getJavaMinecraftVersion())) {
+                        latestInfoURL = version.getUrl();
+                        break;
+                    }
+                }""",
+        """                // Get the url for the latest version of the games manifest (with release fallback)
+                String latestInfoURL = "";
+                for (Version version : versionManifest.getVersions()) {
+                    if (version.getId().equals(GameProtocol.getJavaMinecraftVersion())) {
+                        latestInfoURL = version.getUrl();
+                        break;
+                    }
+                }
+                if (latestInfoURL.isEmpty() && versionManifest.getLatestVersion() != null) {
+                    String fallbackRelease = versionManifest.getLatestVersion().getRelease();
+                    for (Version version : versionManifest.getVersions()) {
+                        if (version.getId().equals(fallbackRelease)) {
+                            latestInfoURL = version.getUrl();
+                            break;
+                        }
+                    }
+                }""",
+        "AssetUtils.generateAssetCacheFallback",
+    )
+    replace_exact(
+        asset_utils,
+        """            } catch (Exception e) {
+                GeyserImpl.getInstance().getLogger().error(GeyserLocale.getLocaleStringLog("geyser.locale.fail.asset_cache", (!e.getMessage().isEmpty() ? e.getMessage() : e.getStackTrace())));
+            }""",
+        """            } catch (Exception e) {
+                // Fail silently to debug if Mojang CDN is offline/blocked; bundled locales still work offline
+                GeyserImpl.getInstance().getLogger().debug("Mojang asset index unavailable (using bundled locales): " + e.getMessage());
+            }""",
+        "AssetUtils.quietOfflineAssetIndex",
     )
     replace_exact(
         asset_utils,
@@ -745,32 +776,178 @@ project(":spigot").projectDir = file("bootstrap/spigot")""",
             GeyserImpl.getInstance().getLogger().debug("Skipping en_US hash check as client jar is null.");
             return;
         }""",
-        """    public static void downloadAndRunClientJarTasks() {
-        if (Boolean.parseBoolean(System.getProperty("purpurbedrock.offlineAssets", "true"))) {
+        """    private static InputStream openServerOrBundledAsset(String assetPath) {
+        String fileName = assetPath.substring(assetPath.lastIndexOf('/') + 1);
+        InputStream stream = AssetUtils.class.getClassLoader().getResourceAsStream("purpurbedrock/locales/" + fileName);
+        if (stream != null) {
+            return stream;
+        }
+        stream = AssetUtils.class.getClassLoader().getResourceAsStream(assetPath);
+        if (stream != null) {
+            return stream;
+        }
+        try {
+            Class<?> bukkitClass = Class.forName("org.bukkit.Bukkit");
+            if (bukkitClass.getClassLoader() != null) {
+                stream = bukkitClass.getClassLoader().getResourceAsStream(assetPath);
+                if (stream != null) {
+                    return stream;
+                }
+            }
+            stream = bukkitClass.getResourceAsStream("/" + assetPath);
+            if (stream != null) {
+                return stream;
+            }
+        } catch (Throwable ignored) {
+        }
+        ClassLoader ctx = Thread.currentThread().getContextClassLoader();
+        return ctx != null ? ctx.getResourceAsStream(assetPath) : null;
+    }
+
+    public static void downloadAndRunClientJarTasks() {
+        if (Boolean.parseBoolean(System.getProperty("purpurbedrock.offlineAssets", "true")) || CLIENT_JAR_INFO == null) {
             ClientJarTask task;
             while ((task = CLIENT_JAR_TASKS.poll()) != null) {
                 try {
-                    InputStream classpathStream = AssetUtils.class.getClassLoader().getResourceAsStream(task.asset);
-                    if (classpathStream == null && Thread.currentThread().getContextClassLoader() != null) {
-                        classpathStream = Thread.currentThread().getContextClassLoader().getResourceAsStream(task.asset);
-                    }
+                    InputStream classpathStream = openServerOrBundledAsset(task.asset);
                     if (classpathStream != null) {
                         try (InputStream in = classpathStream) {
                             task.ifNewDownload.accept(in);
                         }
-                        task.whenDone.run();
                     }
+                    task.whenDone.run();
                 } catch (Exception ignored) {
                 }
             }
             return;
-        }
-        if (CLIENT_JAR_INFO == null) {
-            // Likely failed to download
-            GeyserImpl.getInstance().getLogger().debug("Skipping en_US hash check as client jar is null.");
-            return;
         }""",
         "AssetUtils.downloadAndRunClientJarTasks",
+    )
+
+    minecraft_locale = root / "core/src/main/java/org/geysermc/geyser/text/MinecraftLocale.java"
+    replace_exact(
+        minecraft_locale,
+        """    public static void ensureEN_US() {
+        // en_us requires special treatment since it's included in Minecraft's JAR file
+        Path localeFile = getPath("en_us");
+        AssetUtils.addTask(!Files.exists(localeFile), new AssetUtils.ClientJarTask("assets/minecraft/lang/en_us.json",
+                (stream) -> AssetUtils.saveFile(localeFile, stream),
+                () -> loadLocale("en_us")));
+    }""",
+        """    private static void installBundledLocales() {
+        if (LOCALE_FOLDER == null) {
+            return;
+        }
+        String[] bundled = new String[]{"deprecated", "en_us", "ru_ru", "uk_ua", "be_by", "kk_kz"};
+        ClassLoader cl = MinecraftLocale.class.getClassLoader();
+        for (String code : bundled) {
+            Path target = getPath(code);
+            try {
+                if (!Files.exists(target) || Files.size(target) < 64L) {
+                    InputStream in = cl != null ? cl.getResourceAsStream("purpurbedrock/locales/" + code + ".json") : null;
+                    if (in == null && ("en_us".equals(code) || "deprecated".equals(code))) {
+                        try {
+                            Class<?> bukkitClass = Class.forName("org.bukkit.Bukkit");
+                            if (bukkitClass.getClassLoader() != null) {
+                                in = bukkitClass.getClassLoader().getResourceAsStream("assets/minecraft/lang/" + code + ".json");
+                            }
+                        } catch (Throwable ignored) {
+                        }
+                    }
+                    if (in != null) {
+                        try (InputStream stream = in) {
+                            AssetUtils.saveFile(target, stream);
+                        }
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        loadDeprecations();
+        for (String code : new String[]{"en_us", "ru_ru", "uk_ua", "be_by", "kk_kz"}) {
+            if (Files.exists(getPath(code))) {
+                loadLocale(code);
+            }
+        }
+    }
+
+    public static void ensureEN_US() {
+        installBundledLocales();
+        // en_us requires special treatment since it's included in Minecraft's JAR file
+        Path localeFile = getPath("en_us");
+        AssetUtils.addTask(!Files.exists(localeFile), new AssetUtils.ClientJarTask("assets/minecraft/lang/en_us.json",
+                (stream) -> AssetUtils.saveFile(localeFile, stream),
+                () -> loadLocale("en_us")));
+    }""",
+        "MinecraftLocale.installBundledLocales",
+    )
+    replace_exact(
+        minecraft_locale,
+        """    public static @Nullable String getLocaleStringIfPresent(String messageText, String locale) {
+        Map<String, String> localeStrings = LOCALE_MAPPINGS.get(locale.toLowerCase(Locale.ROOT));
+        if (localeStrings != null) {
+            String translated = localeStrings.get(messageText);
+            if (translated != null) {
+                return translated;
+            }
+        }
+        localeStrings = LOCALE_MAPPINGS.get("en_us");
+        if (localeStrings != null) {
+            return localeStrings.get(messageText);
+        }
+        return null;
+    }""",
+        """    private static @Nullable String lookupLegacySpawnOrSystemKey(String key, String normLocale) {
+        if ("block.minecraft.spawn.not_valid".equals(key)) {
+            if (normLocale.startsWith("ru") || normLocale.startsWith("be") || normLocale.startsWith("kk")) {
+                return "У вас нет кровати или заряженного якоря возрождения, либо доступ к ним затруднён";
+            }
+            if (normLocale.startsWith("uk")) {
+                return "У вас немає ліжка або зарядженого якоря відродження, або доступ до них перешкоджено";
+            }
+            return "You have no home bed or charged respawn anchor, or it was obstructed";
+        }
+        return null;
+    }
+
+    public static @Nullable String getLocaleStringIfPresent(String messageText, String locale) {
+        String normLocale = locale == null ? "ru_ru" : locale.toLowerCase(Locale.ROOT);
+        if (!LOCALE_MAPPINGS.containsKey(normLocale) && Files.exists(getPath(normLocale))) {
+            loadLocale(normLocale);
+        }
+        String mappedKey = REPLACED_KEYS.getOrDefault(messageText, messageText);
+        Map<String, String> localeStrings = LOCALE_MAPPINGS.get(normLocale);
+        if (localeStrings != null) {
+            String translated = localeStrings.get(messageText);
+            if (translated == null && !mappedKey.equals(messageText)) {
+                translated = localeStrings.get(mappedKey);
+            }
+            if (translated != null) {
+                return translated;
+            }
+        }
+        if (!"ru_ru".equals(normLocale) && normLocale.startsWith("ru_")) {
+            Map<String, String> ruStrings = LOCALE_MAPPINGS.get("ru_ru");
+            if (ruStrings != null) {
+                String translated = ruStrings.getOrDefault(messageText, ruStrings.get(mappedKey));
+                if (translated != null) {
+                    return translated;
+                }
+            }
+        }
+        localeStrings = LOCALE_MAPPINGS.get("en_us");
+        if (localeStrings != null) {
+            String translated = localeStrings.get(messageText);
+            if (translated == null && !mappedKey.equals(messageText)) {
+                translated = localeStrings.get(mappedKey);
+            }
+            if (translated != null) {
+                return translated;
+            }
+        }
+        return lookupLegacySpawnOrSystemKey(messageText, normLocale);
+    }""",
+        "MinecraftLocale.getLocaleStringIfPresent",
     )
 
     # 4. NetherNetServer.java: keep internal nethernet temp dir in engineDir + add NetherNetDiscoverySignaling on UDP 7551

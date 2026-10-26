@@ -5,6 +5,35 @@ Subject: [PATCH] Purpurbedrock 26.2 Paper engine optimizations, Anti-Xray,
  movement, chunk streaming & built-in PAPI hooks
 
 
+diff --git a/src/main/java/com/destroystokyo/paper/profile/PaperMinecraftSessionService.java b/src/main/java/com/destroystokyo/paper/profile/PaperMinecraftSessionService.java
+index a108682bfa34878abbcc3b4f34dc8b868cf2eec8..2a9572b5146e7406ae2534ae12c303820121aac1 100644
+--- a/src/main/java/com/destroystokyo/paper/profile/PaperMinecraftSessionService.java
++++ b/src/main/java/com/destroystokyo/paper/profile/PaperMinecraftSessionService.java
+@@ -26,6 +26,12 @@ public class PaperMinecraftSessionService extends YggdrasilMinecraftSessionServi
+         if (profile.properties().containsKey("textures")) {
+             return new ProfileResult(profile, Collections.emptySet());
+         }
++        // Purpurbedrock start - skip Mojang sessionserver lookups (and 15s TLS timeouts) for offline/Bedrock UUIDs & offline-mode Bedrock servers
++        UUID profileId = profile.id();
++        if (profileId == null || profileId.version() != 4 || !org.bukkit.Bukkit.getOnlineMode()) {
++            return new ProfileResult(profile, Collections.emptySet());
++        }
++        // Purpurbedrock end
+         ProfileResult result = super.fetchProfile(profile.id(), requireSecure);
+         if (result != null) {
+             final FillProfileEvent event = new FillProfileEvent(CraftPlayerProfile.asBukkitCopy(result.profile()));
+@@ -37,6 +43,11 @@ public class PaperMinecraftSessionService extends YggdrasilMinecraftSessionServi
+ 
+     @Override @Deprecated
+     public @Nullable ProfileResult fetchProfile(final UUID profileId, final boolean requireSecure) {
++        // Purpurbedrock start - skip Mojang sessionserver lookups for offline/Bedrock UUIDs & offline-mode Bedrock servers
++        if (profileId == null || profileId.version() != 4 || !org.bukkit.Bukkit.getOnlineMode()) {
++            return null;
++        }
++        // Purpurbedrock end
+         return super.fetchProfile(profileId, requireSecure);
+     }
+ }
 diff --git a/src/main/java/io/papermc/paper/configuration/GlobalConfiguration.java b/src/main/java/io/papermc/paper/configuration/GlobalConfiguration.java
 index 54dffff180d045e9f1a411c351eb66a08f44f31d..e439fd4ed4203ec0d9b432b1d42e6072423b1a84 100644
 --- a/src/main/java/io/papermc/paper/configuration/GlobalConfiguration.java

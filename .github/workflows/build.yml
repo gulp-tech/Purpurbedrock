@@ -58,6 +58,39 @@ jobs:
             echo "=== Applying Purpurbedrock 26.2 protocol engine patches ==="
             python3 "$GITHUB_WORKSPACE/scripts/patch-bedrock-engine.py" /tmp/geyser-26.2
 
+            echo "=== Bundling official 26.2 Russian/CIS/English system locales for 100% offline Bedrock translations ==="
+            python3 - << 'PY_LOCALES'
+            import json, pathlib, urllib.request, zipfile
+            out_dir = pathlib.Path("/tmp/geyser-26.2/core/src/main/resources/purpurbedrock/locales")
+            out_dir.mkdir(parents=True, exist_ok=True)
+            manifest = json.loads(urllib.request.urlopen("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json", timeout=30).read().decode())
+            ver_entry = next((v for v in manifest["versions"] if v["id"] == "26.2"), None)
+            if ver_entry is None:
+                latest_rel = manifest["latest"]["release"]
+                ver_entry = next(v for v in manifest["versions"] if v["id"] == latest_rel)
+            print("Using Mojang locale manifest version:", ver_entry["id"])
+            ver_info = json.loads(urllib.request.urlopen(ver_entry["url"], timeout=30).read().decode())
+            assets = json.loads(urllib.request.urlopen(ver_info["assetIndex"]["url"], timeout=30).read().decode())["objects"]
+            for code in ("ru_ru", "uk_ua", "be_by", "kk_kz"):
+                key = f"minecraft/lang/{code}.json"
+                if key in assets:
+                    h = assets[key]["hash"]
+                    data = urllib.request.urlopen(f"https://resources.download.minecraft.net/{h[:2]}/{h}", timeout=30).read()
+                    (out_dir / f"{code}.json").write_bytes(data)
+                    print(f"Bundled {code}.json ({len(data)} bytes)")
+            client_url = ver_info["downloads"]["client"]["url"]
+            client_zip = pathlib.Path("/tmp/mc-locale-client.jar")
+            urllib.request.urlretrieve(client_url, client_zip)
+            with zipfile.ZipFile(client_zip, "r") as zf:
+                for name in ("en_us.json", "deprecated.json"):
+                    entry = f"assets/minecraft/lang/{name}"
+                    if entry in zf.namelist():
+                        raw = zf.read(entry)
+                        (out_dir / name).write_bytes(raw)
+                        print(f"Bundled {name} ({len(raw)} bytes)")
+            client_zip.unlink(missing_ok=True)
+            PY_LOCALES
+
             echo "=== Compiling internal purpurbedrock-protocol.jar ==="
             gradle -p /tmp/geyser-26.2 :spigot:shadowJar --no-daemon --stacktrace
 
@@ -353,10 +386,16 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v26.2.0-bedrock
-          name: "Purpurbedrock 26.2 FINAL + PurpurBedrockAC 26.2 (Мульти-версия 1.21–26.52 + Чанки + %purpurbedrock_*% PAPI + Адаптивный Античит)"
+          name: "Purpurbedrock 26.2 FINAL + PurpurBedrockAC 26.2.2 (Русские системные сообщения + 6 устройств и КМ с телефона + Фикс sessionserver)"
           body: |
-            ## Purpurbedrock `26.2` FINAL (`purpurbedrock-26.2.jar`) + Отдельный античит `PurpurBedrockAC-26.2.jar`
+            ## Purpurbedrock `26.2` FINAL (`purpurbedrock-26.2.jar`) + Отдельный античит `PurpurBedrockAC-26.2.jar` (`v26.2.2`)
             Финальное автономное высокопроизводительное ядро на базе **Purpur `26.2` (`STABLE`)** и отдельный адаптивный античит, откалиброванный специально под него:
+            - **Встроенные системные локали `26.2` (`ru_ru`, `uk_ua`, `be_by`, `kk_kz`, `en_us`, `deprecated` + `REPLACED_KEYS`)**:
+              - Все ванильные ключи (`block.minecraft.spawn.not_valid`, вход/выход игроков, смерти, команды, кровати/якоря возрождения) переводятся в текст автоматически прямо из `purpurbedrock-26.2.jar` без докачки с серверов Mojang.
+            - **Умный анализатор 6 устройств Bedrock + КМ с телефона (`%purpurbedrock_device%`, `%purpurbedrock_device_id%`, `%purpurbedrock_is_phone_kbm%`)**:
+              - Точно определяет **`Windows`**, **`Android`**, **`IOS`**, **`Xbox`**, **`PS 4-5`** и **`Клавиатура + мышь`** (OTG/Bluetooth клавиатура и мышь, подключённые к телефону Android/iOS, в реальном времени `20 Гц` + защита от спуфа Touch и спуфа Android с ПК).
+            - **Фикс зависаний и ошибок `sessionserver.mojang.com` (`Read timed out`)**:
+              - В `PaperMinecraftSessionService` отключены бесполезные запросы к `sessionserver.mojang.com` для оффлайн/Bedrock UUID и серверов с `online-mode: false` (`SkinsRestorer` и `HeadDatabase` продолжают работать штатно).
             - **Отдельный плагин-античит `PurpurBedrockAC-26.2.jar` (папка `purpurbedrock-anticheat/`, не мешает ядру)**:
               - **Адаптивный спящий режим (`DORMANT → SLEEPING → WAKING → AWAKE`)**: в тишине спит (`0% CPU`), при первых аномалиях плавно и не спеша просыпается только для подозрительного игрока, не нагружая сервер.
               - **13 проверок без ложных флагов на Bedrock** (учитывает Сенсор / ПК / Геймпад, спид-бриджинг и реальный RTT пинг): `Reach` (3D AABB + компенсация пинга), `HitBox`, `KillAura` (`MultiAura`, `360°`, сквозь стены, с открытым меню), `AutoClicker` (`CPS` + макросы), `Velocity`, `Fly`, `AirJump`, `Speed/BHop`, `Timer`, `Jesus`, `NoSlow`, `Scaffold`, `BadPackets`.

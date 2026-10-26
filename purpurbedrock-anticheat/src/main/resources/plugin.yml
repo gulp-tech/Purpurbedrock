@@ -1,17 +1,17 @@
 name: PurpurBedrockAC
-version: "26.2.1"
+version: "26.2.2"
 main: org.purpurmc.purpur.anticheat.PurpurBedrockACPlugin
 api-version: "26.2"
 folia-supported: false
 authors:
   - Purpurbedrock
-description: "Адаптивный античит под Purpurbedrock 26.2 и механику Geyser (21 модуль, 0 ложных киков, спящий режим, голограмма AVG, меню HolyWorld)"
+description: "Адаптивный античит и анализатор устройств под Purpurbedrock 26.2 (21 модуль, 6 устройств + КМ с телефона, 0 ложных киков, голограмма AVG, меню HolyWorld)"
 
 commands:
   purpurac:
     description: "Управление античитом PurpurBedrockAC 26.2"
     aliases: [pac, anticheat, ac]
-    usage: "/pac <alerts|holo|menu|checks|toggle|autopunish|history|info|status|reset|reload>"
+    usage: "/pac <alerts|holo|menu|checks|toggle|autopunish|history|info|devices|status|reset|reload>"
 
 permissions:
   purpurac.alerts:

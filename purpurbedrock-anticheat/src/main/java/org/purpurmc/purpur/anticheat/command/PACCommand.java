@@ -210,6 +210,43 @@ public final class PACCommand implements CommandExecutor, TabCompleter {
                 sender.sendMessage(ColorUtil.color(cfg.alertPrefix + "&aКонфигурация PurpurBedrockAC 26.2 успешно перезагружена!"));
                 return true;
             }
+            case "devices", "device" -> {
+                if (!sender.hasPermission(cfg.permAlerts) && !sender.hasPermission(cfg.permMenu) && !sender.hasPermission(cfg.permAdmin)) {
+                    sender.sendMessage(ColorUtil.color(cfg.alertPrefix + "&cНедостаточно прав!"));
+                    return true;
+                }
+                if (args.length >= 2) {
+                    Player p = Bukkit.getPlayerExact(args[1]);
+                    if (p == null) {
+                        sender.sendMessage(ColorUtil.color(cfg.alertPrefix + "&cИгрок &f" + args[1] + " &cсейчас не онлайн."));
+                        return true;
+                    }
+                    String model = BedrockBridgeInfo.getDeviceModel(p);
+                    sender.sendMessage(ColorUtil.color("&#A855F7&l=== Анализатор устройства: &f" + p.getName() + " &#A855F7&l==="));
+                    sender.sendMessage(ColorUtil.color(" &8• &7Категория: &f" + BedrockBridgeInfo.getDevice(p)
+                        + " &8(&7id: &e" + BedrockBridgeInfo.getDeviceId(p) + "&8)"));
+                    sender.sendMessage(ColorUtil.color(" &8• &7Ввод: &f" + BedrockBridgeInfo.getInputDisplay(p)
+                        + " &8| &7КМ с телефона: " + (BedrockBridgeInfo.isPhoneKeyboardMouse(p) ? "&cДА (OTG/Bluetooth)" : "&aНЕТ")));
+                    sender.sendMessage(ColorUtil.color(" &8• &7Модель: &f" + (model.isEmpty() ? "—" : model)
+                        + " &8| &7Версия: &b" + BedrockBridgeInfo.getVersion(p)
+                        + " &8| &7Пинг: &a" + BedrockBridgeInfo.getPing(p) + " мс"));
+                    return true;
+                }
+                sender.sendMessage(ColorUtil.color("&#A855F7&l=== Устройства онлайн (Windows | Android | IOS | Xbox | PS 4-5 | Клавиатура + мышь) ==="));
+                if (Bukkit.getOnlinePlayers().isEmpty()) {
+                    sender.sendMessage(ColorUtil.color(" &8• &7Нет игроков онлайн."));
+                    return true;
+                }
+                for (Player p : Bukkit.getOnlinePlayers()) {
+                    String dev = BedrockBridgeInfo.getDevice(p);
+                    boolean phoneKbm = BedrockBridgeInfo.isPhoneKeyboardMouse(p);
+                    sender.sendMessage(ColorUtil.color(" &8• &f" + p.getName() + " &8-> "
+                        + (phoneKbm ? "&c&l" : "&b") + dev
+                        + " &8| &7" + BedrockBridgeInfo.getVersion(p)
+                        + " &8| &a" + BedrockBridgeInfo.getPing(p) + " мс"));
+                }
+                return true;
+            }
             case "selftest" -> {
                 if (!sender.hasPermission(cfg.permAdmin)) {
                     return true;
@@ -253,6 +290,7 @@ public final class PACCommand implements CommandExecutor, TabCompleter {
                 sender.sendMessage(ColorUtil.color(" &e/pac autopunish &8— &7вкл/выкл авто-кик (по умолч. безопасный сетбэк)"));
                 sender.sendMessage(ColorUtil.color(" &e/pac history <ник> &8— &7открыть историю игрока (🟢/🟠/🔴 HolyWorld)"));
                 sender.sendMessage(ColorUtil.color(" &e/pac status &8— &7показать нагрузку и спящий/активный режим движка"));
+                sender.sendMessage(ColorUtil.color(" &e/pac devices [ник] &8— &7анализатор устройств (Windows/Android/IOS/Xbox/PS 4-5/КМ)"));
                 sender.sendMessage(ColorUtil.color(" &e/pac reset <ник> &8— &7сбросить VL и историю игрока"));
                 sender.sendMessage(ColorUtil.color(" &e/pac reload &8— &7перезагрузить config.yml"));
                 return true;
@@ -269,7 +307,7 @@ public final class PACCommand implements CommandExecutor, TabCompleter {
     ) {
         if (args.length == 1) {
             String pfx = args[0].toLowerCase(Locale.ROOT);
-            List<String> subs = List.of("alerts", "holo", "menu", "checks", "toggle", "autopunish", "history", "info", "status", "reset", "reload");
+            List<String> subs = List.of("alerts", "holo", "menu", "checks", "toggle", "autopunish", "history", "info", "devices", "status", "reset", "reload");
             return subs.stream().filter(s -> s.startsWith(pfx)).toList();
         }
         if (args.length == 2) {
@@ -279,7 +317,7 @@ public final class PACCommand implements CommandExecutor, TabCompleter {
                 return ACConfig.ALL_CHECKS.stream().map(ACConfig.CheckMeta::key).filter(k -> k.startsWith(pfx)).toList();
             }
             if ("history".equals(sub) || "hist".equals(sub) || "menu".equals(sub)
-                || "info".equals(sub) || "reset".equals(sub)) {
+                || "info".equals(sub) || "reset".equals(sub) || "devices".equals(sub) || "device".equals(sub)) {
                 List<String> names = new ArrayList<>();
                 for (String n : plugin.cachedPlayerNames()) {
                     if (n.toLowerCase(Locale.ROOT).startsWith(pfx)) {
