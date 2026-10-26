@@ -1254,17 +1254,40 @@ import org.cloudburstmc.netty.channel.nethernet.signaling.NetherNetServerSignali
         Path cachedSkullsDir = GeyserImpl.getInstance().getBootstrap().getConfigFolder().resolve("cache").resolve("player_skulls");
         try {
             Files.createDirectories(cachedSkullsDir);
+            int maxAutoSkulls = Math.max(64, Integer.getInteger("purpurbedrock.maxCachedCustomSkulls", 2048));
             java.util.HashSet<String> seenHashes = new java.util.HashSet<>(skinHashes);
+            java.util.ArrayList<Path> candidateFiles = new java.util.ArrayList<>();
             try (java.util.stream.Stream<Path> cachedFiles = Files.list(cachedSkullsDir)) {
                 cachedFiles.forEach(file -> {
                     String fileName = file.getFileName().toString();
                     if (Files.isRegularFile(file) && fileName.endsWith(".png") && fileName.length() > 4) {
                         String candidateHash = fileName.substring(0, fileName.length() - 4);
-                        if (SKULL_HASH_PATTERN.matcher(candidateHash).matches() && seenHashes.add(candidateHash)) {
-                            skinHashes.add(candidateHash);
+                        if (SKULL_HASH_PATTERN.matcher(candidateHash).matches() && !seenHashes.contains(candidateHash)) {
+                            candidateFiles.add(file);
                         }
                     }
                 });
+            }
+            if (candidateFiles.size() > maxAutoSkulls) {
+                candidateFiles.sort((a, b) -> {
+                    try {
+                        return Files.getLastModifiedTime(b).compareTo(Files.getLastModifiedTime(a));
+                    } catch (IOException ex) {
+                        return 0;
+                    }
+                });
+            }
+            int addedAuto = 0;
+            for (Path file : candidateFiles) {
+                if (addedAuto >= maxAutoSkulls) {
+                    break;
+                }
+                String fileName = file.getFileName().toString();
+                String candidateHash = fileName.substring(0, fileName.length() - 4);
+                if (seenHashes.add(candidateHash)) {
+                    skinHashes.add(candidateHash);
+                    addedAuto++;
+                }
             }
         } catch (IOException ignored) {
         }""",
@@ -2088,10 +2111,30 @@ import java.util.concurrent.ConcurrentHashMap;""",
             sanitizeEntityData(proto, app.getMetadata());
         } else if (packet instanceof AddItemEntityPacket aiep) {
             sanitizeEntityData(proto, aiep.getMetadata());
-        } else if (proto < 1001 && packet instanceof UpdateAttributesPacket uap && uap.getAttributes() != null) {
-            uap.getAttributes().removeIf(attr -> ATTRIBUTES_26_30.contains(attr.getName()));
-            if (uap.getAttributes().isEmpty()) {
+        } else if (proto < 1001 && packet instanceof UpdateAttributesPacket uap) {
+            java.util.List<org.cloudburstmc.protocol.bedrock.data.AttributeData> attrs = uap.getAttributes();
+            if (attrs == null || attrs.isEmpty()) {
                 return false;
+            }
+            boolean hasUnsupported = false;
+            for (int i = 0, n = attrs.size(); i < n; i++) {
+                if (ATTRIBUTES_26_30.contains(attrs.get(i).getName())) {
+                    hasUnsupported = true;
+                    break;
+                }
+            }
+            if (hasUnsupported) {
+                java.util.ArrayList<org.cloudburstmc.protocol.bedrock.data.AttributeData> filtered = new java.util.ArrayList<>(attrs.size());
+                for (int i = 0, n = attrs.size(); i < n; i++) {
+                    org.cloudburstmc.protocol.bedrock.data.AttributeData ad = attrs.get(i);
+                    if (!ATTRIBUTES_26_30.contains(ad.getName())) {
+                        filtered.add(ad);
+                    }
+                }
+                if (filtered.isEmpty()) {
+                    return false;
+                }
+                uap.setAttributes(filtered);
             }
         }
         return true;
@@ -2207,6 +2250,14 @@ import java.util.concurrent.ConcurrentHashMap;""",
             startGamePacket.getItemDefinitions().addAll(this.itemMappings.getItemDefinitions().values());
         }""",
         "GeyserSession.pre776StartGameItemDefinitions",
+    )
+    replace_exact(
+        geyser_session,
+        """        startGamePacket.setRewindHistorySize(0);""",
+        """        // Required for < 1.21.90 (< v818) StartGameSerializer_v428.writeSyncedPlayerMovementSettings (prevents NPE on null ordinal)
+        startGamePacket.setAuthoritativeMovementMode(org.cloudburstmc.protocol.bedrock.data.AuthoritativeMovementMode.SERVER);
+        startGamePacket.setRewindHistorySize(0);""",
+        "GeyserSession.pre818AuthoritativeMovementMode",
     )
     replace_exact(
         geyser_session,
@@ -2539,8 +2590,13 @@ import java.util.concurrent.ConcurrentHashMap;""",
         upstream.sendPacket(chunkRadiusUpdatedPacket);
     }""",
         """    private void recalculateBedrockRenderDistance() {
-        int baseDist = Math.max(this.serverRenderDistance, 8);
-        int renderDistance = ChunkUtils.squareToCircle(baseDist);
+        int serverDist = Math.max(this.serverRenderDistance, 8);
+        int effectiveClientDist = this.clientRenderDistance != -1
+            ? Math.min(Math.max(this.clientRenderDistance, 5), serverDist)
+            : serverDist;
+        int renderDistance = this.clientRenderDistance != -1 && this.clientRenderDistance <= serverDist
+            ? Math.max(5, this.clientRenderDistance)
+            : ChunkUtils.squareToCircle(effectiveClientDist);
         ChunkRadiusUpdatedPacket chunkRadiusUpdatedPacket = new ChunkRadiusUpdatedPacket();
         chunkRadiusUpdatedPacket.setRadius(renderDistance);
         upstream.sendPacket(chunkRadiusUpdatedPacket);
@@ -2567,11 +2623,11 @@ import java.util.concurrent.ConcurrentHashMap;""",
     }""",
         """    private int getRenderDistance() {
         if (clientRenderDistance != -1) {
-            return Math.max(8, clientRenderDistance);
+            return Math.max(5, clientRenderDistance);
         } else if (serverRenderDistance != -1) {
-            return Math.max(8, serverRenderDistance);
+            return Math.max(6, serverRenderDistance);
         }
-        return 10;
+        return 8;
     }""",
         "GeyserSession.preventTinyInitialRenderDistance",
     )
@@ -4204,6 +4260,201 @@ import java.util.concurrent.ConcurrentHashMap;""",
         // Purpurbedrock: embedded engine is versioned with the server core; skip external update checks on join
     }""",
         "GeyserSpigotUpdateListener.noOpJoinUpdateCheck",
+    )
+
+    # 13. Waypoint Console-Spam & LocatorBar 20Hz Flood Fix + Bedrock Client FPS Protections
+    waypoint_translator = root / "core/src/main/java/org/geysermc/geyser/translator/protocol/java/level/JavaTrackedWaypointTranslator.java"
+    replace_exact(
+        waypoint_translator,
+        """    @Override
+    public void translate(GeyserSession session, ClientboundTrackedWaypointPacket packet) {
+        session.getWaypointCache().handlePacket(packet);
+    }""",
+        """    @Override
+    public void translate(GeyserSession session, ClientboundTrackedWaypointPacket packet) {
+        if (session.protocolVersion() < 800) {
+            return;
+        }
+        session.getWaypointCache().handlePacket(packet);
+    }""",
+        "JavaTrackedWaypointTranslator.gateLocatorBarProtocol",
+    )
+
+    waypoint_cache = root / "core/src/main/java/org/geysermc/geyser/session/cache/waypoint/WaypointCache.java"
+    replace_exact(
+        waypoint_cache,
+        """    public void tick() {
+        for (GeyserWaypoint waypoint : waypoints.values()) {
+            if (waypoint instanceof TickingWaypoint ticking) {
+                ticking.tick();
+            }
+        }
+    }""",
+        """    public void tick() {
+        if (waypoints.isEmpty()) {
+            return;
+        }
+        for (GeyserWaypoint waypoint : waypoints.values()) {
+            if (waypoint instanceof TickingWaypoint ticking) {
+                ticking.tick();
+            }
+        }
+    }""",
+        "WaypointCache.fastEmptyTick",
+    )
+    replace_exact(
+        waypoint_cache,
+        """    private void update(TrackedWaypoint waypoint) {
+        getWaypoint(waypoint).ifPresent(tracked -> tracked.update(waypoint.data()));
+    }""",
+        """    private void update(TrackedWaypoint waypoint) {
+        Optional<GeyserWaypoint> existing = getWaypoint(waypoint);
+        if (existing.isEmpty()) {
+            track(waypoint);
+            return;
+        }
+        GeyserWaypoint tracked = existing.get();
+        boolean matchesType = switch (waypoint.type()) {
+            case EMPTY -> false;
+            case VEC3I -> tracked instanceof CoordinatesWaypoint;
+            case CHUNK -> tracked instanceof ChunkWaypoint;
+            case AZIMUTH -> tracked instanceof AzimuthWaypoint;
+        };
+        if (!matchesType) {
+            track(waypoint);
+            return;
+        }
+        tracked.update(waypoint.data());
+    }""",
+        "WaypointCache.handleSubtypeTransitionOnUpdate",
+    )
+
+    coords_waypoint = root / "core/src/main/java/org/geysermc/geyser/session/cache/waypoint/CoordinatesWaypoint.java"
+    replace_exact(
+        coords_waypoint,
+        """        } else {
+            session.getGeyser().getLogger().warning("Received incorrect waypoint data " + data.getClass() + " for coordinates waypoint");
+        }""",
+        """        } else {
+            session.getGeyser().getLogger().debug("Received incorrect waypoint data " + data.getClass() + " for coordinates waypoint");
+        }""",
+        "CoordinatesWaypoint.downgradeMismatchWarning",
+    )
+
+    chunk_waypoint = root / "core/src/main/java/org/geysermc/geyser/session/cache/waypoint/ChunkWaypoint.java"
+    replace_exact(
+        chunk_waypoint,
+        """        } else {
+            session.getGeyser().getLogger().warning("Received incorrect waypoint data " + data.getClass() + " for chunk waypoint");
+        }""",
+        """        } else {
+            session.getGeyser().getLogger().debug("Received incorrect waypoint data " + data.getClass() + " for chunk waypoint");
+        }""",
+        "ChunkWaypoint.downgradeMismatchWarning",
+    )
+
+    azimuth_waypoint = root / "core/src/main/java/org/geysermc/geyser/session/cache/waypoint/AzimuthWaypoint.java"
+    replace_exact(
+        azimuth_waypoint,
+        """    private static final float WAYPOINT_DISTANCE = Integer.MAX_VALUE;
+
+    // The angle, in radians, where the waypoint should appear on the bar
+    private float angle = 0.0F;
+
+    public AzimuthWaypoint(GeyserSession session, UUID uuid, CustomWaypointStyle style, Identifier styleIdentifier, Color color, Optional<Entity> entity) {
+        super(session, uuid, style, styleIdentifier, color, entity);
+    }
+
+    @Override
+    public void setData(WaypointData data) {
+        if (data instanceof AzimuthWaypointData(float azimuthAngle)) {
+            angle = azimuthAngle;
+            updatePosition();
+        } else {
+            session.getGeyser().getLogger().warning("Received incorrect waypoint data " + data.getClass() + " for azimuth waypoint");
+        }
+    }
+
+    @Override
+    public void tick() {
+        // Update position so that it remains accurate to the angle as the player moves around
+        updatePosition();
+        sendLocationPacket();
+    }""",
+        """    private static final float WAYPOINT_DISTANCE = 65536.0F;
+
+    // The angle, in radians, where the waypoint should appear on the bar
+    private float angle = 0.0F;
+    private float lastSentAngle = Float.NaN;
+    private Vector3f lastAnchorPosition = null;
+    private int tickCounter = 0;
+
+    public AzimuthWaypoint(GeyserSession session, UUID uuid, CustomWaypointStyle style, Identifier styleIdentifier, Color color, Optional<Entity> entity) {
+        super(session, uuid, style, styleIdentifier, color, entity);
+    }
+
+    @Override
+    public void setData(WaypointData data) {
+        if (data instanceof AzimuthWaypointData(float azimuthAngle)) {
+            angle = azimuthAngle;
+            if (Float.isNaN(lastSentAngle) || Math.abs(azimuthAngle - lastSentAngle) >= 0.012F) {
+                lastSentAngle = azimuthAngle;
+                lastAnchorPosition = session.getPlayerEntity().position();
+                updatePosition();
+            }
+        } else {
+            session.getGeyser().getLogger().debug("Received incorrect waypoint data " + data.getClass() + " for azimuth waypoint");
+        }
+    }
+
+    @Override
+    public void tick() {
+        if ((++tickCounter % 10) != 0) {
+            return;
+        }
+        Vector3f playerPosition = session.getPlayerEntity().position();
+        if (!Float.isNaN(lastSentAngle)
+                && Math.abs(angle - lastSentAngle) < 0.0175F
+                && lastAnchorPosition != null
+                && playerPosition.distanceSquared(lastAnchorPosition) < 256.0F) {
+            return;
+        }
+        lastSentAngle = angle;
+        lastAnchorPosition = playerPosition;
+        updatePosition();
+        sendLocationPacket();
+    }""",
+        "AzimuthWaypoint.floatSafeAndThrottledTick",
+    )
+
+    particles_translator = root / "core/src/main/java/org/geysermc/geyser/translator/protocol/java/level/JavaLevelParticlesTranslator.java"
+    replace_exact(
+        particles_translator,
+        """    private static final int MAX_PARTICLES = 100;""",
+        """    private static final int MAX_PARTICLES = Math.max(1, Integer.getInteger("purpurbedrock.maxParticlesPerPacket", 16));""",
+        "JavaLevelParticlesTranslator.clientFpsParticleCap",
+    )
+
+    motion_translator = root / "core/src/main/java/org/geysermc/geyser/translator/protocol/java/entity/JavaSetEntityMotionTranslator.java"
+    replace_exact(
+        motion_translator,
+        """        Entity entity = session.getEntityCache().getEntityByJavaId(packet.getEntityId());
+        if (entity == null) return;
+
+        entity.setMotion(packet.getMovement().toFloat());""",
+        """        Entity entity = session.getEntityCache().getEntityByJavaId(packet.getEntityId());
+        if (entity == null) return;
+
+        org.cloudburstmc.math.vector.Vector3f prevMotion = entity.getMotion();
+        org.cloudburstmc.math.vector.Vector3f newMotion = packet.getMovement().toFloat();
+        entity.setMotion(newMotion);
+        if (entity != session.getPlayerEntity()
+                && newMotion.lengthSquared() < 1.0E-6F
+                && prevMotion != null
+                && prevMotion.lengthSquared() < 1.0E-6F) {
+            return;
+        }""",
+        "JavaSetEntityMotionTranslator.skipRedundantZeroMotion",
     )
 
 

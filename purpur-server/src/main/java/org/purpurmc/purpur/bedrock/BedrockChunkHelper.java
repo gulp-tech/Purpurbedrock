@@ -31,20 +31,23 @@ public final class BedrockChunkHelper {
             return;
         }
         if (global.chunkLoadingAdvanced != null) {
-            // Prevent mobile Bedrock's tiny initial RequestChunkRadius from clamping Moonrise send distance
-            global.chunkLoadingAdvanced.autoConfigSendDistance = false;
-            if (global.chunkLoadingAdvanced.playerMaxConcurrentChunkLoads == 0) {
-                global.chunkLoadingAdvanced.playerMaxConcurrentChunkLoads = 8;
+            // Respect per-device RequestChunkRadius (GeyserSession clamps >= 5) so budget phones don't mesh 400+ chunks
+            global.chunkLoadingAdvanced.autoConfigSendDistance = true;
+            if (global.chunkLoadingAdvanced.playerMaxConcurrentChunkLoads == 0
+                || global.chunkLoadingAdvanced.playerMaxConcurrentChunkLoads > 6) {
+                global.chunkLoadingAdvanced.playerMaxConcurrentChunkLoads = 6;
             }
         }
         if (global.chunkLoadingBasic != null) {
-            if (global.chunkLoadingBasic.playerMaxChunkSendRate > 0.0
-                && global.chunkLoadingBasic.playerMaxChunkSendRate < 120.0) {
-                global.chunkLoadingBasic.playerMaxChunkSendRate = 120.0;
+            double targetSendRate = PurpurConfig.bedrockMaxChunkSendRate;
+            if (global.chunkLoadingBasic.playerMaxChunkSendRate <= 0.0
+                || global.chunkLoadingBasic.playerMaxChunkSendRate > targetSendRate
+                || global.chunkLoadingBasic.playerMaxChunkSendRate == 120.0) {
+                global.chunkLoadingBasic.playerMaxChunkSendRate = targetSendRate;
             }
             if (global.chunkLoadingBasic.playerMaxChunkLoadRate > 0.0
-                && global.chunkLoadingBasic.playerMaxChunkLoadRate < 200.0) {
-                global.chunkLoadingBasic.playerMaxChunkLoadRate = 200.0;
+                && global.chunkLoadingBasic.playerMaxChunkLoadRate < 100.0) {
+                global.chunkLoadingBasic.playerMaxChunkLoadRate = 100.0;
             }
         }
     }
@@ -106,7 +109,9 @@ public final class BedrockChunkHelper {
     }
 
     private static int sendChunkPublisherSyncPackets(ServerPlayer player) {
-        int viewDist = Math.max(8, player.level().getWorld().getViewDistance());
+        int worldDist = Math.max(6, player.level().getWorld().getViewDistance());
+        int clientDist = player.getClientViewDistance();
+        int viewDist = clientDist > 0 ? Math.min(worldDist, Math.max(5, clientDist)) : worldDist;
         int chunkX = player.getBlockX() >> 4;
         int chunkZ = player.getBlockZ() >> 4;
         player.connection.send(new ClientboundSetChunkCacheRadiusPacket(viewDist));

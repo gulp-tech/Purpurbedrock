@@ -661,6 +661,8 @@ public class PurpurConfig {
     public static int bedrockRakMaxConnectionsPerIp = 32;
     public static boolean bedrockAsyncGeyserPrewarm = true;
     public static boolean bedrockLazyLegacyPalettes = true;
+    public static int bedrockMaxParticlesPerPacket = 16;
+    public static double bedrockMaxChunkSendRate = 45.0D;
 
     private static void bedrockCoreSettings() {
         bedrockOnlyAllowBedrock = getBoolean("bedrock.only-allow-bedrock", bedrockOnlyAllowBedrock);
@@ -707,6 +709,8 @@ public class PurpurConfig {
         bedrockRakMaxConnectionsPerIp = Math.max(8, getInt("bedrock.network.raknet-max-connections-per-ip", bedrockRakMaxConnectionsPerIp));
         bedrockAsyncGeyserPrewarm = getBoolean("bedrock.performance.async-geyser-prewarm", bedrockAsyncGeyserPrewarm);
         bedrockLazyLegacyPalettes = getBoolean("bedrock.performance.lazy-legacy-palettes", bedrockLazyLegacyPalettes);
+        bedrockMaxParticlesPerPacket = Math.max(1, getInt("bedrock.performance.max-particles-per-packet", bedrockMaxParticlesPerPacket));
+        bedrockMaxChunkSendRate = Math.max(10.0D, getDouble("bedrock.chunks.max-chunk-send-rate", bedrockMaxChunkSendRate));
     }
     // Purpurbedrock end
 }

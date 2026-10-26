@@ -135,6 +135,13 @@ public final class BedrockBridgeBootstrap {
             if (System.getProperty("purpurbedrock.eagerAllPalettes") == null) {
                 System.setProperty("purpurbedrock.eagerAllPalettes", Boolean.toString(!PurpurConfig.bedrockLazyLegacyPalettes));
             }
+            if (System.getProperty("purpurbedrock.maxParticlesPerPacket") == null) {
+                System.setProperty("purpurbedrock.maxParticlesPerPacket", Integer.toString(PurpurConfig.bedrockMaxParticlesPerPacket));
+            }
+            if (System.getProperty("purpurbedrock.maxCachedCustomSkulls") == null) {
+                int maxCachedSkulls = Math.max(64, bedrockCfg.getInt("performance.max-cached-custom-skulls", 2048));
+                System.setProperty("purpurbedrock.maxCachedCustomSkulls", Integer.toString(maxCachedSkulls));
+            }
 
             syncInternalEngineConfig(bedrockCfg, server, engineDir, floodgateReady);
 
@@ -331,18 +338,29 @@ public final class BedrockBridgeBootstrap {
         cfg.addDefault("performance.mtu", 1350);
         cfg.addDefault("performance.compression-level", 4);
         cfg.addDefault("performance.cache-images", 7);
-        cfg.addDefault("performance.max-visible-custom-skulls", 128);
+        cfg.addDefault("performance.max-visible-custom-skulls", 24);
+        cfg.addDefault("performance.custom-skull-render-distance", 16);
+        cfg.addDefault("performance.max-cached-custom-skulls", 2048);
         cfg.addDefault("packs.force-resource-packs", true);
         cfg.addDefault("packs.enable-integrated-pack", true);
         cfg.addDefault("advanced.download-mojang-assets", false);
-        cfg.addDefault("config-schema", 2);
+        cfg.addDefault("config-schema", 3);
         if (file.exists() && cfg.getInt("config-schema", 1) < 2) {
             cfg.set("packs.force-resource-packs", true);
             cfg.set("packs.enable-integrated-pack", true);
-            if (cfg.getInt("performance.max-visible-custom-skulls", 0) == 0) {
-                cfg.set("performance.max-visible-custom-skulls", 128);
+        }
+        if (file.exists() && cfg.getInt("config-schema", 1) < 3) {
+            int curSkulls = cfg.getInt("performance.max-visible-custom-skulls", 0);
+            if (curSkulls == 0 || curSkulls == 128) {
+                cfg.set("performance.max-visible-custom-skulls", 24);
             }
-            cfg.set("config-schema", 2);
+            if (cfg.getInt("performance.custom-skull-render-distance", 0) == 0) {
+                cfg.set("performance.custom-skull-render-distance", 16);
+            }
+            if (cfg.getInt("performance.max-cached-custom-skulls", 0) == 0) {
+                cfg.set("performance.max-cached-custom-skulls", 2048);
+            }
+            cfg.set("config-schema", 3);
         }
         cfg.options().copyDefaults(true);
         cfg.save(file);
@@ -462,7 +480,8 @@ public final class BedrockBridgeBootstrap {
         int mtu = bedrockCfg.getInt("performance.mtu", 1350);
         int compressionLevel = bedrockCfg.getInt("performance.compression-level", 4);
         int cacheImages = bedrockCfg.getInt("performance.cache-images", 7);
-        int maxSkulls = bedrockCfg.getInt("performance.max-visible-custom-skulls", 128);
+        int maxSkulls = bedrockCfg.getInt("performance.max-visible-custom-skulls", 24);
+        int skullRenderDist = Math.max(8, Math.min(64, bedrockCfg.getInt("performance.custom-skull-render-distance", 16)));
         boolean forcePacks = bedrockCfg.getBoolean("packs.force-resource-packs", true);
         boolean integratedPack = bedrockCfg.getBoolean("packs.enable-integrated-pack", true);
 
@@ -519,7 +538,7 @@ public final class BedrockBridgeBootstrap {
               forward-player-ping: true
               xbox-achievements-enabled: false
               max-visible-custom-skulls: %d
-              custom-skull-render-distance: 24
+              custom-skull-render-distance: %d
             default-locale: "ru_ru"
             log-player-ip-addresses: true
             saved-user-logins: []
@@ -527,7 +546,7 @@ public final class BedrockBridgeBootstrap {
             notify-on-new-bedrock-update: false
             advanced:
               cache-images: %d
-              scoreboard-packet-threshold: 20
+              scoreboard-packet-threshold: 8
               add-team-suggestions: true
               resource-pack-urls: []
               floodgate-key-file: "key.pem"
@@ -570,6 +589,7 @@ public final class BedrockBridgeBootstrap {
             forcePacks,
             integratedPack,
             maxSkulls,
+            skullRenderDist,
             cacheImages,
             compressionLevel,
             mtu,
@@ -689,8 +709,29 @@ public final class BedrockBridgeBootstrap {
                 throw new IllegalStateException("BEDROCK_CHUNK_BLOCK_ENTITIES BitSet was not populated!");
             }
 
+            try (InputStream gsIn = cl.getResourceAsStream("org/geysermc/geyser/session/GeyserSession.class")) {
+                if (gsIn == null || !new String(gsIn.readAllBytes(), StandardCharsets.ISO_8859_1).contains("setAuthoritativeMovementMode")) {
+                    throw new IllegalStateException("GeyserSession missing setAuthoritativeMovementMode (<1.21.90 StartGamePacket fix)!");
+                }
+            }
+            try (InputStream usIn = cl.getResourceAsStream("org/geysermc/geyser/session/UpstreamSession.class")) {
+                if (usIn == null || !new String(usIn.readAllBytes(), StandardCharsets.ISO_8859_1).contains("setAttributes")) {
+                    throw new IllegalStateException("UpstreamSession missing immutable-safe setAttributes (<26.30 SingletonList fix)!");
+                }
+            }
+            Class<?> azimuthClass = Class.forName("org.geysermc.geyser.session.cache.waypoint.AzimuthWaypoint", true, cl);
+            azimuthClass.getDeclaredField("tickCounter");
+            Class<?> particlesTransClass = Class.forName("org.geysermc.geyser.translator.protocol.java.level.JavaLevelParticlesTranslator", true, cl);
+            java.lang.reflect.Field maxParticlesField = particlesTransClass.getDeclaredField("MAX_PARTICLES");
+            maxParticlesField.setAccessible(true);
+            int activeParticleCap = maxParticlesField.getInt(null);
+            if (activeParticleCap <= 0 || activeParticleCap > 64) {
+                throw new IllegalStateException("Unexpected MAX_PARTICLES cap: " + activeParticleCap);
+            }
+
             return "MULTIVERSION_685_TO_2193_SELFTEST_OK codecs=" + protocols.size()
-                + " versions=1.21.0..26.52 dialogWaitPopup=DISABLED chunkPublisher=RELIABLE ruLocale=OK";
+                + " versions=1.21.0..26.52 dialogWaitPopup=DISABLED chunkPublisher=RELIABLE ruLocale=OK"
+                + " pre818StartGame=OK attrSingleton=OK waypointFix=OK particleCap=" + activeParticleCap;
         } catch (Throwable t) {
             throw new RuntimeException("MULTIVERSION_SELFTEST_FAILED: " + t.getMessage(), t);
         }
