@@ -659,6 +659,7 @@ public class PurpurConfig {
     public static int bedrockRakPacketLimit = 3000;
     public static int bedrockRakGlobalPacketLimit = 300000;
     public static int bedrockRakMaxConnectionsPerIp = 32;
+    public static boolean bedrockRakSendCookie = false;
     public static boolean bedrockAsyncGeyserPrewarm = true;
     public static boolean bedrockLazyLegacyPalettes = true;
     public static int bedrockMaxParticlesPerPacket = 16;
@@ -707,6 +708,7 @@ public class PurpurConfig {
         bedrockRakPacketLimit = Math.max(500, getInt("bedrock.network.raknet-packet-limit", bedrockRakPacketLimit));
         bedrockRakGlobalPacketLimit = Math.max(20000, getInt("bedrock.network.raknet-global-packet-limit", bedrockRakGlobalPacketLimit));
         bedrockRakMaxConnectionsPerIp = Math.max(8, getInt("bedrock.network.raknet-max-connections-per-ip", bedrockRakMaxConnectionsPerIp));
+        bedrockRakSendCookie = getBoolean("bedrock.network.raknet-send-cookie", bedrockRakSendCookie);
         bedrockAsyncGeyserPrewarm = getBoolean("bedrock.performance.async-geyser-prewarm", bedrockAsyncGeyserPrewarm);
         bedrockLazyLegacyPalettes = getBoolean("bedrock.performance.lazy-legacy-palettes", bedrockLazyLegacyPalettes);
         bedrockMaxParticlesPerPacket = Math.max(1, getInt("bedrock.performance.max-particles-per-packet", bedrockMaxParticlesPerPacket));

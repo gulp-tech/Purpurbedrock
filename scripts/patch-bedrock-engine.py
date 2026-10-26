@@ -2439,6 +2439,10 @@ import java.util.concurrent.ConcurrentHashMap;""",
         updateChunkPosition(session, position, true);
     }
 
+    public static void forceUpdateChunkPositionBlock(GeyserSession session, int blockX, int blockY, int blockZ) {
+        updateChunkPosition(session, Vector3i.from(blockX, blockY, blockZ), true);
+    }
+
     public static void updateChunkPosition(GeyserSession session, Vector3i position, boolean force) {
         Vector3i safePos = clampPublisherY(session, position);
         Vector2i chunkPos = session.getLastChunkPosition();
@@ -2485,6 +2489,22 @@ import java.util.concurrent.ConcurrentHashMap;""",
         "ChunkUtils.reliableChunkPublisher",
     )
 
+    replace_exact(
+        chunk_utils,
+        """    public static void sendEmptyChunks(GeyserSession session, Vector3i position, int radius, boolean forceUpdate) {
+        int chunkX = position.getX() >> 4;
+        int chunkZ = position.getZ() >> 4;""",
+        """    public static void sendEmptyChunks(GeyserSession session, Vector3i position, int radius, boolean forceUpdate) {
+        if (forceUpdate) {
+            forceUpdateChunkPosition(session, position);
+        } else {
+            updateChunkPosition(session, position);
+        }
+        int chunkX = position.getX() >> 4;
+        int chunkZ = position.getZ() >> 4;""",
+        "ChunkUtils.sendEmptyChunksPublishFirst",
+    )
+
     cache_center_translator = root / "core/src/main/java/org/geysermc/geyser/translator/protocol/java/level/JavaSetChunkCacheCenterTranslator.java"
     replace_exact(
         cache_center_translator,
@@ -2509,11 +2529,22 @@ import java.util.concurrent.ConcurrentHashMap;""",
     )
     replace_exact(
         player_pos_translator,
+        """            ChunkUtils.updateChunkPosition(session, entityPosition.toInt());""",
+        """            ChunkUtils.forceUpdateChunkPosition(session, entityPosition.toInt());
+            session.scheduleInEventLoop(() -> {
+                if (!session.isClosed() && session.getPlayerEntity() != null) {
+                    ChunkUtils.forceUpdateChunkPosition(session, session.getPlayerEntity().position().toInt());
+                }
+            }, 500, java.util.concurrent.TimeUnit.MILLISECONDS);""",
+        "JavaPlayerPositionTranslator.forcePublishOnSpawnAndWorldSwitch",
+    )
+    replace_exact(
+        player_pos_translator,
         """        session.setUnconfirmedTeleport(new TeleportCache(session, teleportDestination, deltaMovement, newPitch, newYaw, teleportId, type));
         entity.moveAbsolute(teleportDestination, newYaw, newPitch, false, true);""",
         """        session.setUnconfirmedTeleport(new TeleportCache(session, teleportDestination, deltaMovement, newPitch, newYaw, teleportId, type));
         entity.moveAbsolute(teleportDestination, newYaw, newPitch, false, true);
-        ChunkUtils.updateChunkPosition(session, teleportDestination.toInt());""",
+        ChunkUtils.forceUpdateChunkPosition(session, teleportDestination.toInt());""",
         "JavaPlayerPositionTranslator.teleportUpdateChunkPosition",
     )
 
@@ -2725,7 +2756,7 @@ import java.util.concurrent.ConcurrentHashMap;""",
         int rakGlobalPacketLimit = positivePropOrDefault("Geyser.RakGlobalPacketLimit", Math.max(300000, DEFAULT_GLOBAL_PACKET_LIMIT));
         this.geyser.getLogger().debug("Setting RakNet global packet limit to " + rakGlobalPacketLimit);
 
-        boolean rakSendCookie = Boolean.parseBoolean(System.getProperty("Geyser.RakSendCookie", "true"));
+        boolean rakSendCookie = Boolean.parseBoolean(System.getProperty("Geyser.RakSendCookie", "false"));
         this.geyser.getLogger().debug("Setting RakNet send cookie to " + rakSendCookie);
 
         int maxConnectionsPerAddress = positivePropOrDefault("Geyser.MaxConnectionsPerAddress", 32);""",
@@ -4455,6 +4486,301 @@ import java.util.concurrent.ConcurrentHashMap;""",
             return;
         }""",
         "JavaSetEntityMotionTranslator.skipRedundantZeroMotion",
+    )
+
+    # =========================================================================
+    # 14. Universal Join Reliability Across 1.21.0–26.52 & Non-Xbox XUID Isolation:
+    #     - Non-Xbox Bedrock clients (xbox-auth-required: false) send empty extraData.xuid (""),
+    #       which collided in SessionManager.isXuidAlreadyPending("") / sessionByXuid("") and kicked
+    #       every 2nd+ non-Xbox subscriber with geyser.auth.already_loggedin!
+    #     - Leaves ALL already-valid [a-zA-Z0-9_]{3,16} (including space->underscore Gamertags) 100% untouched,
+    #       while auto-transliterating/sanitizing broken Bedrock nicknames (Cyrillic "Стив"/"Игрок", hyphens, dots, >16/<3).
+    #     - Prevents forced GeyserIntegratedPack kicks on cellular/LTE clients when force-resource-packs: false.
+    #     - Backports Oct 2026 Geyser fixes: duplicate rak-error-handler guard (#6746/#6824),
+    #       null-safe 26.40-26.43 CodecProcessor.updateCodec, 1.21.130+ SkinManager PlayerList fix (#6725),
+    #       and heterogeneous sign NBT safety (#6783).
+    # =========================================================================
+    login_enc_utils = root / "core/src/main/java/org/geysermc/geyser/util/LoginEncryptionUtils.java"
+    replace_exact(
+        login_enc_utils,
+        """            session.setAuthData(new AuthData(extraData.displayName, extraData.identity, xuid, issuedAt, extraData.minecraftId));""",
+        """            String effectiveDisplayName = sanitizeBedrockUsername(extraData.displayName, data.getDeviceId());
+            if (!result.signed() || xuid == null || xuid.isBlank() || "0".equals(xuid)) {
+                xuid = computeDeterministicOfflineXuid(effectiveDisplayName);
+            }
+            session.setAuthData(new AuthData(effectiveDisplayName, extraData.identity, xuid, issuedAt, extraData.minecraftId));""",
+        "LoginEncryptionUtils.offlineXuidAndSafeUsername",
+    )
+    replace_exact(
+        login_enc_utils,
+        """    private static void startEncryptionHandshake(GeyserSession session, PublicKey key) throws Exception {""",
+        """    public static String computeDeterministicOfflineXuid(String username) {
+        String normalized = (username == null ? "player" : username.trim().toLowerCase(java.util.Locale.ROOT));
+        java.util.UUID offlineId = java.util.UUID.nameUUIDFromBytes(
+            ("OfflineBedrock:" + normalized).getBytes(java.nio.charset.StandardCharsets.UTF_8)
+        );
+        long synthetic = (offlineId.getLeastSignificantBits() & 0x0003FFFFFFFFFFFFL) | 0x0008000000000000L;
+        return Long.toString(synthetic);
+    }
+
+    public static String sanitizeBedrockUsername(String rawName, String deviceId) {
+        if (rawName == null) {
+            rawName = "";
+        }
+        String spaceNormalized = rawName.trim().replace(' ', '_');
+        if (isAsciiValidJavaName(spaceNormalized)) {
+            return spaceNormalized;
+        }
+        String lowerTrimmed = rawName.trim().toLowerCase(java.util.Locale.ROOT);
+        boolean genericDefault = lowerTrimmed.isEmpty()
+            || lowerTrimmed.equals("стив")
+            || lowerTrimmed.equals("игрок")
+            || lowerTrimmed.equals("алекс");
+
+        StringBuilder sb = new StringBuilder(spaceNormalized.length() + 4);
+        for (int i = 0; i < spaceNormalized.length(); i++) {
+            char c = spaceNormalized.charAt(i);
+            if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
+                sb.append(c);
+            } else if (c == '-' || c == '.') {
+                sb.append('_');
+            } else {
+                sb.append(transliterateCyrillicChar(c));
+            }
+        }
+        String cleaned = sb.toString().replaceAll("_+", "_");
+        while (cleaned.startsWith("_") && cleaned.length() > 3) {
+            cleaned = cleaned.substring(1);
+        }
+        while (cleaned.endsWith("_") && cleaned.length() > 3) {
+            cleaned = cleaned.substring(0, cleaned.length() - 1);
+        }
+        if (cleaned.isEmpty()) {
+            cleaned = "Player";
+            genericDefault = true;
+        }
+        if (genericDefault || cleaned.length() < 3) {
+            String seed = (deviceId != null && !deviceId.isBlank()) ? deviceId.trim() : rawName;
+            int hash = seed.hashCode() & 0xFFFF;
+            String hex = String.format(java.util.Locale.ROOT, "%04x", hash);
+            int maxPrefix = Math.min(cleaned.length(), 11);
+            String prefix = cleaned.substring(0, maxPrefix);
+            if (prefix.isEmpty()) {
+                prefix = "Plr";
+            }
+            cleaned = prefix + "_" + hex;
+        }
+        if (cleaned.length() > 16) {
+            cleaned = cleaned.substring(0, 16);
+        }
+        while (cleaned.length() < 3) {
+            cleaned = cleaned + "_";
+        }
+        return cleaned;
+    }
+
+    private static boolean isAsciiValidJavaName(String s) {
+        if (s == null || s.length() < 3 || s.length() > 16) {
+            return false;
+        }
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            boolean ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
+            if (!ok) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static String transliterateCyrillicChar(char ch) {
+        boolean upper = Character.isUpperCase(ch);
+        char lower = Character.toLowerCase(ch);
+        String mapped = switch (lower) {
+            case 'а' -> "a";
+            case 'б' -> "b";
+            case 'в' -> "v";
+            case 'г' -> "g";
+            case 'д' -> "d";
+            case 'е', 'ё', 'э' -> "e";
+            case 'ж' -> "zh";
+            case 'з' -> "z";
+            case 'и', 'і', 'ї' -> "i";
+            case 'й' -> "y";
+            case 'к' -> "k";
+            case 'л' -> "l";
+            case 'м' -> "m";
+            case 'н' -> "n";
+            case 'о' -> "o";
+            case 'п' -> "p";
+            case 'р' -> "r";
+            case 'с' -> "s";
+            case 'т' -> "t";
+            case 'у' -> "u";
+            case 'ф' -> "f";
+            case 'х' -> "kh";
+            case 'ц' -> "ts";
+            case 'ч' -> "ch";
+            case 'ш', 'щ' -> "sh";
+            case 'ы' -> "y";
+            case 'ю' -> "yu";
+            case 'я' -> "ya";
+            case 'ґ' -> "g";
+            case 'є' -> "ye";
+            default -> "";
+        };
+        if (mapped.isEmpty() || !upper) {
+            return mapped;
+        }
+        return Character.toUpperCase(mapped.charAt(0)) + mapped.substring(1);
+    }
+
+    private static void startEncryptionHandshake(GeyserSession session, PublicKey key) throws Exception {""",
+        "LoginEncryptionUtils.helperMethods",
+    )
+
+    session_mgr = root / "core/src/main/java/org/geysermc/geyser/session/SessionManager.java"
+    replace_exact(
+        session_mgr,
+        """    public boolean isXuidAlreadyPending(String xuid) {
+        for (GeyserSession session : pendingSessions) {
+            if (session.xuid().equals(xuid)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public @Nullable GeyserSession sessionByXuid(@NonNull String xuid) {
+        Objects.requireNonNull(xuid);
+        for (GeyserSession session : sessions.values()) {
+            if (session.xuid().equals(xuid)) {
+                return session;
+            }
+        }
+        return null;
+    }""",
+        """    public boolean isXuidAlreadyPending(String xuid) {
+        if (xuid == null || xuid.isBlank() || "0".equals(xuid)) {
+            return false;
+        }
+        for (GeyserSession session : pendingSessions) {
+            if (xuid.equals(session.xuid())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public @Nullable GeyserSession sessionByXuid(@NonNull String xuid) {
+        Objects.requireNonNull(xuid);
+        if (xuid.isBlank() || "0".equals(xuid)) {
+            return null;
+        }
+        for (GeyserSession session : sessions.values()) {
+            if (xuid.equals(session.xuid())) {
+                return session;
+            }
+        }
+        return null;
+    }""",
+        "SessionManager.ignoreBlankOrZeroXuid",
+    )
+
+    replace_exact(
+        upstream_handler,
+        """        resourcePacksInfo.setForcedToAccept(GeyserImpl.getInstance().config().gameplay().forceResourcePacks() ||
+            resourcePackLoadEvent.isIntegratedPackActive());""",
+        """        resourcePacksInfo.setForcedToAccept(GeyserImpl.getInstance().config().gameplay().forceResourcePacks());""",
+        "UpstreamPacketHandler.nonBlockingIntegratedPack",
+    )
+    replace_exact(
+        upstream_handler,
+        """            case REFUSED -> session.disconnect("disconnectionScreen.resourcePack");""",
+        """            case REFUSED -> {
+                if (GeyserImpl.getInstance().config().gameplay().forceResourcePacks()) {
+                    session.disconnect("disconnectionScreen.resourcePack");
+                } else {
+                    ResourcePackStackPacket stackPacket = new ResourcePackStackPacket();
+                    stackPacket.setExperimentsPreviouslyToggled(false);
+                    stackPacket.setForcedToAccept(false);
+                    stackPacket.setGameVersion("*");
+                    if (session.protocolVersion() == 800) {
+                        stackPacket.getExperiments().add(new org.cloudburstmc.protocol.bedrock.data.ExperimentData("y_2025_drop_2", true));
+                        stackPacket.getExperiments().add(new org.cloudburstmc.protocol.bedrock.data.ExperimentData("locator_bar", true));
+                    } else if (session.protocolVersion() == 827) {
+                        stackPacket.getExperiments().add(new org.cloudburstmc.protocol.bedrock.data.ExperimentData("y_2025_drop_3", true));
+                    }
+                    session.sendUpstreamPacket(stackPacket);
+                }
+            }""",
+        "UpstreamPacketHandler.allowJoinWhenOptionalPacksSkipped",
+    )
+
+    server_init = root / "core/src/main/java/org/geysermc/geyser/network/GeyserServerInitializer.java"
+    replace_exact(
+        server_init,
+        """                channel.pipeline().addAfter(BedrockPeer.NAME, InvalidPacketHandler.NAME, new InvalidPacketHandler(session));""",
+        """                if (channel.pipeline().get(InvalidPacketHandler.NAME) != null) {
+                    channel.pipeline().replace(InvalidPacketHandler.NAME, InvalidPacketHandler.NAME, new InvalidPacketHandler(session));
+                } else {
+                    channel.pipeline().addAfter(BedrockPeer.NAME, InvalidPacketHandler.NAME, new InvalidPacketHandler(session));
+                }""",
+        "GeyserServerInitializer.duplicateRakErrorHandlerGuard",
+    )
+
+    replace_exact(
+        codec_processor,
+        """    public static void updateCodec(UpstreamSession upstreamSession, String version) {
+        // Support all older 1.26.4x builds
+        switch (version) {
+            case "1.26.40", "1.26.41", "1.26.42", "1.26.43" -> {
+                upstreamSession.getSession().setCodec(processCodec(Bedrock_v2168.CODEC));
+            }
+        }
+    }""",
+        """    public static void updateCodec(UpstreamSession upstreamSession, String version) {
+        if (version == null) {
+            return;
+        }
+        // Support all older 1.26.4x / 26.4x builds without NPE on custom clients
+        switch (version.trim()) {
+            case "1.26.40", "1.26.41", "1.26.42", "1.26.43",
+                 "26.40", "26.41", "26.42", "26.43" -> {
+                upstreamSession.getSession().setCodec(processCodec(Bedrock_v2168.CODEC));
+            }
+        }
+    }""",
+        "CodecProcessor.nullSafeUpdateCodec",
+    )
+
+    skin_manager = root / "core/src/main/java/org/geysermc/geyser/skin/SkinManager.java"
+    replace_exact(
+        skin_manager,
+        """        // Since 1.21.130: PlayerSkinPacket only works if player is listed; might as well always use the player list packet
+        if (entity.uuid().equals(session.getPlayerEntity().uuid()) || !entity.isListed()) {""",
+        """        // Upstream #6725: Since 1.21.130 (v898+), PlayerSkinPacket no longer reliably updates listed players
+        if (session.protocolVersion() >= 898 || entity.uuid().equals(session.getPlayerEntity().uuid()) || !entity.isListed()) {""",
+        "SkinManager.playerListSkinOnModernProtocols",
+    )
+
+    sign_translator = root / "core/src/main/java/org/geysermc/geyser/translator/level/block/entity/SignBlockEntityTranslator.java"
+    replace_exact(
+        sign_translator,
+        """        List<?> rawMessages = javaNbt.getList("messages", NbtType.COMPOUND);
+        if (rawMessages.isEmpty()) {
+            rawMessages = javaNbt.getList("messages", NbtType.STRING);
+        }
+        List<String> messages = MessageTranslator.signTextFromNbtTag(session, rawMessages);""",
+        """        List<String> messages;
+        try {
+            Object rawObj = javaNbt.get("messages");
+            List<?> rawMessages = (rawObj instanceof List<?> rawList) ? rawList : java.util.Collections.emptyList();
+            messages = MessageTranslator.signTextFromNbtTag(session, rawMessages);
+        } catch (RuntimeException ignored) {
+            messages = java.util.Collections.emptyList();
+        }""",
+        "SignBlockEntityTranslator.safeHeterogeneousNbtSignList",
     )
 
 

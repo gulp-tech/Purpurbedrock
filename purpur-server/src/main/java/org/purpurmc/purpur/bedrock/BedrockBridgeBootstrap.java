@@ -129,6 +129,9 @@ public final class BedrockBridgeBootstrap {
             if (System.getProperty("Geyser.MaxConnectionsPerAddress") == null) {
                 System.setProperty("Geyser.MaxConnectionsPerAddress", Integer.toString(PurpurConfig.bedrockRakMaxConnectionsPerIp));
             }
+            if (System.getProperty("Geyser.RakSendCookie") == null) {
+                System.setProperty("Geyser.RakSendCookie", Boolean.toString(PurpurConfig.bedrockRakSendCookie));
+            }
             if (System.getProperty("purpurbedrock.asyncPrewarm") == null) {
                 System.setProperty("purpurbedrock.asyncPrewarm", Boolean.toString(PurpurConfig.bedrockAsyncGeyserPrewarm));
             }
@@ -335,21 +338,21 @@ public final class BedrockBridgeBootstrap {
         cfg.addDefault("gameplay.command-suggestions", true);
         cfg.addDefault("gameplay.show-cooldown", "false");
         cfg.addDefault("gameplay.disable-bedrock-scaffolding", false);
-        cfg.addDefault("performance.mtu", 1350);
+        cfg.addDefault("performance.mtu", 1200);
         cfg.addDefault("performance.compression-level", 4);
         cfg.addDefault("performance.cache-images", 7);
         cfg.addDefault("performance.max-visible-custom-skulls", 24);
         cfg.addDefault("performance.custom-skull-render-distance", 16);
         cfg.addDefault("performance.max-cached-custom-skulls", 2048);
-        cfg.addDefault("packs.force-resource-packs", true);
+        cfg.addDefault("packs.force-resource-packs", false);
         cfg.addDefault("packs.enable-integrated-pack", true);
         cfg.addDefault("advanced.download-mojang-assets", false);
-        cfg.addDefault("config-schema", 3);
-        if (file.exists() && cfg.getInt("config-schema", 1) < 2) {
-            cfg.set("packs.force-resource-packs", true);
+        cfg.addDefault("config-schema", 4);
+        int existingSchema = cfg.getInt("config-schema", 1);
+        if (file.exists() && existingSchema < 2) {
             cfg.set("packs.enable-integrated-pack", true);
         }
-        if (file.exists() && cfg.getInt("config-schema", 1) < 3) {
+        if (file.exists() && existingSchema < 3) {
             int curSkulls = cfg.getInt("performance.max-visible-custom-skulls", 0);
             if (curSkulls == 0 || curSkulls == 128) {
                 cfg.set("performance.max-visible-custom-skulls", 24);
@@ -360,7 +363,17 @@ public final class BedrockBridgeBootstrap {
             if (cfg.getInt("performance.max-cached-custom-skulls", 0) == 0) {
                 cfg.set("performance.max-cached-custom-skulls", 2048);
             }
-            cfg.set("config-schema", 3);
+        }
+        if (file.exists() && existingSchema < 4) {
+            // Migrate MTU 1350 -> 1200 for Russian mobile LTE / PPPoE / VPN / Amnezia compatibility,
+            // and make resource packs non-blocking while preserving GeyserIntegratedPack + HeadDatabase skulls
+            if (cfg.getInt("performance.mtu", 1350) == 1350) {
+                cfg.set("performance.mtu", 1200);
+            }
+            if (cfg.getBoolean("packs.force-resource-packs", true)) {
+                cfg.set("packs.force-resource-packs", false);
+            }
+            cfg.set("config-schema", 4);
         }
         cfg.options().copyDefaults(true);
         cfg.save(file);
@@ -477,12 +490,12 @@ public final class BedrockBridgeBootstrap {
             ? "disabled"
             : ("hotbar".equalsIgnoreCase(rawCooldown) ? "hotbar" : "crosshair");
         boolean disableScaffolding = bedrockCfg.getBoolean("gameplay.disable-bedrock-scaffolding", false);
-        int mtu = bedrockCfg.getInt("performance.mtu", 1350);
+        int mtu = bedrockCfg.getInt("performance.mtu", 1200);
         int compressionLevel = bedrockCfg.getInt("performance.compression-level", 4);
         int cacheImages = bedrockCfg.getInt("performance.cache-images", 7);
         int maxSkulls = bedrockCfg.getInt("performance.max-visible-custom-skulls", 24);
         int skullRenderDist = Math.max(8, Math.min(64, bedrockCfg.getInt("performance.custom-skull-render-distance", 16)));
-        boolean forcePacks = bedrockCfg.getBoolean("packs.force-resource-packs", true);
+        boolean forcePacks = bedrockCfg.getBoolean("packs.force-resource-packs", false);
         boolean integratedPack = bedrockCfg.getBoolean("packs.enable-integrated-pack", true);
 
         String rawPublicAddr = bedrockCfg.getString("nethernet.public-address", "");
@@ -665,12 +678,42 @@ public final class BedrockBridgeBootstrap {
             }
 
             Class<?> chunkUtilsClass = Class.forName("org.geysermc.geyser.util.ChunkUtils", true, cl);
+            Class<?> geyserSessionClass = Class.forName("org.geysermc.geyser.session.GeyserSession", true, cl);
             chunkUtilsClass.getMethod(
                 "ensureChunkPublished",
-                Class.forName("org.geysermc.geyser.session.GeyserSession", true, cl),
+                geyserSessionClass,
                 int.class,
                 int.class
             );
+            chunkUtilsClass.getMethod(
+                "forceUpdateChunkPositionBlock",
+                geyserSessionClass,
+                int.class,
+                int.class,
+                int.class
+            );
+
+            // Verify zero-regression username preservation + non-Xbox XUID isolation
+            Class<?> loginEncClass = Class.forName("org.geysermc.geyser.util.LoginEncryptionUtils", true, cl);
+            java.lang.reflect.Method sanitizeName = loginEncClass.getMethod("sanitizeBedrockUsername", String.class, String.class);
+            java.lang.reflect.Method offlineXuid = loginEncClass.getMethod("computeDeterministicOfflineXuid", String.class);
+            if (!"BaronLite2".equals(sanitizeName.invoke(null, "BaronLite2", "dev-1"))
+                || !"Baron_Lite".equals(sanitizeName.invoke(null, "Baron Lite", "dev-2"))
+                || !"eni02".equals(sanitizeName.invoke(null, "eni02", "dev-3"))) {
+                throw new IllegalStateException("Existing valid usernames were altered by sanitizeBedrockUsername!");
+            }
+            String stivA = (String) sanitizeName.invoke(null, "Стив", "android-device-aaa");
+            String stivB = (String) sanitizeName.invoke(null, "Стив", "android-device-bbb");
+            String cyrCustom = (String) sanitizeName.invoke(null, "Ваня-Про.2026", "android-device-ccc");
+            if (stivA.equals(stivB) || !stivA.matches("^[a-zA-Z0-9_]{3,16}$") || !cyrCustom.matches("^[a-zA-Z0-9_]{3,16}$")) {
+                throw new IllegalStateException("Broken/Cyrillic username sanitization failed: " + stivA + " / " + stivB + " / " + cyrCustom);
+            }
+            String xuidA = (String) offlineXuid.invoke(null, stivA);
+            String xuidB = (String) offlineXuid.invoke(null, stivB);
+            String xuidA2 = (String) offlineXuid.invoke(null, stivA);
+            if (xuidA == null || xuidA.isBlank() || "0".equals(xuidA) || xuidA.equals(xuidB) || !xuidA.equals(xuidA2)) {
+                throw new IllegalStateException("Offline deterministic XUID check failed: " + xuidA + " vs " + xuidB);
+            }
 
             Class<?> mcLocaleClass = Class.forName("org.geysermc.geyser.text.MinecraftLocale", true, cl);
             java.lang.reflect.Method getLocaleIfPresent = mcLocaleClass.getMethod("getLocaleStringIfPresent", String.class, String.class);
