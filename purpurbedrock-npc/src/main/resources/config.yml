@@ -1,0 +1,12 @@
+# PurpurBedrockNPC 26.2
+settings:
+  # Защищает от двойного клика Bedrock/Java и повторного события основной/второй руки.
+  click-cooldown-ms: 350
+  # Одна TextDisplay-сущность используется для всей многострочной голограммы.
+  default-hologram-height: 2.3
+  # NPC не имеют AI, гравитации, коллизии, звука, урона и лута.
+  invulnerable: true
+  silent: true
+
+# NPC сохраняются здесь автоматически командами /pbnpc.
+npcs: {}

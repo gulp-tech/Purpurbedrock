@@ -1,0 +1,19 @@
+name: PurpurBedrockNPC
+version: "26.2.0"
+main: org.purpurmc.purpur.npc.PurpurBedrockNpcPlugin
+api-version: "26.2"
+folia-supported: false
+authors: [Purpurbedrock]
+description: "Сверхлёгкие неподвижные mob-NPC без AI с голограммами и действиями для Java/Bedrock"
+
+commands:
+  pbnpc:
+    description: "Управление сверхлёгкими NPC"
+    aliases: [npc, bedrocknpc]
+    usage: "/pbnpc help"
+    permission: purpurbedrocknpc.admin
+
+permissions:
+  purpurbedrocknpc.admin:
+    description: "Создание и редактирование NPC, голограмм и действий"
+    default: op

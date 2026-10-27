@@ -105,6 +105,11 @@ jobs:
             cp purpurbedrock-anticheat/build/libs/PurpurBedrockAC-26.2.jar PurpurBedrockAC-26.2.jar
             sha256sum PurpurBedrockAC-26.2.jar > PurpurBedrockAC-26.2.jar.sha256
 
+            echo "Building standalone PurpurBedrockNPC against local maven purpur-api:${PURPUR_VER}..."
+            gradle -p purpurbedrock-npc build -PpurpurVersion="${PURPUR_VER}" --no-daemon --stacktrace
+            cp purpurbedrock-npc/build/libs/PurpurBedrockNPC-26.2.jar PurpurBedrockNPC-26.2.jar
+            sha256sum PurpurBedrockNPC-26.2.jar > PurpurBedrockNPC-26.2.jar.sha256
+
             ls -la purpur-server/build/libs/
             PAPERCLIP_JAR=$(find purpur-server/build/libs -maxdepth 1 -name "*paperclip*.jar" | head -n 1)
             if [ -z "$PAPERCLIP_JAR" ]; then
@@ -113,7 +118,7 @@ jobs:
             fi
             cp "$PAPERCLIP_JAR" purpurbedrock-26.2.jar
             sha256sum purpurbedrock-26.2.jar > purpurbedrock-26.2.jar.sha256
-            ls -lh purpurbedrock-26.2.jar purpurbedrock-26.2.jar.sha256 PurpurBedrockAC-26.2.jar PurpurBedrockAC-26.2.jar.sha256
+            ls -lh purpurbedrock-26.2.jar purpurbedrock-26.2.jar.sha256 PurpurBedrockAC-26.2.jar PurpurBedrockAC-26.2.jar.sha256 PurpurBedrockNPC-26.2.jar PurpurBedrockNPC-26.2.jar.sha256
           } 2>&1 | tee -a /tmp/build.log
 
       - name: Live End-to-End 26.2 Smoke Test (Instant Boot + LAN Discovery 7551 + RakNet 19132 + Anti-Xray + Java Plugin & Menus)
@@ -125,6 +130,7 @@ jobs:
           mkdir -p /tmp/smoke-server/plugins
           cp purpurbedrock-26.2.jar /tmp/smoke-server/purpurbedrock-26.2.jar
           cp PurpurBedrockAC-26.2.jar /tmp/smoke-server/plugins/PurpurBedrockAC-26.2.jar
+          cp PurpurBedrockNPC-26.2.jar /tmp/smoke-server/plugins/PurpurBedrockNPC-26.2.jar
           python3 - "$TEST_PLUGIN_JAR" << 'PY2'
           import os, struct, sys, zipfile, zlib
           src = sys.argv[1]
@@ -241,7 +247,7 @@ jobs:
               if not booted:
                   raise RuntimeError("Timed out waiting for Purpurbedrock 26.2 boot!")
 
-              proc.stdin.write("purpurbedrock status\npurpurbedrock skulls off\npurpurbedrock skulls status\npurpurbedrock skulls on\npurpurbedrock antixray\npurpurbedrock papi\npurpurbedrock selftest\npac status\npac checks\npac selftest\n")
+              proc.stdin.write("purpurbedrock status\npurpurbedrock skulls off\npurpurbedrock skulls status\npurpurbedrock skulls on\npurpurbedrock antixray\npurpurbedrock papi\npurpurbedrock selftest\npac status\npac checks\npac selftest\npbnpc selftest\n")
               proc.stdin.flush()
               time.sleep(3)
 
@@ -341,6 +347,8 @@ jobs:
               "PAPI_EXPANSION_LIVE_REGISTERED_OK id=purpurbedrock persist=true ver=26.2 isBedrock=true ping=0",
               "Встроенные плейсхолдеры %purpurbedrock_*% зарегистрированы в PlaceholderAPI",
               "PurpurBedrockAC 26.2 запущен! Адаптивный спящий режим активен",
+              "PurpurBedrockNPC 26.2 активен: mob-NPC AI=OFF, scheduler tasks=0, одна TextDisplay на голограмму.",
+              "PURPURBEDROCK_NPC_SELFTEST_OK engine=EVENT_DRIVEN ai=OFF tasks=0 hologram=ONE_DISPLAY actions=5",
               "PURPURBEDROCK_AC_SELFTEST_OK checks=25/25 wifiLagSafe=true antiFalseAlerts=CONFIRMED drill3x3=SAFE adaptiveRender=OK gui=54 legend=GREEN_ORANGE_RED stage=AWAKE idleHolo=0 devices=6",
               "Статус PurpurBedrockAC 26.2",
               "NetherNet LAN Discovery active on UDP",
@@ -372,13 +380,15 @@ jobs:
             purpurbedrock-26.2.jar.sha256
             PurpurBedrockAC-26.2.jar
             PurpurBedrockAC-26.2.jar.sha256
+            PurpurBedrockNPC-26.2.jar
+            PurpurBedrockNPC-26.2.jar.sha256
             unlock-windows-lan.bat
 
       - name: Publish Purpurbedrock 26.2 Ready Core to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v26.2.0-bedrock
-          name: "Purpurbedrock 26.2 FINAL (Login Queue Fix + Adaptive NPC Optimization) + PurpurBedrockAC 26.2.6"
+          name: "Purpurbedrock 26.2 FINAL + PurpurBedrockNPC 26.2 + PurpurBedrockAC 26.2.6"
           body: |
             ## Purpurbedrock `26.2` FINAL (`purpurbedrock-26.2.jar`) + Отдельный античит `PurpurBedrockAC-26.2.jar` (`v26.2.6`)
             Финальное автономное высокопроизводительное ядро на базе **Purpur `26.2` (`STABLE`)** и отдельный адаптивный античит, откалиброванный специально под него:
@@ -391,6 +401,8 @@ jobs:
               - Точно определяет **`Windows`**, **`Android`**, **`IOS`**, **`Xbox`**, **`PS 4-5`** и **`Клавиатура + мышь`** (OTG/Bluetooth клавиатура и мышь, подключённые к телефону Android/iOS, в реальном времени `20 Гц` + защита от спуфа Touch и спуфа Android с ПК).
             - **Фикс зависаний и ошибок `sessionserver.mojang.com` (`Read timed out`)**:
               - В `PaperMinecraftSessionService` отключены бесполезные запросы к `sessionserver.mojang.com` для оффлайн/Bedrock UUID и серверов с `online-mode: false` (`SkinsRestorer` и `HeadDatabase` продолжают работать штатно).
+            - **Новый сверхлёгкий плагин NPC `PurpurBedrockNPC-26.2.jar`**:
+              - Неподвижные обычные мобы без AI, awareness, гравитации, коллизии, звука, урона и лута; плагин создаёт `0` периодических задач. Многострочная редактируемая голограмма использует одну `TextDisplay`, а клики запускают редактируемые console/player-команды, сообщения, DeluxeMenus или телепорт.
             - **Отдельный плагин-античит `PurpurBedrockAC-26.2.jar` (папка `purpurbedrock-anticheat/`, не мешает ядру)**:
               - **Адаптивный спящий режим (`DORMANT → SLEEPING → WAKING → AWAKE`)**: в тишине спит (`0% CPU`), при первых аномалиях плавно и не спеша просыпается только для подозрительного игрока, не нагружая сервер.
               - **Совместимость с кастомным буром 3×3 / 3×3×2**: синтетические соседние `BlockBreakEvent` без соответствующего клиентского `BlockDamageEvent` больше не считаются `Nuker` или `FastBreak`; реальная пакетная добыча читом продолжает проверяться.
@@ -429,6 +441,8 @@ jobs:
             purpurbedrock-26.2.jar.sha256
             PurpurBedrockAC-26.2.jar
             PurpurBedrockAC-26.2.jar.sha256
+            PurpurBedrockNPC-26.2.jar
+            PurpurBedrockNPC-26.2.jar.sha256
             unlock-windows-lan.bat
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
