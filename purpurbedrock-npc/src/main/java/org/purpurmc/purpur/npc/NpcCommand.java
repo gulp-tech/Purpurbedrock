@@ -66,10 +66,14 @@ final class NpcCommand implements CommandExecutor, TabCompleter {
             return;
         }
         Location spawnLocation = placementInFront(player);
-        if (manager.create(args[1], type, spawnLocation)) {
-            success(sender, "NPC '" + NpcManager.normalizeId(args[1]) + "' создан перед вами. AI=OFF, задач=0.");
-        } else {
-            error(sender, "NPC не создан: ID уже занят, тип некорректен или сущность не удалось заспавнить.");
+        String normalizedId = NpcManager.normalizeId(args[1]);
+        NpcManager.CreateResult result = manager.create(normalizedId, type, spawnLocation);
+        switch (result) {
+            case CREATED -> success(sender, "NPC '" + normalizedId + "' создан перед вами. AI=OFF, задач=0.");
+            case RESPAWNED -> success(sender, "NPC '" + normalizedId + "' уже существовал и пересоздан перед вами.");
+            case INVALID_ID -> error(sender, "NPC не создан: ID пустой или некорректный.");
+            case INVALID_TYPE -> error(sender, "NPC не создан: '" + args[2] + "' не является обычным мобом.");
+            case SPAWN_FAILED -> error(sender, "NPC не создан: мир или позиция не позволяют создать сущность. Проверьте консоль.");
         }
     }
 

@@ -58,6 +58,14 @@ final class NpcManager implements Listener {
     private record SpawnedNpc(Mob mob, TextDisplay hologram) {
     }
 
+    enum CreateResult {
+        CREATED,
+        RESPAWNED,
+        INVALID_ID,
+        INVALID_TYPE,
+        SPAWN_FAILED
+    }
+
     NpcManager(JavaPlugin plugin) {
         this.plugin = plugin;
         this.npcIdKey = new NamespacedKey(plugin, "npc_id");
@@ -96,11 +104,31 @@ final class NpcManager implements Listener {
         return definitions.get(normalizeId(id));
     }
 
-    boolean create(String id, EntityType type, Location location) {
+    CreateResult create(String id, EntityType type, Location location) {
         String key = normalizeId(id);
-        if (key.isBlank() || definitions.containsKey(key) || !isSupportedMob(type)) {
-            return false;
+        if (key.isBlank()) {
+            return CreateResult.INVALID_ID;
         }
+        if (!isSupportedMob(type)) {
+            return CreateResult.INVALID_TYPE;
+        }
+
+        NpcDefinition existing = definitions.get(key);
+        if (existing != null) {
+            EntityType oldType = existing.type;
+            Location oldLocation = existing.location.clone();
+            existing.type = type;
+            existing.location = location.clone();
+            if (!respawn(existing)) {
+                existing.type = oldType;
+                existing.location = oldLocation;
+                spawn(existing);
+                return CreateResult.SPAWN_FAILED;
+            }
+            save(existing);
+            return CreateResult.RESPAWNED;
+        }
+
         NpcDefinition definition = new NpcDefinition(
             key,
             type,
@@ -112,10 +140,10 @@ final class NpcManager implements Listener {
         definitions.put(key, definition);
         if (!spawn(definition)) {
             definitions.remove(key);
-            return false;
+            return CreateResult.SPAWN_FAILED;
         }
         save(definition);
-        return true;
+        return CreateResult.CREATED;
     }
 
     boolean remove(String id) {
@@ -135,8 +163,13 @@ final class NpcManager implements Listener {
         if (definition == null) {
             return false;
         }
+        Location oldLocation = definition.location.clone();
         definition.location = location.clone();
-        respawn(definition);
+        if (!respawn(definition)) {
+            definition.location = oldLocation;
+            spawn(definition);
+            return false;
+        }
         save(definition);
         return true;
     }
@@ -146,8 +179,13 @@ final class NpcManager implements Listener {
         if (definition == null || !isSupportedMob(type)) {
             return false;
         }
+        EntityType oldType = definition.type;
         definition.type = type;
-        respawn(definition);
+        if (!respawn(definition)) {
+            definition.type = oldType;
+            spawn(definition);
+            return false;
+        }
         save(definition);
         return true;
     }
@@ -267,6 +305,7 @@ final class NpcManager implements Listener {
         try {
             hologram = world.spawn(hologramLocation, TextDisplay.class, display -> {
                 display.setPersistent(false);
+                display.setVisibleByDefault(true);
                 display.setBillboard(Display.Billboard.CENTER);
                 display.setShadowed(true);
                 display.setSeeThrough(false);
@@ -300,6 +339,8 @@ final class NpcManager implements Listener {
     private void configureMob(Mob mob, String id) {
         mob.setAI(false);
         mob.setAware(false);
+        mob.setInvisible(false);
+        mob.setVisibleByDefault(true);
         mob.setGravity(false);
         mob.setSilent(plugin.getConfig().getBoolean("settings.silent", true));
         mob.setInvulnerable(plugin.getConfig().getBoolean("settings.invulnerable", true));
@@ -325,9 +366,9 @@ final class NpcManager implements Listener {
         live.hologram().text(parseHologram(definition.hologram));
     }
 
-    private void respawn(NpcDefinition definition) {
+    private boolean respawn(NpcDefinition definition) {
         despawn(definition.id);
-        spawn(definition);
+        return spawn(definition);
     }
 
     private void despawn(String id) {
