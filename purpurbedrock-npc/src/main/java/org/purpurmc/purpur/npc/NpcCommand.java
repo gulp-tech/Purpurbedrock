@@ -65,10 +65,11 @@ final class NpcCommand implements CommandExecutor, TabCompleter {
             error(sender, "Тип не является обычным мобом без AI: " + args[2]);
             return;
         }
-        if (manager.create(args[1], type, player.getLocation())) {
-            success(sender, "NPC '" + NpcManager.normalizeId(args[1]) + "' создан. AI=OFF, задач=0.");
+        Location spawnLocation = placementInFront(player);
+        if (manager.create(args[1], type, spawnLocation)) {
+            success(sender, "NPC '" + NpcManager.normalizeId(args[1]) + "' создан перед вами. AI=OFF, задач=0.");
         } else {
-            error(sender, "NPC уже существует или ID некорректен.");
+            error(sender, "NPC не создан: ID уже занят, тип некорректен или сущность не удалось заспавнить.");
         }
     }
 
@@ -267,6 +268,21 @@ final class NpcCommand implements CommandExecutor, TabCompleter {
     private static void actionHelp(CommandSender sender) {
         error(sender, "Использование: /pbnpc action <id> add <console|player|message|menu|teleport> <значение>");
         sender.sendMessage(Component.text("teleport here — сохранить вашу текущую позицию; menu <имя> — DeluxeMenus.", NamedTextColor.GRAY));
+    }
+
+    private static Location placementInFront(Player player) {
+        Location origin = player.getLocation();
+        org.bukkit.util.Vector direction = origin.getDirection().setY(0.0D);
+        if (direction.lengthSquared() < 0.0001D) {
+            direction.setZ(1.0D);
+        } else {
+            direction.normalize();
+        }
+        Location result = origin.clone().add(direction.multiply(2.0D));
+        // Face the NPC back toward the player while retaining a normal standing Y coordinate.
+        result.setYaw(origin.getYaw() + 180.0F);
+        result.setPitch(0.0F);
+        return result;
     }
 
     private static String join(String[] args, int start) {

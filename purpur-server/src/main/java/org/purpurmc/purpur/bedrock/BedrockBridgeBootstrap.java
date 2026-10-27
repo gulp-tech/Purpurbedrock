@@ -790,6 +790,26 @@ public final class BedrockBridgeBootstrap {
                 || !lanServerDataClass.getField("PURPURBEDROCK_LAN_STATUS_V6_V7").getBoolean(null)) {
                 throw new IllegalStateException("Bedrock LAN v6/v7 status backport is inactive");
             }
+            Class<?> disconnectReasonClass = Class.forName(
+                "org.cloudburstmc.netty.channel.TransportDisconnectReason", true, cl
+            );
+            if (!disconnectReasonClass.isEnum()
+                || java.util.Arrays.stream(disconnectReasonClass.getEnumConstants())
+                    .map(Object::toString)
+                    .noneMatch("ABORTED_BY_REMOTE_PEER"::equals)) {
+                throw new IllegalStateException("Bedrock transport disconnect compatibility is inactive");
+            }
+            @SuppressWarnings({"rawtypes", "unchecked"})
+            Object abortedReason = Enum.valueOf((Class<? extends Enum>) disconnectReasonClass, "ABORTED_BY_REMOTE_PEER");
+            Class<?> bedrockDisconnectReasons = Class.forName(
+                "org.cloudburstmc.protocol.bedrock.BedrockDisconnectReasons", true, cl
+            );
+            Object mappedReason = bedrockDisconnectReasons
+                .getMethod("getReason", disconnectReasonClass)
+                .invoke(null, abortedReason);
+            if (!(mappedReason instanceof String reason) || reason.isBlank()) {
+                throw new IllegalStateException("Bedrock disconnect reason linkage failed");
+            }
             Class<?> gameProtocolClass = Class.forName("org.geysermc.geyser.network.bedrock.GameProtocol", true, cl);
             java.lang.reflect.Method getBedrockCodec = gameProtocolClass.getMethod("getBedrockCodec", int.class);
             java.util.List<?> protocols = (java.util.List<?>) gameProtocolClass.getField("SUPPORTED_BEDROCK_PROTOCOLS").get(null);
@@ -970,7 +990,7 @@ public final class BedrockBridgeBootstrap {
 
             return "MULTIVERSION_685_TO_2225_SELFTEST_OK codecs=" + protocols.size()
                 + " versions=1.21.0..26.60 dialogWaitPopup=DISABLED chunkPublisher=RELIABLE ruLocale=OK"
-                + " pre818StartGame=OK attrSingleton=OK waypointFix=OK configDialogSafe=OK chunkBoundsSafe=OK lanStatusV7=OK"
+                + " pre818StartGame=OK attrSingleton=OK waypointFix=OK configDialogSafe=OK chunkBoundsSafe=OK lanStatusV7=OK transportReason=OK"
                 + " safeRemoteSkins=" + (PurpurConfig.bedrockSafeRemotePlayerSkins ? "ON" : "OFF")
                 + " skullsToggle=" + (isCustomSkullsEnabled() ? "ON" : "OFF")
                 + " particleCap=" + activeParticleCap

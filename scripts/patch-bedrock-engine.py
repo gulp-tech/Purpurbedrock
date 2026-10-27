@@ -1069,6 +1069,29 @@ project(":spigot").projectDir = file("bootstrap/spigot")""",
         (lan_package_dir / lan_source).write_bytes(source.read_bytes())
         print(f"Wrote Bedrock 26.60 LAN backport -> {lan_source}")
 
+    # The 26.60 protocol connection build consumes the shared disconnect enum introduced
+    # after the retained 26.2 transport build. Backport it to prevent disconnect-time
+    # NoClassDefFoundError without replacing the stable RakNet/WebRTC implementation.
+    disconnect_reason_source = lan_backport_dir / "TransportDisconnectReason.java"
+    disconnect_reason_target = root / "core/src/main/java/org/cloudburstmc/netty/channel/TransportDisconnectReason.java"
+    if not disconnect_reason_source.is_file():
+        raise RuntimeError(f"Missing transport compatibility source: {disconnect_reason_source}")
+    disconnect_reason_target.parent.mkdir(parents=True, exist_ok=True)
+    disconnect_reason_target.write_bytes(disconnect_reason_source.read_bytes())
+    print("Wrote Bedrock 26.60 transport compatibility -> TransportDisconnectReason.java")
+
+    # Keep the internal Bukkit plugin identity for extension compatibility, but use the
+    # Purpurbedrock prefix for all console messages and warnings.
+    replace_exact(
+        root / "bootstrap/spigot/src/main/resources/plugin.yml",
+        """name: ${name}-Spigot
+author: ${author}""",
+        """name: ${name}-Spigot
+prefix: Purpurbedrock
+author: ${author}""",
+        "GeyserSpigotPlugin.consolePrefix",
+    )
+
     # 4a. NetherNetServer.java: keep internal nethernet temp dir in engineDir + add NetherNetDiscoverySignaling on UDP 7551
     nethernet_server = root / "core/src/main/java/org/geysermc/geyser/network/bedrock/nethernet/NetherNetServer.java"
     replace_exact(

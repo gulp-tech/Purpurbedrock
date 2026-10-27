@@ -79,7 +79,7 @@ final class NpcManager implements Listener {
                 if (definition != null && isSupportedMob(definition.type)) {
                     definitions.put(normalizeId(id), definition);
                 } else {
-                    plugin.getLogger().warning("NPC '" + id + "' пропущен: мир или тип моба недоступен.");
+                    plugin.getLogger().info("NPC '" + id + "' пропущен: мир или тип моба недоступен.");
                 }
             }
         }
@@ -110,7 +110,10 @@ final class NpcManager implements Listener {
             List.of()
         );
         definitions.put(key, definition);
-        spawn(definition);
+        if (!spawn(definition)) {
+            definitions.remove(key);
+            return false;
+        }
         save(definition);
         return true;
     }
@@ -212,23 +215,28 @@ final class NpcManager implements Listener {
         clickCooldown.clear();
     }
 
-    private void spawn(NpcDefinition definition) {
+    private boolean spawn(NpcDefinition definition) {
         if (!spawning.add(definition.id)) {
-            return;
+            return false;
         }
         try {
-            spawnNow(definition);
+            return spawnNow(definition);
         } finally {
             spawning.remove(definition.id);
         }
     }
 
-    private void spawnNow(NpcDefinition definition) {
+    private boolean spawnNow(NpcDefinition definition) {
         despawn(definition.id);
         Location location = definition.location.clone();
         World world = location.getWorld();
         if (world == null) {
-            return;
+            return false;
+        }
+        // A command-created NPC is always in a loaded player chunk. Configured NPCs may
+        // point at an unloaded chunk; load it synchronously once so creation is truthful.
+        if (!location.getChunk().isLoaded()) {
+            location.getChunk().load();
         }
         // Remove a serialized leftover after a crash/chunk reload before creating the live pair.
         for (Entity entity : location.getChunk().getEntities()) {
@@ -244,34 +252,49 @@ final class NpcManager implements Listener {
             Entity raw = world.spawnEntity(location, definition.type, false);
             if (!(raw instanceof Mob spawnedMob)) {
                 raw.remove();
-                return;
+                return false;
             }
             mob = spawnedMob;
         } catch (RuntimeException ex) {
-            plugin.getLogger().warning("Не удалось создать NPC '" + definition.id + "': " + ex.getMessage());
-            return;
+            plugin.getLogger().severe("Не удалось создать NPC '" + definition.id + "': " + ex.getMessage());
+            return false;
         }
         configureMob(mob, definition.id);
 
         Location hologramLocation = location.clone().add(0.0D, definition.hologramHeight, 0.0D);
         Component hologramText = parseHologram(definition.hologram);
-        TextDisplay hologram = world.spawn(hologramLocation, TextDisplay.class, display -> {
-            display.setPersistent(false);
-            display.setBillboard(Display.Billboard.CENTER);
-            display.setShadowed(true);
-            display.setSeeThrough(false);
-            display.setDefaultBackground(false);
-            display.setBackgroundColor(Color.fromARGB(90, 0, 0, 0));
-            display.setInterpolationDuration(0);
-            display.setTeleportDuration(0);
-            display.text(hologramText);
-            display.addScoreboardTag("npc");
-            display.addScoreboardTag(HOLOGRAM_TAG);
-            display.setMetadata("NPC", new FixedMetadataValue(plugin, true));
-            display.getPersistentDataContainer().set(npcIdKey, PersistentDataType.STRING, definition.id);
-        });
+        TextDisplay hologram;
+        try {
+            hologram = world.spawn(hologramLocation, TextDisplay.class, display -> {
+                display.setPersistent(false);
+                display.setBillboard(Display.Billboard.CENTER);
+                display.setShadowed(true);
+                display.setSeeThrough(false);
+                display.setDefaultBackground(false);
+                display.setBackgroundColor(Color.fromARGB(90, 0, 0, 0));
+                display.setInterpolationDuration(0);
+                display.setTeleportDuration(0);
+                display.text(hologramText);
+                display.addScoreboardTag("npc");
+                display.addScoreboardTag(HOLOGRAM_TAG);
+                display.setMetadata("NPC", new FixedMetadataValue(plugin, true));
+                display.getPersistentDataContainer().set(npcIdKey, PersistentDataType.STRING, definition.id);
+            });
+        } catch (RuntimeException ex) {
+            mob.remove();
+            plugin.getLogger().severe("Не удалось создать голограмму NPC '" + definition.id + "': " + ex.getMessage());
+            return false;
+        }
         spawned.put(definition.id, new SpawnedNpc(mob, hologram));
         entityToNpc.put(mob.getUniqueId(), definition.id);
+        // Explicitly clear plugin visibility overrides for players already tracking this chunk.
+        for (Player viewer : world.getPlayers()) {
+            if (viewer.getLocation().distanceSquared(location) <= 4096.0D) {
+                viewer.showEntity(plugin, mob);
+                viewer.showEntity(plugin, hologram);
+            }
+        }
+        return mob.isValid() && hologram.isValid();
     }
 
     private void configureMob(Mob mob, String id) {
