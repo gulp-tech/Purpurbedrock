@@ -73,7 +73,7 @@ public final class PurpurBedrockACPlugin extends JavaPlugin {
         this.adaptiveEngine.start();
         getLogger().info(
             "PurpurBedrockAC 26.2 запущен! Адаптивный спящий режим активен ("
-            + config.countEnabledChecks() + " проверок Geyser/Bedrock, 0 ложных киков, мгновенная AVG-голограмма, меню HolyWorld)."
+            + config.countEnabledChecks() + " проверок Bedrock, 0 ложных киков, мгновенная AVG-голограмма, меню HolyWorld)."
         );
     }
 
@@ -217,7 +217,7 @@ public final class PurpurBedrockACPlugin extends JavaPlugin {
      */
     public String runSelfTest() {
         if (ACConfig.ALL_CHECKS.size() != 25 || config.countEnabledChecks() != 25) {
-            throw new IllegalStateException("Expected 25 active Bedrock/Geyser check modules");
+            throw new IllegalStateException("Expected 25 active Bedrock check modules");
         }
         if (config.hologramHeightOffset < 2.65 || config.hologramUpdateTicks != 1) {
             throw new IllegalStateException("Expected raised instant hologram settings: h=" + config.hologramHeightOffset);

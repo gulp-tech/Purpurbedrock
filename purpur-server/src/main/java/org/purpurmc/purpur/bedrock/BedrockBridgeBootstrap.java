@@ -286,7 +286,7 @@ public final class BedrockBridgeBootstrap {
             syncInternalEngineConfig(bedrockCfg, server, engineDir, floodgateReady);
 
             if (externalGeyserJarPresent) {
-                Bukkit.getLogger().info("[Purpurbedrock] Обнаружен внешний Geyser-Spigot в plugins/ — встроенный модуль пропущен.");
+                Bukkit.getLogger().info("[Purpurbedrock] Обнаружен внешний Bedrock-модуль в plugins/ — встроенный серверный модуль пропущен.");
                 protocolActive = true;
                 return;
             }
@@ -395,31 +395,35 @@ public final class BedrockBridgeBootstrap {
     private static void checkWindowsLanLoopback() {
         // Generate unlock-windows-lan.bat (helpful on native Windows 10/11 and WSL2)
         Path helperBat = Path.of("unlock-windows-lan.bat");
-        if (!Files.exists(helperBat)) {
-            String batContent = String.join("\r\n",
-                "@echo off",
-                "chcp 65001 >nul",
-                "net session >nul 2>&1",
-                "if %errorLevel% neq 0 (",
-                "    echo Запрос прав Администратора для разблокировки локальной сети Minecraft Windows 10/11...",
-                "    powershell -Command \"Start-Process -FilePath '%~f0' -Verb RunAs\"",
-                "    exit /b",
-                ")",
-                "echo [Purpurbedrock 26.2] Разблокировка UWP Loopback для Minecraft Bedrock Windows 10/11...",
-                "CheckNetIsolation LoopbackExempt -a -n=\"Microsoft.MinecraftUWP_8wekyb3d8bbwe\"",
-                "CheckNetIsolation LoopbackExempt -a -n=\"Microsoft.MinecraftWindowsBeta_8wekyb3d8bbwe\"",
-                "echo [Purpurbedrock 26.2] Открытие локальных портов Bedrock и LAN Discovery в Брандмауэре Windows...",
-                "netsh advfirewall firewall add rule name=\"Purpurbedrock UDP 19132-19134\" dir=in action=allow protocol=UDP localport=19132-19134 >nul 2>&1",
-                "netsh advfirewall firewall add rule name=\"Purpurbedrock TCP 19132\" dir=in action=allow protocol=TCP localport=19132 >nul 2>&1",
-                "netsh advfirewall firewall add rule name=\"Purpurbedrock LAN UDP 7551\" dir=in action=allow protocol=UDP localport=7551 >nul 2>&1",
-                "echo.",
-                "echo ГОТОВО! Теперь перезапустите Minecraft Bedrock — сервер сразу появится во вкладке Миры (LAN)!",
-                "pause"
-            ) + "\r\n";
-            try {
-                Files.writeString(helperBat, batContent, StandardCharsets.UTF_8);
-            } catch (IOException ignored) {
-            }
+        String batContent = String.join("\r\n",
+            "@echo off",
+            "chcp 65001 >nul",
+            "net session >nul 2>&1",
+            "if %errorLevel% neq 0 (",
+            "    echo Запрос прав Администратора для разблокировки локальной сети Minecraft Windows 10/11...",
+            "    powershell -NoProfile -Command \"Start-Process -FilePath '%~f0' -Verb RunAs\"",
+            "    exit /b",
+            ")",
+            "echo [Purpurbedrock 26.2] Разблокировка локальной сети для всех установленных пакетов Minecraft...",
+            "CheckNetIsolation LoopbackExempt -a -n=\"Microsoft.MinecraftUWP_8wekyb3d8bbwe\" >nul 2>&1",
+            "CheckNetIsolation LoopbackExempt -a -n=\"Microsoft.MinecraftWindowsBeta_8wekyb3d8bbwe\" >nul 2>&1",
+            "for /f \"usebackq delims=\" %%P in (`powershell -NoProfile -Command \"Get-AppxPackage '*Minecraft*' ^| ForEach-Object { $_.PackageFamilyName }\"`) do CheckNetIsolation LoopbackExempt -a -n=\"%%P\" >nul 2>&1",
+            "echo [Purpurbedrock 26.2] Обновление правил Брандмауэра Windows для LAN Discovery...",
+            "netsh advfirewall firewall delete rule name=\"Purpurbedrock LAN UDP\" >nul 2>&1",
+            "netsh advfirewall firewall delete rule name=\"Purpurbedrock LAN TCP\" >nul 2>&1",
+            "netsh advfirewall firewall add rule name=\"Purpurbedrock LAN UDP\" dir=in action=allow protocol=UDP localport=7551,19132-19134 profile=any >nul 2>&1",
+            "netsh advfirewall firewall add rule name=\"Purpurbedrock LAN UDP\" dir=out action=allow protocol=UDP localport=7551,19132-19134 profile=any >nul 2>&1",
+            "netsh advfirewall firewall add rule name=\"Purpurbedrock LAN TCP\" dir=in action=allow protocol=TCP localport=19132 profile=any >nul 2>&1",
+            "netsh advfirewall firewall add rule name=\"Purpurbedrock LAN TCP\" dir=out action=allow protocol=TCP localport=19132 profile=any >nul 2>&1",
+            "echo.",
+            "echo ГОТОВО. Полностью закройте Minecraft, запустите сервер, затем снова откройте Minecraft.",
+            "echo Сервер появится в разделе Миры только если сервер и компьютер находятся в одной локальной сети.",
+            "pause"
+        ) + "\r\n";
+        try {
+            // Always refresh the helper so servers upgraded from an older core receive current rules.
+            Files.writeString(helperBat, batContent, StandardCharsets.UTF_8);
+        } catch (IOException ignored) {
         }
 
         String osName = System.getProperty("os.name", "");
@@ -453,8 +457,8 @@ public final class BedrockBridgeBootstrap {
         YamlConfiguration cfg = YamlConfiguration.loadConfiguration(file);
         cfg.options().setHeader(java.util.List.of(
             "Purpurbedrock 26.2 — Конфигурация встроенного ядра Minecraft: Bedrock Edition",
-            "Внешний GeyserMC не требуется: протокол Bedrock, LAN Discovery (UDP 7551 + 19132),",
-            "NetherNet WebRTC и поддержка всех Java-плагинов и меню встроены прямо в ядро."
+            "Внешние мосты не требуются: протокол Bedrock, LAN Discovery (UDP 7551 + 19132),",
+            "WebRTC и поддержка всех Java-плагинов и меню встроены прямо в сервер."
         ));
         cfg.addDefault("enabled", true);
         cfg.addDefault("data-folder", "bedrock");
@@ -570,7 +574,7 @@ public final class BedrockBridgeBootstrap {
         ));
         if (importedFiles > 0) {
             Bukkit.getLogger().info(String.format(
-                "[Purpurbedrock] Авто-импортировано %d файл(ов) из старой папки plugins/Geyser-Spigot в %s/!",
+                "[Purpurbedrock] Авто-импортировано %d файл(ов) из старой папки Bedrock-модуля в %s/!",
                 importedFiles, dataDir
             ));
         }
@@ -773,7 +777,7 @@ public final class BedrockBridgeBootstrap {
         try {
             Plugin geyserPlugin = Bukkit.getPluginManager().getPlugin("Geyser-Spigot");
             if (geyserPlugin == null) {
-                throw new IllegalStateException("Geyser-Spigot internal plugin not loaded");
+                throw new IllegalStateException("Internal Bedrock server module not loaded");
             }
             ClassLoader cl = geyserPlugin.getClass().getClassLoader();
             Class<?> gameProtocolClass = Class.forName("org.geysermc.geyser.network.bedrock.GameProtocol", true, cl);
@@ -906,7 +910,7 @@ public final class BedrockBridgeBootstrap {
 
             try (InputStream gsIn = cl.getResourceAsStream("org/geysermc/geyser/session/GeyserSession.class")) {
                 if (gsIn == null || !new String(gsIn.readAllBytes(), StandardCharsets.ISO_8859_1).contains("setAuthoritativeMovementMode")) {
-                    throw new IllegalStateException("GeyserSession missing setAuthoritativeMovementMode (<1.21.90 StartGamePacket fix)!");
+                    throw new IllegalStateException("Bedrock session missing setAuthoritativeMovementMode (<1.21.90 StartGamePacket fix)!");
                 }
             }
             try (InputStream usIn = cl.getResourceAsStream("org/geysermc/geyser/session/UpstreamSession.class")) {

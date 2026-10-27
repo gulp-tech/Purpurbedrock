@@ -1106,7 +1106,10 @@ import org.cloudburstmc.netty.channel.nethernet.signaling.NetherNetServerSignali
                 .setLevelName(pong.subMotd() != null ? pong.subMotd() : "Purpurbedrock LAN")
                 .setProtocol(pong.protocolVersion())
                 .setVersion(pong.version())
-                .setPlayerCount(pong.playerCount())
+                // Bedrock 26.60 hides a LAN world advertised with zero players. A dedicated
+                // server has no players before the first join, so advertise one discovery
+                // participant while retaining the real online count everywhere else.
+                .setPlayerCount(Math.max(1, pong.playerCount()))
                 .setMaxPlayerCount(Math.max(1, pong.maximumPlayerCount()))
                 .build();
     }

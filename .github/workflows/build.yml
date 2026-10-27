@@ -64,6 +64,7 @@ jobs:
             grep -Fq 'determinePerformanceSafeSkinData' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinProvider.java
             grep -Fq 'register(Bedrock_v2225.CODEC, "26.60")' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/network/bedrock/GameProtocol.java
             grep -Fq 'ClientboundMatchmakingStatePacket.class' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/network/bedrock/CodecProcessor.java
+            grep -Fq '.setPlayerCount(Math.max(1, pong.playerCount()))' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/network/bedrock/nethernet/NetherNetServer.java
             test -s /tmp/geyser-26.2/core/src/main/resources/bedrock/block_palette.26_60.nbt
             test -s /tmp/geyser-26.2/core/src/main/resources/bedrock/runtime_item_states.26_60.json
             test -s /tmp/geyser-26.2/core/src/main/resources/bedrock/creative_items.26_60.json
@@ -335,8 +336,12 @@ jobs:
           assert pathlib.Path("/tmp/smoke-server/bedrock/custom_mappings").is_dir(), "bedrock/custom_mappings missing!"
           assert pathlib.Path("/tmp/smoke-server/bedrock/extensions").is_dir(), "bedrock/extensions missing!"
           assert pathlib.Path("/tmp/smoke-server/bedrock/packs").is_dir(), "bedrock/packs missing!"
-          assert pathlib.Path("/tmp/smoke-server/unlock-windows-lan.bat").is_file(), "unlock-windows-lan.bat missing!"
-          shutil.copyfile("/tmp/smoke-server/unlock-windows-lan.bat", "unlock-windows-lan.bat")
+          lan_helper = pathlib.Path("/tmp/smoke-server/unlock-windows-lan.bat")
+          assert lan_helper.is_file(), "unlock-windows-lan.bat missing!"
+          lan_helper_text = lan_helper.read_text(encoding="utf-8")
+          assert "Get-AppxPackage '*Minecraft*'" in lan_helper_text, "LAN helper missing dynamic Minecraft package exemption!"
+          assert 'dir=out action=allow protocol=UDP localport=7551,19132-19134' in lan_helper_text, "LAN helper missing outbound discovery firewall rule!"
+          shutil.copyfile(lan_helper, "unlock-windows-lan.bat")
 
           assert "Recoverable errors when loading section" not in server_log, "Unexpected chunk section palette error!"
           assert "Failed to create block entity" not in server_log, "Unexpected block entity error!"
@@ -432,6 +437,7 @@ jobs:
               - `%purpurbedrock_version%` — точная версия клиента Bedrock игрока (например, `1.21.50` или `26.60`)
               - `%purpurbedrock_ping%` — реальный RakNet / NetherNet WebRTC RTT пинг в мс (также пробрасывается в `Player#getPing()`)
               - Дополнительно: `%purpurbedrock_ping_colored%`, `%purpurbedrock_os%`, `%purpurbedrock_protocol%`, `%purpurbedrock_ui%`, `%purpurbedrock_xuid%`, `%purpurbedrock_is_bedrock%`.
+            - **Исправлено отображение сервера в локальной сети Bedrock 26.60**: LAN-анонс больше не скрывается новым клиентом, когда онлайн равен нулю; обновлённый `unlock-windows-lan.bat` автоматически находит все установленные пакеты Minecraft и открывает входящий/исходящий UDP `7551`, `19132–19134`.
             - **Полная мульти-версия Bedrock от `1.21.0` до `26.60` (`v685` — `v2225`, все 24 кодека протокола)**: игроки могут бесшовно заходить с любых версий `1.21.x` (`1.21.0`, `1.21.20`, `1.21.30`, `1.21.40`, `1.21.50`, `1.21.60`, `1.21.70`, `1.21.80`, `1.21.90–94`, `1.21.100`, `1.21.110`, `1.21.120–124`, `1.21.130–132`) и `26.x` (`26.0–26.3`, `26.10–26.12`, `26.20–26.23`, `26.30–26.34`, `26.40–26.45`, `26.50–26.52`, `26.60`) без вылетов, киков и ошибок пакетов/палитр.
             - **Убрано навязчивое окно диалога `gui.waitingForResponse.title`** («Идёт ожидание нового диалога от сервера...»): переходы и закрытие Java Dialog-меню происходят мгновенно без промежуточного экрана ожидания.
             - **Исправлена ошибка консоли `[STDERR] [sun.instrument.InstrumentationImpl] WARNING: A Java agent has been loaded dynamically`**: встроенный фильтр в `SysoutCatcher` полностью убирает ложный `[ERROR]: [STDERR]` от ByteBuddy/плагинов на Java 25 (дополнительно можно добавить `-XX:+EnableDynamicAgentLoading` в `.bat`/`.sh`).
