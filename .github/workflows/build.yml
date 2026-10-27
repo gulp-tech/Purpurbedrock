@@ -57,6 +57,10 @@ jobs:
 
             echo "=== Applying Purpurbedrock 26.2 protocol engine patches ==="
             python3 "$GITHUB_WORKSPACE/scripts/patch-bedrock-engine.py" /tmp/geyser-26.2
+            grep -Fq 'public synchronized void sendPostStartGamePackets()' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/session/UpstreamSession.java
+            grep -Fq 'if (packets == null)' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/session/UpstreamSession.java
+            grep -Fq 'postStartGamePackets = null;' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/session/UpstreamSession.java
+            echo "POST_START_GAME_QUEUE_IDEMPOTENT_SOURCE_OK"
 
             echo "=== Bundling official 26.2 Russian/CIS/English system locales for 100% offline Bedrock translations ==="
             python3 "$GITHUB_WORKSPACE/scripts/bundle-bedrock-locales.py" /tmp/geyser-26.2
@@ -374,10 +378,11 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v26.2.0-bedrock
-          name: "Purpurbedrock 26.2 FINAL (Adaptive NPC Optimization) + PurpurBedrockAC 26.2.6"
+          name: "Purpurbedrock 26.2 FINAL (Login Queue Fix + Adaptive NPC Optimization) + PurpurBedrockAC 26.2.6"
           body: |
             ## Purpurbedrock `26.2` FINAL (`purpurbedrock-26.2.jar`) + Отдельный античит `PurpurBedrockAC-26.2.jar` (`v26.2.6`)
             Финальное автономное высокопроизводительное ядро на базе **Purpur `26.2` (`STABLE`)** и отдельный адаптивный античит, откалиброванный специально под него:
+            - **Исправлен повторный `ClientboundLoginPacket` с GeyserGlowing**: очередь `postStartGamePackets` теперь потокобезопасно и идемпотентно очищается; повторный login/reconfiguration больше не вызывает `NullPointerException` и не срывает вход Bedrock-игрока.
             - **Адаптивная оптимизация NPC для Bedrock (`SAFE / BALANCED / HIGH`)**:
               - Citizens (без жёсткой зависимости), FancyNPCs, ZNPCs и NPC с обычными metadata/scoreboard-тегами получают индивидуальный для каждого игрока лимит дальности и количества по устройству, RTT и TPS. Ядро скрывает только лишние сетевые обновления NPC и меняет видимость лишь при переходе состояния; AI, трейты, навигация, взаимодействия и логика Java-плагинов не отключаются.
             - **Встроенные системные локали `26.2` (`ru_ru`, `uk_ua`, `be_by`, `kk_kz`, `en_us`, `deprecated` + `REPLACED_KEYS`)**:

@@ -2168,17 +2168,55 @@ import java.util.concurrent.ConcurrentHashMap;""",
     )
     replace_exact(
         upstream_session,
-        """        BedrockPacket packet;
+        """    public void queuePostStartGamePacket(BedrockPacket packet) {
+        postStartGamePackets.add(packet);
+    }""",
+        """    public synchronized void queuePostStartGamePacket(BedrockPacket packet) {
+        Queue<BedrockPacket> packets = postStartGamePackets;
+        if (packets != null) {
+            packets.add(packet);
+        } else {
+            // Extensions may enqueue after a repeated Java login/reconfiguration packet.
+            // StartGame has already completed, so sending now preserves the intended ordering.
+            sendPacket(packet);
+        }
+    }""",
+        "UpstreamSession.postStartGameQueueLatePacket",
+    )
+    replace_exact(
+        upstream_session,
+        """    public void sendPostStartGamePackets() {
+        if (isClosed()) {
+            return;
+        }
+
+        BedrockPacket packet;
         while ((packet = postStartGamePackets.poll()) != null) {
             session.sendPacket(packet);
-        }""",
-        """        BedrockPacket packet;
-        while ((packet = postStartGamePackets.poll()) != null) {
+        }
+        postStartGamePackets = null;
+    }""",
+        """    public synchronized void sendPostStartGamePackets() {
+        if (isClosed()) {
+            return;
+        }
+
+        // JavaLoginTranslator can be wrapped by extensions (for example GeyserGlowing), and
+        // reconfiguration can deliver another login packet. Flushing must therefore be idempotent.
+        Queue<BedrockPacket> packets = postStartGamePackets;
+        if (packets == null) {
+            return;
+        }
+        postStartGamePackets = null;
+
+        BedrockPacket packet;
+        while ((packet = packets.poll()) != null) {
             if (prepareOutgoingPacket(packet)) {
                 session.sendPacket(packet);
             }
-        }""",
-        "UpstreamSession.postStartGameSanitizer",
+        }
+    }""",
+        "UpstreamSession.postStartGameIdempotentSanitizer",
     )
 
     # 9h. GeyserSession: multi-version StartGamePacket, ItemComponentPacket, BiomeDefinitionListPacket, Jigsaw/VoxelShapes, Experiments
