@@ -402,6 +402,11 @@ public final class PlayerProfile {
         checkBuffers.put(checkKey, Math.max(0.0, val));
     }
 
+    /** Returns whether this break belongs to a real client start-destroy sequence for the same block. */
+    public boolean matchesTrackedMiningBlock(int blockX, int blockY, int blockZ) {
+        return miningTracked && mineX == blockX && mineY == blockY && mineZ == blockZ;
+    }
+
     /**
      * Confirms that detector evidence is sustained rather than one isolated network/translation spike.
      * Samples arriving too close together count as one physical incident. Once confirmed, continued

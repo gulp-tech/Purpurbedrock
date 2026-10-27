@@ -1298,6 +1298,15 @@ public final class CheckRunner {
             return;
         }
         long nowMs = System.currentTimeMillis();
+        // A genuine client mining sequence always produces BlockDamageEvent for this exact block.
+        // Custom 3x3 drills commonly call synthetic BlockBreakEvents for neighbouring blocks; those
+        // have no matching damage/start-destroy packet and must not count as FastBreak/Nuker samples.
+        boolean clientMinedBlock = profile.matchesTrackedMiningBlock(block.getX(), block.getY(), block.getZ());
+        if (!clientMinedBlock) {
+            profile.decayBuffer("fastbreak", fbCfg.decay);
+            return;
+        }
+        profile.miningTracked = false; // consume this exact client mining sequence once
 
         // 1. Block Reach check
         BoundingBox blockBox = new BoundingBox(
@@ -1359,11 +1368,7 @@ public final class CheckRunner {
 
         if (speedPerTick > 0.0f && speedPerTick < 0.22f) {
             double expectedMs = (1.0 / speedPerTick) * 50.0;
-            boolean sameBlock = profile.miningTracked
-                && profile.mineX == block.getX()
-                && profile.mineY == block.getY()
-                && profile.mineZ == block.getZ();
-            long elapsedMs = sameBlock ? (nowMs - profile.mineStartMs) : 0L;
+            long elapsedMs = nowMs - profile.mineStartMs;
             double minAllowedMs = expectedMs * cfg.fastBreakMinTimeRatio - 150.0;
             if (expectedMs >= 650.0 && elapsedMs < minAllowedMs) {
                 plugin.engine().nudgeSuspicion(profile, 1.5);
@@ -1380,7 +1385,6 @@ public final class CheckRunner {
                 }
             }
         }
-        profile.miningTracked = false;
         profile.decayBuffer("fastbreak", fbCfg.decay);
     }
 

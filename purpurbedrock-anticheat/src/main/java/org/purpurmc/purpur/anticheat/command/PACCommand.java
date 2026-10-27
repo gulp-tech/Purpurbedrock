@@ -355,7 +355,7 @@ public final class PACCommand implements CommandExecutor, TabCompleter {
                         + " &cили &f" + cfg.permMenu + "&c."));
                     return true;
                 }
-                sender.sendMessage(ColorUtil.color("&#A855F7&l=== PurpurBedrockAC 26.2.5 • Команды (25 проверок) ==="));
+                sender.sendMessage(ColorUtil.color("&#A855F7&l=== PurpurBedrockAC 26.2.6 • Команды (25 проверок) ==="));
                 sender.sendMessage(ColorUtil.color(" &e/pac alerts &8— &7вкл/выкл алерты (&f" + cfg.permAlerts + "&7)"));
                 sender.sendMessage(ColorUtil.color(" &e/pac holo &8— &7вкл/выкл быструю голограмму AVG (&f" + cfg.permHologram + "&7)"));
                 sender.sendMessage(ColorUtil.color(" &e/pac holoheight <высота> &8— &7настроить высоту голограммы (&f" + cfg.permAdmin + "&7)"));

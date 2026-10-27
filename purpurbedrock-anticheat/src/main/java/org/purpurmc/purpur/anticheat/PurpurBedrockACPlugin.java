@@ -33,9 +33,9 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * PurpurBedrockAC 26.2.5 — Standalone adaptive anti-cheat plugin tailored specifically
+ * PurpurBedrockAC 26.2.6 — Standalone adaptive anti-cheat plugin tailored specifically
  * for Purpurbedrock 26.2 (Geyser 26.2 + Bedrock 1.21.0 — 26.52 physics, Touch/PC/Phone-KBM/Controller inputs,
- * 25 calibrated checks, adaptive Sleep to Wake CPU optimization, instant 20Hz AVG holograms, and HolyWorld-style GUIs).
+ * 25 calibrated checks, adaptive Sleep to Wake CPU optimization, device-adaptive AVG holograms, and HolyWorld-style GUIs).
  */
 public final class PurpurBedrockACPlugin extends JavaPlugin {
     private final ACConfig config = new ACConfig();
@@ -263,7 +263,20 @@ public final class PurpurBedrockACPlugin extends JavaPlugin {
             throw new IllegalStateException("Anti-false-alert temporal confirmation gate mismatch");
         }
 
-        // 4. Verify HolyWorld 3-color history + bottom instruction legend + Live 25-Checks GUI
+        // 4. Verify plugin-generated 3x3 drill neighbours cannot impersonate client mining packets.
+        PlayerProfile drillDemo = new PlayerProfile(UUID.randomUUID(), "DrillSelfTest");
+        drillDemo.miningTracked = true;
+        drillDemo.mineX = 120;
+        drillDemo.mineY = 32;
+        drillDemo.mineZ = -45;
+        if (!drillDemo.matchesTrackedMiningBlock(120, 32, -45)
+            || drillDemo.matchesTrackedMiningBlock(121, 32, -45)
+            || drillDemo.matchesTrackedMiningBlock(120, 33, -45)
+            || drillDemo.matchesTrackedMiningBlock(120, 32, -44)) {
+            throw new IllegalStateException("Synthetic 3x3 drill break discrimination mismatch");
+        }
+
+        // 5. Verify HolyWorld 3-color history + bottom instruction legend + Live 25-Checks GUI
         long now = System.currentTimeMillis();
         demo.pushHistory(new HistoryEntry(now - 3000, SeverityColor.GREEN, "Чистая игра", "CPS=6 Reach=2.70", 0.0, 0.2, 32, 20.0, "Android", "Сенсор", "Норма"), config.maxHistoryEntries);
         demo.pushHistory(new HistoryEntry(now - 2000, SeverityColor.ORANGE, "Reach", "dist=4.35 max=4.15", 4.0, 3.4, 41, 20.0, "Android", "Сенсор", "Отмена удара"), config.maxHistoryEntries);
@@ -308,6 +321,6 @@ public final class PurpurBedrockACPlugin extends JavaPlugin {
             || config.hologramMobileMaxTargets > config.hologramDesktopMaxTargets) {
             throw new IllegalStateException("Device-adaptive hologram budget mismatch");
         }
-        return "PURPURBEDROCK_AC_SELFTEST_OK checks=25/25 wifiLagSafe=true antiFalseAlerts=CONFIRMED adaptiveRender=OK gui=54 legend=GREEN_ORANGE_RED stage=" + demo.stage.name() + " idleHolo=0 devices=6";
+        return "PURPURBEDROCK_AC_SELFTEST_OK checks=25/25 wifiLagSafe=true antiFalseAlerts=CONFIRMED drill3x3=SAFE adaptiveRender=OK gui=54 legend=GREEN_ORANGE_RED stage=" + demo.stage.name() + " idleHolo=0 devices=6";
     }
 }

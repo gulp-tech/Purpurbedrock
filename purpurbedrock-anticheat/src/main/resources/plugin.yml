@@ -1,5 +1,5 @@
 name: PurpurBedrockAC
-version: "26.2.5"
+version: "26.2.6"
 main: org.purpurmc.purpur.anticheat.PurpurBedrockACPlugin
 api-version: "26.2"
 folia-supported: false
