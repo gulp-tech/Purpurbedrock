@@ -780,6 +780,16 @@ public final class BedrockBridgeBootstrap {
                 throw new IllegalStateException("Internal Bedrock server module not loaded");
             }
             ClassLoader cl = geyserPlugin.getClass().getClassLoader();
+            Class<?> lanDiscoveryClass = Class.forName(
+                "org.cloudburstmc.netty.channel.nethernet.signaling.NetherNetDiscovery", true, cl
+            );
+            Class<?> lanServerDataClass = Class.forName(
+                "org.cloudburstmc.netty.channel.nethernet.signaling.ServerData", true, cl
+            );
+            if (!lanDiscoveryClass.getField("PURPURBEDROCK_LAN_V7").getBoolean(null)
+                || !lanServerDataClass.getField("PURPURBEDROCK_LAN_STATUS_V6_V7").getBoolean(null)) {
+                throw new IllegalStateException("Bedrock LAN v6/v7 status backport is inactive");
+            }
             Class<?> gameProtocolClass = Class.forName("org.geysermc.geyser.network.bedrock.GameProtocol", true, cl);
             java.lang.reflect.Method getBedrockCodec = gameProtocolClass.getMethod("getBedrockCodec", int.class);
             java.util.List<?> protocols = (java.util.List<?>) gameProtocolClass.getField("SUPPORTED_BEDROCK_PROTOCOLS").get(null);
@@ -960,7 +970,7 @@ public final class BedrockBridgeBootstrap {
 
             return "MULTIVERSION_685_TO_2225_SELFTEST_OK codecs=" + protocols.size()
                 + " versions=1.21.0..26.60 dialogWaitPopup=DISABLED chunkPublisher=RELIABLE ruLocale=OK"
-                + " pre818StartGame=OK attrSingleton=OK waypointFix=OK configDialogSafe=OK chunkBoundsSafe=OK"
+                + " pre818StartGame=OK attrSingleton=OK waypointFix=OK configDialogSafe=OK chunkBoundsSafe=OK lanStatusV7=OK"
                 + " safeRemoteSkins=" + (PurpurConfig.bedrockSafeRemotePlayerSkins ? "ON" : "OFF")
                 + " skullsToggle=" + (isCustomSkullsEnabled() ? "ON" : "OFF")
                 + " particleCap=" + activeParticleCap

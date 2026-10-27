@@ -1055,7 +1055,21 @@ project(":spigot").projectDir = file("bootstrap/spigot")""",
         "MinecraftLocale.getLocaleStringIfPresent",
     )
 
-    # 4. NetherNetServer.java: keep internal nethernet temp dir in engineDir + add NetherNetDiscoverySignaling on UDP 7551
+    # 4. Backport the corrected BDS LAN status layouts from Cloudburst Network CR6.
+    # The CR5 dependency bundled by the 26.2 engine only answers with obsolete layout v4,
+    # while Bedrock 26.40-26.45 require v6 and 26.50-26.60 require v7. Keeping these
+    # replacement classes in the project also avoids upgrading unrelated transport APIs.
+    lan_backport_dir = Path(__file__).resolve().parent / "bedrock-lan"
+    lan_package_dir = root / "core/src/main/java/org/cloudburstmc/netty/channel/nethernet/signaling"
+    lan_package_dir.mkdir(parents=True, exist_ok=True)
+    for lan_source in ("NetherNetDiscovery.java", "ServerData.java"):
+        source = lan_backport_dir / lan_source
+        if not source.is_file():
+            raise RuntimeError(f"Missing Bedrock LAN backport source: {source}")
+        (lan_package_dir / lan_source).write_bytes(source.read_bytes())
+        print(f"Wrote Bedrock 26.60 LAN backport -> {lan_source}")
+
+    # 4a. NetherNetServer.java: keep internal nethernet temp dir in engineDir + add NetherNetDiscoverySignaling on UDP 7551
     nethernet_server = root / "core/src/main/java/org/geysermc/geyser/network/bedrock/nethernet/NetherNetServer.java"
     replace_exact(
         nethernet_server,
