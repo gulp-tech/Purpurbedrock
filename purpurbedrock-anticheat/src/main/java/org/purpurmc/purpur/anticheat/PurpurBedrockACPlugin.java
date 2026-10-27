@@ -34,7 +34,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * PurpurBedrockAC 26.2.6 — Standalone adaptive anti-cheat plugin tailored specifically
- * for Purpurbedrock 26.2 (Geyser 26.2 + Bedrock 1.21.0 — 26.52 physics, Touch/PC/Phone-KBM/Controller inputs,
+ * for Purpurbedrock 26.2 (Geyser 26.2 + Bedrock 1.21.0 — 26.60 physics, Touch/PC/Phone-KBM/Controller inputs,
  * 25 calibrated checks, adaptive Sleep to Wake CPU optimization, device-adaptive AVG holograms, and HolyWorld-style GUIs).
  */
 public final class PurpurBedrockACPlugin extends JavaPlugin {

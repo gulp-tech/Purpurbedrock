@@ -62,7 +62,14 @@ jobs:
             grep -Fq 'postStartGamePackets = null;' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/session/UpstreamSession.java
             grep -Fq 'purpurbedrock.safeRemotePlayerSkins' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
             grep -Fq 'determinePerformanceSafeSkinData' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinProvider.java
-            echo "POST_START_GAME_QUEUE_IDEMPOTENT_SOURCE_OK MOBILE_REMOTE_SKINS_SAFE_SOURCE_OK"
+            grep -Fq 'register(Bedrock_v2225.CODEC, "26.60")' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/network/bedrock/GameProtocol.java
+            grep -Fq 'ClientboundMatchmakingStatePacket.class' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/network/bedrock/CodecProcessor.java
+            test -s /tmp/geyser-26.2/core/src/main/resources/bedrock/block_palette.26_60.nbt
+            test -s /tmp/geyser-26.2/core/src/main/resources/bedrock/runtime_item_states.26_60.json
+            test -s /tmp/geyser-26.2/core/src/main/resources/bedrock/creative_items.26_60.json
+            test -s /tmp/geyser-26.2/core/src/main/resources/bedrock/item_components.26_60.nbt
+            test -s /tmp/geyser-26.2/core/src/main/resources/bedrock/data_driven_blocks.26_60.nbt
+            echo "BEDROCK_26_60_V2225_SOURCE_OK POST_START_GAME_QUEUE_IDEMPOTENT_SOURCE_OK MOBILE_REMOTE_SKINS_SAFE_SOURCE_OK"
 
             echo "=== Bundling official 26.2 Russian/CIS/English system locales for 100% offline Bedrock translations ==="
             python3 "$GITHUB_WORKSPACE/scripts/bundle-bedrock-locales.py" /tmp/geyser-26.2
@@ -342,7 +349,7 @@ jobs:
               "Рабочие папки готовы: bedrock/cache (player_skulls / HeadDatabase) | bedrock/custom_mappings | bedrock/extensions | bedrock/packs",
               "Registered 1 custom skulls as custom blocks.",
               "CHUNK_263_PARSE_SELFTEST_OK",
-              "MULTIVERSION_685_TO_2193_SELFTEST_OK codecs=23 versions=1.21.0..26.52 dialogWaitPopup=DISABLED chunkPublisher=RELIABLE",
+              "MULTIVERSION_685_TO_2225_SELFTEST_OK codecs=24 versions=1.21.0..26.60 dialogWaitPopup=DISABLED chunkPublisher=RELIABLE",
               "PLACEHOLDER_PAPI_SELFTEST_OK",
               "adaptiveProfiles=SAFE|BALANCED|HIGH",
               "safeRemoteSkins=ON",
@@ -363,7 +370,7 @@ jobs:
               "Java-меню (DeluxeMenus / Chest GUI): ВКЛЮЧЕНЫ",
               "NPC-оптимизация (Citizens/FancyNPCs/ZNPCs): ВКЛЮЧЕНА",
               "Облегчённые скины других игроков на телефонах/консолях: ВКЛЮЧЕНЫ",
-              "Мульти-версия Bedrock: 1.21.0 — 26.52 (v685 — v2193, 23 протокола)",
+              "Мульти-версия Bedrock: 1.21.0 — 26.60 (v685 — v2225, 24 протокола)",
               "Окно ожидания диалога (gui.waitingForResponse): УБРАНО",
               "chunkBoundsSafe=OK",
               "Кастомные головы ВЫКЛЮЧЕНЫ",
@@ -422,14 +429,14 @@ jobs:
             - **Встроенные PlaceholderAPI-плейсхолдеры прямо из ядра (`%purpurbedrock_*%`)** без лишних плагинов (авто-регистрация в `PlaceholderAPI` с `persist = true` для `VoidTab`, скорбордов и `DeluxeMenus`):
               - `%purpurbedrock_device%` — `📱 Телефон`, `🖥 ПК`, `🎮 Геймпад`, `PlayStation`, `Xbox`, `Switch`
               - `%purpurbedrock_input%` — `Сенсор`, `Клавиатура+Мышь`, `Контроллер` (обновляется в реальном времени)
-              - `%purpurbedrock_version%` — точная версия клиента Bedrock игрока (например, `1.21.50` или `26.52`)
+              - `%purpurbedrock_version%` — точная версия клиента Bedrock игрока (например, `1.21.50` или `26.60`)
               - `%purpurbedrock_ping%` — реальный RakNet / NetherNet WebRTC RTT пинг в мс (также пробрасывается в `Player#getPing()`)
               - Дополнительно: `%purpurbedrock_ping_colored%`, `%purpurbedrock_os%`, `%purpurbedrock_protocol%`, `%purpurbedrock_ui%`, `%purpurbedrock_xuid%`, `%purpurbedrock_is_bedrock%`.
-            - **Полная мульти-версия Bedrock от `1.21.0` до `26.52` (`v685` — `v2193`, все 23 кодека протокола)**: игроки могут бесшовно заходить с любых версий `1.21.x` (`1.21.0`, `1.21.20`, `1.21.30`, `1.21.40`, `1.21.50`, `1.21.60`, `1.21.70`, `1.21.80`, `1.21.90–94`, `1.21.100`, `1.21.110`, `1.21.120–124`, `1.21.130–132`) и `26.x` (`26.0–26.3`, `26.10–26.12`, `26.20–26.23`, `26.30–26.34`, `26.40–26.45`, `26.50–26.52`) без вылетов, киков и ошибок пакетов/палитр.
+            - **Полная мульти-версия Bedrock от `1.21.0` до `26.60` (`v685` — `v2225`, все 24 кодека протокола)**: игроки могут бесшовно заходить с любых версий `1.21.x` (`1.21.0`, `1.21.20`, `1.21.30`, `1.21.40`, `1.21.50`, `1.21.60`, `1.21.70`, `1.21.80`, `1.21.90–94`, `1.21.100`, `1.21.110`, `1.21.120–124`, `1.21.130–132`) и `26.x` (`26.0–26.3`, `26.10–26.12`, `26.20–26.23`, `26.30–26.34`, `26.40–26.45`, `26.50–26.52`, `26.60`) без вылетов, киков и ошибок пакетов/палитр.
             - **Убрано навязчивое окно диалога `gui.waitingForResponse.title`** («Идёт ожидание нового диалога от сервера...»): переходы и закрытие Java Dialog-меню происходят мгновенно без промежуточного экрана ожидания.
             - **Исправлена ошибка консоли `[STDERR] [sun.instrument.InstrumentationImpl] WARNING: A Java agent has been loaded dynamically`**: встроенный фильтр в `SysoutCatcher` полностью убирает ложный `[ERROR]: [STDERR]` от ByteBuddy/плагинов на Java 25 (дополнительно можно добавить `-XX:+EnableDynamicAgentLoading` в `.bat`/`.sh`).
             - **Версия сервера `26.2` (`26.2-R0.1-SNAPSHOT`)**: полная совместимость со всеми вашими Java-плагинами (`DeluxeMenus`, `packetevents 2.13.0`, `DecentHolograms`, `LMtops`, `HeadDatabase`, `VoidItems`, `VoidTab`, `AuthMe`, `WorldEdit`, `WorldGuard`, `LuckPerms` и др.).
-            - **Чистый Bedrock без внешних плагинов/сервисов**: встроенный протокольный движок внутри ядра (`RakNet UDP 19132` + `NetherNet WebRTC 19133` + **`NetherNet LAN Discovery UDP 7551`** для вкладки `Миры` на Bedrock `26.30–26.52`). Никаких скачиваний Mojang/GeyserMC при запуске — **мгновенный старт и мгновенный вход игроков**.
+            - **Чистый Bedrock без внешних плагинов/сервисов**: встроенный протокольный движок внутри ядра (`RakNet UDP 19132` + `NetherNet WebRTC 19133` + **`NetherNet LAN Discovery UDP 7551`** для вкладки `Миры` на Bedrock `26.30–26.60`). Никаких скачиваний Mojang/GeyserMC при запуске — **мгновенный старт и мгновенный вход игроков**.
             - **Отдельная папка `bedrock/` в корне сервера**:
               - `bedrock/cache` — кэш Bedrock: **`bedrock/cache/player_skulls`** (автоматическое подключение кастомных 3D-голов плагина **`HeadDatabase`** + сборка `player_skulls.mcpack` и `GeyserIntegratedPack.mcpack`), `images`, `default_player_skins`, `remote_packs`
               - `bedrock/custom_mappings` (`.json` маппинги предметов, стеклянных панелей, сфер и кастомных голов)

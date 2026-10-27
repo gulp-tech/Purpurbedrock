@@ -15,7 +15,7 @@ import java.util.UUID;
 
 /**
  * Zero-GC per-player state container using pre-allocated primitive ring buffers.
- * Calibrated for Geyser 26.2 + Bedrock 1.21.0..26.52 physics and latency compensation.
+ * Calibrated for Geyser 26.2 + Bedrock 1.21.0..26.60 physics and latency compensation.
  */
 public final class PlayerProfile {
     private static final int POS_RING_SIZE = 18;

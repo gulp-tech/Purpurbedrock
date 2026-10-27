@@ -95,6 +95,12 @@ HISTORICAL_GIT_ASSETS = [
     ("6075649081", "core/src/main/resources/bedrock/item_tags.1_21_130.json", "core/src/main/resources/bedrock/item_tags.1_21_130.json"),
     ("6075649081", "core/src/main/resources/bedrock/item_tags.1_26_0.json", "core/src/main/resources/bedrock/item_tags.1_26_0.json"),
     ("6075649081", "core/src/main/resources/bedrock/item_tags.1_26_10.json", "core/src/main/resources/bedrock/item_tags.1_26_10.json"),
+    # 26.60 protocol palettes (official Geyser support commit fd35d5918)
+    ("fd35d5918", "core/src/main/resources/bedrock/block_palette.26_60.nbt", "core/src/main/resources/bedrock/block_palette.26_60.nbt"),
+    ("fd35d5918", "core/src/main/resources/bedrock/runtime_item_states.26_60.json", "core/src/main/resources/bedrock/runtime_item_states.26_60.json"),
+    ("fd35d5918", "core/src/main/resources/bedrock/creative_items.26_60.json", "core/src/main/resources/bedrock/creative_items.26_60.json"),
+    ("fd35d5918", "core/src/main/resources/bedrock/item_components.26_60.nbt", "core/src/main/resources/bedrock/item_components.26_60.nbt"),
+    ("fd35d5918", "core/src/main/resources/bedrock/data_driven_blocks.26_60.nbt", "core/src/main/resources/bedrock/data_driven_blocks.26_60.nbt"),
 ]
 
 
@@ -118,7 +124,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-// Purpurbedrock Multi-Version Palette and Mapping Helper (Bedrock 1.21.0 v685 to 26.52 v2193).
+// Purpurbedrock Multi-Version Palette and Mapping Helper (Bedrock 1.21.0 v685 to 26.60 v2225).
 public final class MultiVersionPaletteHelper {
 
     private static final Set<String> PALE_OAK_BLOCKS = Set.of(
@@ -584,7 +590,7 @@ def extract_historical_git_assets(root: Path) -> None:
         dst = root / dst_rel
         dst.parent.mkdir(parents=True, exist_ok=True)
         dst.write_bytes(raw)
-    print(f"Extracted {len(HISTORICAL_GIT_ASSETS)} historical Bedrock multi-version assets (1.21.0 -> 26.23) from git.")
+    print(f"Extracted {len(HISTORICAL_GIT_ASSETS)} historical Bedrock multi-version assets (1.21.0 -> 26.60) from git.")
 
 
 
@@ -638,6 +644,27 @@ include(":spigot")
 
 project(":spigot").projectDir = file("bootstrap/spigot")""",
         "settings.gradle.kts minimal spigot build",
+    )
+
+    # Cloudburst protocol build containing the official Bedrock 26.60 (v2225) codec and packets.
+    versions_catalog = root / "gradle/libs.versions.toml"
+    replace_exact(
+        versions_catalog,
+        'protocol-connection = "3.0.0.Beta14-20261009.172637-6"',
+        'protocol-connection = "3.0.0.Beta14-20261019.150006-9"',
+        "CloudburstProtocol.v2225Connection",
+    )
+    replace_exact(
+        versions_catalog,
+        'protocol-common = "3.0.0.Beta14-20261009.172637-6"',
+        'protocol-common = "3.0.0.Beta14-20261019.150006-9"',
+        "CloudburstProtocol.v2225Common",
+    )
+    replace_exact(
+        versions_catalog,
+        'protocol-codec = "3.0.0.Beta14-20261009.172637-6"',
+        'protocol-codec = "3.0.0.Beta14-20261019.150006-9"',
+        "CloudburstProtocol.v2225Codec",
     )
 
     # 1. GeyserSpigotPlugin.java: point getConfigFolder() to bedrock/ (so cache, player_skulls, packs,
@@ -1386,14 +1413,14 @@ import org.cloudburstmc.netty.channel.nethernet.signaling.NetherNetServerSignali
         "DialogHolder.removeWaitForResponseForm",
     )
 
-    # 9. Full Bedrock Multi-Version (1.21.0 v685 -> 26.52 v2193)
+    # 9. Full Bedrock Multi-Version (1.21.0 v685 -> 26.60 v2225)
     extract_historical_git_assets(root)
 
     mv_helper_path = root / "core/src/main/java/org/geysermc/geyser/registry/populator/MultiVersionPaletteHelper.java"
     mv_helper_path.write_text(MULTI_VERSION_HELPER_JAVA, encoding="utf-8")
     print(f"Wrote MultiVersionPaletteHelper.java -> {mv_helper_path.name}")
 
-    # 9a. GameProtocol: register all 23 Bedrock codecs (1.21.0 through 26.52)
+    # 9a. GameProtocol: register all 24 Bedrock codecs (1.21.0 through 26.60)
     game_protocol = root / "core/src/main/java/org/geysermc/geyser/network/bedrock/GameProtocol.java"
     replace_exact(
         game_protocol,
@@ -1427,7 +1454,8 @@ import org.cloudburstmc.protocol.bedrock.codec.v1001.Bedrock_v1001;
 import org.cloudburstmc.protocol.bedrock.codec.v2168.Bedrock_v2168;
 import org.cloudburstmc.protocol.bedrock.codec.v2168.Bedrock_v2168_hotfix4;
 import org.cloudburstmc.protocol.bedrock.codec.v2169.Bedrock_v2169;
-import org.cloudburstmc.protocol.bedrock.codec.v2193.Bedrock_v2193;""",
+import org.cloudburstmc.protocol.bedrock.codec.v2193.Bedrock_v2193;
+import org.cloudburstmc.protocol.bedrock.codec.v2225.Bedrock_v2225;""",
         "GameProtocol.imports",
     )
     replace_exact(
@@ -1437,7 +1465,7 @@ import org.cloudburstmc.protocol.bedrock.codec.v2193.Bedrock_v2193;""",
         register(Bedrock_v2168_hotfix4.CODEC, "26.40", "26.41", "26.42", "26.43", "26.44");
         register(Bedrock_v2169.CODEC, "26.45");
         register(Bedrock_v2193.CODEC, "26.50", "26.51", "26.52");""",
-        """        // Strict ascending protocol ordering: Bedrock 1.21.0 (v685) -> 26.52 (v2193)
+        """        // Strict ascending protocol ordering: Bedrock 1.21.0 (v685) -> 26.60 (v2225)
         register(Bedrock_v685.CODEC, "1.21.0", "1.21.1");
         register(Bedrock_v686.CODEC, "1.21.2", "1.21.3");
         register(Bedrock_v712.CODEC, "1.21.20", "1.21.21", "1.21.22", "1.21.23");
@@ -1460,11 +1488,12 @@ import org.cloudburstmc.protocol.bedrock.codec.v2193.Bedrock_v2193;""",
         register(Bedrock_v1001.CODEC, "26.30", "26.31", "26.32", "26.33", "26.34");
         register(Bedrock_v2168_hotfix4.CODEC, "26.40", "26.41", "26.42", "26.43", "26.44");
         register(Bedrock_v2169.CODEC, "26.45");
-        register(Bedrock_v2193.CODEC, "26.50", "26.51", "26.52");""",
+        register(Bedrock_v2193.CODEC, "26.50", "26.51", "26.52");
+        register(Bedrock_v2225.CODEC, "26.60");""",
         "GameProtocol.registerAllVersions",
     )
 
-    # 9b. CodecProcessor: exact packet serializer ladder across v685..v2193
+    # 9b. CodecProcessor: exact packet serializer ladder across v685..v2225
     codec_processor = root / "core/src/main/java/org/geysermc/geyser/network/bedrock/CodecProcessor.java"
     replace_exact(
         codec_processor,
@@ -1677,9 +1706,44 @@ import org.cloudburstmc.protocol.bedrock.packet.RiderJumpPacket;""",
         }""",
         "CodecProcessor.processCodecMultiVersion",
     )
+    replace_exact(
+        codec_processor,
+        """import org.cloudburstmc.protocol.bedrock.packet.PartyChangedPacket;
+import org.cloudburstmc.protocol.bedrock.packet.PhotoInfoRequestPacket;""",
+        """import org.cloudburstmc.protocol.bedrock.packet.PartyChangedPacket;
+import org.cloudburstmc.protocol.bedrock.packet.ClientboundMatchmakingStatePacket;
+import org.cloudburstmc.protocol.bedrock.packet.ServerboundMatchmakingCancelPacket;
+import org.cloudburstmc.protocol.bedrock.packet.PhotoInfoRequestPacket;""",
+        "CodecProcessor.v2225MatchmakingImports",
+    )
+    replace_exact(
+        codec_processor,
+        """            if (codec.getProtocolVersion() >= 944) {
+                codecBuilder.updateSerializer(PartyChangedPacket.class, IGNORED_SERIALIZER);
+            }
+        }""",
+        """            if (codec.getProtocolVersion() >= 944) {
+                codecBuilder.updateSerializer(PartyChangedPacket.class, IGNORED_SERIALIZER);
+            }
+            if (codec.getProtocolVersion() >= 2225) {
+                codecBuilder.updateSerializer(ClientboundMatchmakingStatePacket.class, IGNORED_SERIALIZER);
+                codecBuilder.updateSerializer(ServerboundMatchmakingCancelPacket.class, IGNORED_SERIALIZER);
+            }
+        }""",
+        "CodecProcessor.v2225MatchmakingPackets",
+    )
 
     # 9c. BlockRegistryPopulator: load all 17 block palettes (1.21.0 -> 26.50) with guaranteed state resolution
     block_populator = root / "core/src/main/java/org/geysermc/geyser/registry/populator/BlockRegistryPopulator.java"
+    replace_exact(
+        block_populator,
+        """import org.cloudburstmc.protocol.bedrock.codec.v2193.Bedrock_v2193;
+import org.cloudburstmc.protocol.bedrock.data.BlockPropertyData;""",
+        """import org.cloudburstmc.protocol.bedrock.codec.v2193.Bedrock_v2193;
+import org.cloudburstmc.protocol.bedrock.codec.v2225.Bedrock_v2225;
+import org.cloudburstmc.protocol.bedrock.data.BlockPropertyData;""",
+        "BlockRegistryPopulator.v2225Import",
+    )
     replace_exact(
         block_populator,
         """        var blockMappers = ImmutableMap.<ObjectIntPair<String>, Remapper>builder()
@@ -1705,6 +1769,7 @@ import org.cloudburstmc.protocol.bedrock.packet.RiderJumpPacket;""",
                 .put(ObjectIntPair.of("26_30", Bedrock_v1001.CODEC.getProtocolVersion()), tag -> tag)
                 .put(ObjectIntPair.of("26_40", Bedrock_v2168.CODEC.getProtocolVersion()), tag -> tag)
                 .put(ObjectIntPair.of("26_50", Bedrock_v2193.CODEC.getProtocolVersion()), tag -> tag)
+                .put(ObjectIntPair.of("26_60", Bedrock_v2225.CODEC.getProtocolVersion()), tag -> tag)
             .build();""",
         "BlockRegistryPopulator.blockMappers",
     )
@@ -1784,15 +1849,24 @@ import org.cloudburstmc.protocol.bedrock.packet.RiderJumpPacket;""",
         "CreativeItemRegistryPopulator.safeGroupIcon",
     )
 
-    # 9e. ItemRegistryPopulator: load all 20 item palettes (1.21.0 v685 -> 26.50 v2193)
+    # 9e. ItemRegistryPopulator: load all 21 item palettes (1.21.0 v685 -> 26.60 v2225)
     item_populator = root / "core/src/main/java/org/geysermc/geyser/registry/populator/ItemRegistryPopulator.java"
+    replace_exact(
+        item_populator,
+        """import org.cloudburstmc.protocol.bedrock.codec.v2193.Bedrock_v2193;
+import org.cloudburstmc.protocol.bedrock.codec.v924.Bedrock_v924;""",
+        """import org.cloudburstmc.protocol.bedrock.codec.v2193.Bedrock_v2193;
+import org.cloudburstmc.protocol.bedrock.codec.v2225.Bedrock_v2225;
+import org.cloudburstmc.protocol.bedrock.codec.v924.Bedrock_v924;""",
+        "ItemRegistryPopulator.v2225Import",
+    )
     replace_exact(
         item_populator,
         """        List<PaletteVersion> paletteVersions = new ArrayList<>(3);
         paletteVersions.add(new PaletteVersion("26_30", Bedrock_v1001.CODEC.getProtocolVersion()));
         paletteVersions.add(new PaletteVersion("26_40", Bedrock_v2168.CODEC.getProtocolVersion()));
         paletteVersions.add(new PaletteVersion("26_50", Bedrock_v2193.CODEC.getProtocolVersion()));""",
-        """        List<PaletteVersion> paletteVersions = new ArrayList<>(20);
+        """        List<PaletteVersion> paletteVersions = new ArrayList<>(21);
         paletteVersions.add(new PaletteVersion("1_21_0", 685, MultiVersionPaletteHelper.buildJavaOnlyItemFallbacks(685), (it, mp) -> MultiVersionPaletteHelper.remapItemForVersion(685, it, mp)));
         paletteVersions.add(new PaletteVersion("1_21_20", 712, MultiVersionPaletteHelper.buildJavaOnlyItemFallbacks(712), (it, mp) -> MultiVersionPaletteHelper.remapItemForVersion(712, it, mp)));
         paletteVersions.add(new PaletteVersion("1_21_30", 729, MultiVersionPaletteHelper.buildJavaOnlyItemFallbacks(729), (it, mp) -> MultiVersionPaletteHelper.remapItemForVersion(729, it, mp)));
@@ -1812,7 +1886,8 @@ import org.cloudburstmc.protocol.bedrock.packet.RiderJumpPacket;""",
         paletteVersions.add(new PaletteVersion("1_26_20", Bedrock_v975.CODEC.getProtocolVersion(), "1_26_10", MultiVersionPaletteHelper.buildJavaOnlyItemFallbacks(975), (it, mp) -> MultiVersionPaletteHelper.remapItemForVersion(975, it, mp)));
         paletteVersions.add(new PaletteVersion("26_30", Bedrock_v1001.CODEC.getProtocolVersion()));
         paletteVersions.add(new PaletteVersion("26_40", Bedrock_v2168.CODEC.getProtocolVersion()));
-        paletteVersions.add(new PaletteVersion("26_50", Bedrock_v2193.CODEC.getProtocolVersion()));""",
+        paletteVersions.add(new PaletteVersion("26_50", Bedrock_v2193.CODEC.getProtocolVersion()));
+        paletteVersions.add(new PaletteVersion("26_60", Bedrock_v2225.CODEC.getProtocolVersion()));""",
         "ItemRegistryPopulator.paletteVersions",
     )
     replace_exact(
@@ -1955,8 +2030,17 @@ import org.cloudburstmc.protocol.bedrock.packet.RiderJumpPacket;""",
         "ItemRegistryPopulator.multiVersionSkullBaseMapping",
     )
 
-    # 9f. TagRegistryPopulator: register tags across 685..2193
+    # 9f. TagRegistryPopulator: register tags across 685..2225
     tag_populator = root / "core/src/main/java/org/geysermc/geyser/registry/populator/TagRegistryPopulator.java"
+    replace_exact(
+        tag_populator,
+        """import org.cloudburstmc.protocol.bedrock.codec.v2193.Bedrock_v2193;
+import org.geysermc.geyser.GeyserBootstrap;""",
+        """import org.cloudburstmc.protocol.bedrock.codec.v2193.Bedrock_v2193;
+import org.cloudburstmc.protocol.bedrock.codec.v2225.Bedrock_v2225;
+import org.geysermc.geyser.GeyserBootstrap;""",
+        "TagRegistryPopulator.v2225Import",
+    )
     replace_exact(
         tag_populator,
         """        List<ObjectIntPair<String>> paletteVersions = List.of(
@@ -1977,7 +2061,8 @@ import org.cloudburstmc.protocol.bedrock.packet.RiderJumpPacket;""",
             ObjectIntPair.of("1_26_10", 944),
             ObjectIntPair.of("26_30", Bedrock_v1001.CODEC.getProtocolVersion()),
             ObjectIntPair.of("26_30", Bedrock_v2168.CODEC.getProtocolVersion()),
-            ObjectIntPair.of("26_30", Bedrock_v2193.CODEC.getProtocolVersion())
+            ObjectIntPair.of("26_30", Bedrock_v2193.CODEC.getProtocolVersion()),
+            ObjectIntPair.of("26_30", Bedrock_v2225.CODEC.getProtocolVersion())
         );""",
         "TagRegistryPopulator.paletteVersions",
     )
@@ -2819,7 +2904,7 @@ import java.util.concurrent.ConcurrentHashMap;""",
 
     # 11. RaknetServer.java & BedrockClientData.java:
     #     - Prevent Cloudburst RakServerRateLimiter (default 120 datagrams/10ms) from blacklisting legitimate
-    #       26.52 PC/CGNAT players during resource-pack (.mcpack), chunk-burst, or high-CPS gameplay.
+    #       26.60 PC/CGNAT players during resource-pack (.mcpack), chunk-burst, or high-CPS gameplay.
     #     - Support Microsoft Windows GDK DeviceOS ordinal (16+) in Bedrock 26.x so PC clients (e.g. ZET Gaming / ASUS / MSI)
     #       resolve to DeviceOs.UWP ("Windows") instead of DeviceOs.UNKNOWN (which caused VoidTab to show kbmouse!).
     raknet_server = root / "core/src/main/java/org/geysermc/geyser/network/RaknetServer.java"
@@ -2907,7 +2992,7 @@ import java.util.concurrent.ConcurrentHashMap;""",
     # 12. Purpurbedrock Geyser Performance & Main-Thread Optimization Suite:
     #     - Async background pre-warm of Geyser registries during plugin enable so ServerLoadEvent spends ~0.00ms on Server thread.
     #     - Thread-safe O(1) VersionedRegistry cache + on-demand lazy loading for legacy (< 26.50 / < v2193) block, item, tag & potion palettes
-    #       (cuts boot CPU by ~90% and saves ~350 MB of heap RAM when only modern 26.x players are online, while preserving 100% 1.21.0..26.52 support).
+    #       (cuts boot CPU by ~90% and saves ~350 MB of heap RAM when only modern 26.x players are online, while preserving 100% 1.21.0..26.60 support).
     #     - Algorithmic O(1) fixes in BlockRegistryPopulator, ItemRegistryPopulator, and TagRegistryPopulator (eliminating O(N^2) linear scans and NbtMap churn).
     #     - Runtime hot-path fixes: O(1) UUID player lookup in GeyserSpigotNativeWorldManager, lazy locale loading in SpigotCommandSource
     #       (fixing BrigadierPermissionPredicate.test() overhead), accurate GeyserChunkSection buffer sizing + zero-alloc empty subchunks +
@@ -3106,6 +3191,7 @@ import java.util.concurrent.ConcurrentHashMap;""",
                 .put(ObjectIntPair.of("26_30", Bedrock_v1001.CODEC.getProtocolVersion()), tag -> tag)
                 .put(ObjectIntPair.of("26_40", Bedrock_v2168.CODEC.getProtocolVersion()), tag -> tag)
                 .put(ObjectIntPair.of("26_50", Bedrock_v2193.CODEC.getProtocolVersion()), tag -> tag)
+                .put(ObjectIntPair.of("26_60", Bedrock_v2225.CODEC.getProtocolVersion()), tag -> tag)
             .build();
 
         // We can keep this strong as nothing should be garbage collected
@@ -3475,11 +3561,12 @@ import java.util.concurrent.ConcurrentHashMap;""",
                 .put(ObjectIntPair.of("26_30", Bedrock_v1001.CODEC.getProtocolVersion()), tag -> tag)
                 .put(ObjectIntPair.of("26_40", Bedrock_v2168.CODEC.getProtocolVersion()), tag -> tag)
                 .put(ObjectIntPair.of("26_50", Bedrock_v2193.CODEC.getProtocolVersion()), tag -> tag)
+                .put(ObjectIntPair.of("26_60", Bedrock_v2225.CODEC.getProtocolVersion()), tag -> tag)
             .build();
 
         ensureSharedJavaBlockTables();
         boolean eagerAll = Boolean.getBoolean("purpurbedrock.eagerAllPalettes");
-        int primaryProto = Bedrock_v2193.CODEC.getProtocolVersion();
+        int primaryProto = Bedrock_v2225.CODEC.getProtocolVersion();
 
         for (Map.Entry<ObjectIntPair<String>, Remapper> entry : blockMappers.entrySet()) {
             ObjectIntPair<String> palette = entry.getKey();
@@ -3830,7 +3917,7 @@ import java.util.concurrent.ConcurrentHashMap;""",
         for (PaletteVersion palette : paletteVersions) {""",
         """        boolean firstMappingsPass = true;
         boolean eagerAll = Boolean.getBoolean("purpurbedrock.eagerAllPalettes");
-        int primaryProto = Bedrock_v2193.CODEC.getProtocolVersion();
+        int primaryProto = Bedrock_v2225.CODEC.getProtocolVersion();
         for (PaletteVersion palette : paletteVersions) {
             if (eagerAll || palette.protocolVersion() == primaryProto) {
                 boolean firstPass = firstMappingsPass;
@@ -3960,7 +4047,7 @@ import java.util.concurrent.ConcurrentHashMap;""",
             Registries.TAGS.register(palette.rightInt(), javaItemsToBedrockTag);
         }""",
         """        boolean eagerAll = Boolean.getBoolean("purpurbedrock.eagerAllPalettes");
-        int primaryProto = Bedrock_v2193.CODEC.getProtocolVersion();
+        int primaryProto = Bedrock_v2225.CODEC.getProtocolVersion();
         for (var palette : paletteVersions) {
             int proto = palette.rightInt();
             String tagFileVer = palette.left();
@@ -4070,6 +4157,7 @@ import java.util.concurrent.ConcurrentHashMap;""",
         POTION_MIXES.load();""",
         """        // potion mixes depend on other registries
         POTION_MIXES.load();
+        POTION_MIXES.register(2225, PotionMixRegistryLoader.buildForMappings(ITEMS.forVersion(2225)));
         for (int lazyProto : ITEMS.lazyVersions()) {
             POTION_MIXES.registerLazy(lazyProto, ver -> PotionMixRegistryLoader.buildForMappings(ITEMS.forVersion(ver)));
         }""",
@@ -4574,7 +4662,7 @@ import java.util.concurrent.ConcurrentHashMap;""",
     )
 
     # =========================================================================
-    # 14. Universal Join Reliability Across 1.21.0–26.52 & Non-Xbox XUID Isolation:
+    # 14. Universal Join Reliability Across 1.21.0–26.60 & Non-Xbox XUID Isolation:
     #     - Non-Xbox Bedrock clients (xbox-auth-required: false) send empty extraData.xuid (""),
     #       which collided in SessionManager.isXuidAlreadyPending("") / sessionByXuid("") and kicked
     #       every 2nd+ non-Xbox subscriber with geyser.auth.already_loggedin!

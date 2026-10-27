@@ -224,7 +224,7 @@ public final class BedrockBridgeBootstrap {
             System.setProperty("purpurbedrock.lanDiscoveryPort", Integer.toString(lanPort));
             System.setProperty("purpurbedrock.lanIcePort", Integer.toString(lanIcePort));
 
-            // Prevent RakServerRateLimiter (default 120 datagrams/10ms) from kicking legitimate 26.52 PC/CGNAT players
+            // Prevent RakServerRateLimiter (default 120 datagrams/10ms) from kicking legitimate 26.60 PC/CGNAT players
             if (System.getProperty("Geyser.RakPacketLimit") == null) {
                 System.setProperty("Geyser.RakPacketLimit", Integer.toString(PurpurConfig.bedrockRakPacketLimit));
             }
@@ -306,7 +306,7 @@ public final class BedrockBridgeBootstrap {
                 if (loaded != null) {
                     protocolActive = true;
                     Bukkit.getLogger().info(String.format(
-                        "[Purpurbedrock] Встроенный протокол Bedrock 26.2 активен! Мульти-версия: 1.21.0–26.52 (v685–v2193, 23 кодека) | RakNet/Signaling: %s:%d | NetherNet WebRTC: UDP %d | LAN Discovery (Миры): %s | Auth: %s",
+                        "[Purpurbedrock] Встроенный протокол Bedrock 26.2 активен! Мульти-версия: 1.21.0–26.60 (v685–v2225, 24 кодека) | RakNet/Signaling: %s:%d | NetherNet WebRTC: UDP %d | LAN Discovery (Миры): %s | Auth: %s",
                         bedrockCfg.getString("address", "0.0.0.0"),
                         activeBedrockPort,
                         activeWebrtcPort,
@@ -768,7 +768,7 @@ public final class BedrockBridgeBootstrap {
     public static String runProtocolSelfTest() {
         int[] expectedProtocols = {
             685, 686, 712, 729, 748, 766, 776, 786, 800, 818, 819,
-            827, 844, 859, 860, 898, 924, 944, 975, 1001, 2168, 2169, 2193
+            827, 844, 859, 860, 898, 924, 944, 975, 1001, 2168, 2169, 2193, 2225
         };
         try {
             Plugin geyserPlugin = Bukkit.getPluginManager().getPlugin("Geyser-Spigot");
@@ -780,7 +780,7 @@ public final class BedrockBridgeBootstrap {
             java.lang.reflect.Method getBedrockCodec = gameProtocolClass.getMethod("getBedrockCodec", int.class);
             java.util.List<?> protocols = (java.util.List<?>) gameProtocolClass.getField("SUPPORTED_BEDROCK_PROTOCOLS").get(null);
             if (protocols.size() < expectedProtocols.length) {
-                throw new IllegalStateException("Expected >= 23 codecs, got " + protocols.size());
+                throw new IllegalStateException("Expected >= 24 codecs, got " + protocols.size());
             }
 
             Class<?> blockRegistriesClass = Class.forName("org.geysermc.geyser.registry.BlockRegistries", true, cl);
@@ -887,7 +887,7 @@ public final class BedrockBridgeBootstrap {
                 );
             }
 
-            // Verify Windows GDK 26.52 DeviceOS=16 (e.g. ZET Gaming desktop) resolves to UWP ("Windows") instead of UNKNOWN
+            // Verify Windows GDK 26.60 DeviceOS=16 (e.g. ZET Gaming desktop) resolves to UWP ("Windows") instead of UNKNOWN
             Class<?> clientDataClass = Class.forName("org.geysermc.geyser.session.auth.BedrockClientData", true, cl);
             com.google.gson.Gson gson = new com.google.gson.Gson();
             Object gdkData = gson.fromJson(
@@ -954,8 +954,8 @@ public final class BedrockBridgeBootstrap {
                 }
             }
 
-            return "MULTIVERSION_685_TO_2193_SELFTEST_OK codecs=" + protocols.size()
-                + " versions=1.21.0..26.52 dialogWaitPopup=DISABLED chunkPublisher=RELIABLE ruLocale=OK"
+            return "MULTIVERSION_685_TO_2225_SELFTEST_OK codecs=" + protocols.size()
+                + " versions=1.21.0..26.60 dialogWaitPopup=DISABLED chunkPublisher=RELIABLE ruLocale=OK"
                 + " pre818StartGame=OK attrSingleton=OK waypointFix=OK configDialogSafe=OK chunkBoundsSafe=OK"
                 + " safeRemoteSkins=" + (PurpurConfig.bedrockSafeRemotePlayerSkins ? "ON" : "OFF")
                 + " skullsToggle=" + (isCustomSkullsEnabled() ? "ON" : "OFF")

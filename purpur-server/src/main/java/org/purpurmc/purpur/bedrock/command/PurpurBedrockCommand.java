@@ -216,7 +216,7 @@ public final class PurpurBedrockCommand extends Command {
             + (PurpurConfig.bedrockSafeRemotePlayerSkins ? "ВКЛЮЧЕНЫ (без тяжёлой геометрии и плащей)" : "ВЫКЛЮЧЕНЫ"), NamedTextColor.AQUA));
         sender.sendMessage(Component.text(" • Кастомные головы (HeadDatabase / паки): "
             + (BedrockBridgeBootstrap.isCustomSkullsEnabled() ? "ВКЛЮЧЕНЫ (/pb skulls off — выключить)" : "ВЫКЛЮЧЕНЫ (без скачивания пака)"), NamedTextColor.AQUA));
-        sender.sendMessage(Component.text(" • Мульти-версия Bedrock: 1.21.0 — 26.52 (v685 — v2193, 23 протокола)", NamedTextColor.AQUA));
+        sender.sendMessage(Component.text(" • Мульти-версия Bedrock: 1.21.0 — 26.60 (v685 — v2225, 24 протокола)", NamedTextColor.AQUA));
         sender.sendMessage(Component.text(" • Окно ожидания диалога (gui.waitingForResponse): УБРАНО", NamedTextColor.AQUA));
         String df = BedrockBridgeBootstrap.getActiveDataFolder();
         sender.sendMessage(Component.text(String.format(" • Папки Bedrock: %s/cache (player_skulls) | %s/custom_mappings | %s/extensions | %s/packs", df, df, df, df), NamedTextColor.AQUA));
