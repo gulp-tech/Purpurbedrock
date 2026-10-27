@@ -663,6 +663,7 @@ public class PurpurConfig {
     public static boolean bedrockAsyncGeyserPrewarm = true;
     public static boolean bedrockLazyLegacyPalettes = true;
     public static int bedrockMaxParticlesPerPacket = 16;
+    public static boolean bedrockSafeRemotePlayerSkins = true;
     public static double bedrockMaxChunkSendRate = 28.0D;
     public static int bedrockMaxMobileRenderDistance = 8;
     public static int bedrockMaxClientCommands = 96;
@@ -725,6 +726,7 @@ public class PurpurConfig {
         bedrockAsyncGeyserPrewarm = getBoolean("bedrock.performance.async-geyser-prewarm", bedrockAsyncGeyserPrewarm);
         bedrockLazyLegacyPalettes = getBoolean("bedrock.performance.lazy-legacy-palettes", bedrockLazyLegacyPalettes);
         bedrockMaxParticlesPerPacket = Math.max(1, getInt("bedrock.performance.max-particles-per-packet", bedrockMaxParticlesPerPacket));
+        bedrockSafeRemotePlayerSkins = getBoolean("bedrock.performance.safe-remote-player-skins", bedrockSafeRemotePlayerSkins);
         bedrockMaxChunkSendRate = Math.max(10.0D, getDouble("bedrock.chunks.max-chunk-send-rate", bedrockMaxChunkSendRate));
         bedrockMaxMobileRenderDistance = Math.max(5, getInt("bedrock.chunks.max-mobile-render-distance", bedrockMaxMobileRenderDistance));
         bedrockMaxClientCommands = Math.max(32, getInt("bedrock.performance.max-client-commands", bedrockMaxClientCommands));

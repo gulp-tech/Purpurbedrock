@@ -92,6 +92,7 @@ public final class BedrockBridgeBootstrap {
         boolean resolvedPrompt = PurpurConfig.bedrockPromptOptionalPacks && bedrockCfgPrompt && resolvedSkulls;
         System.setProperty("purpurbedrock.customSkullsEnabled", Boolean.toString(resolvedSkulls));
         System.setProperty("purpurbedrock.promptOptionalPacks", Boolean.toString(resolvedPrompt));
+        System.setProperty("purpurbedrock.safeRemotePlayerSkins", Boolean.toString(PurpurConfig.bedrockSafeRemotePlayerSkins));
         if (!resolvedSkulls) {
             clearOnlineSkullCaches();
         }
@@ -244,6 +245,9 @@ public final class BedrockBridgeBootstrap {
             }
             if (System.getProperty("purpurbedrock.maxParticlesPerPacket") == null) {
                 System.setProperty("purpurbedrock.maxParticlesPerPacket", Integer.toString(PurpurConfig.bedrockMaxParticlesPerPacket));
+            }
+            if (System.getProperty("purpurbedrock.safeRemotePlayerSkins") == null) {
+                System.setProperty("purpurbedrock.safeRemotePlayerSkins", Boolean.toString(PurpurConfig.bedrockSafeRemotePlayerSkins));
             }
             if (System.getProperty("purpurbedrock.maxCachedCustomSkulls") == null) {
                 int maxCachedSkulls = Math.max(0, bedrockCfg.getInt("performance.max-cached-custom-skulls", 16));
@@ -910,6 +914,11 @@ public final class BedrockBridgeBootstrap {
                     throw new IllegalStateException("UpstreamSession missing immutable-safe setAttributes (<26.30 SingletonList fix)!");
                 }
             }
+            try (InputStream smIn = cl.getResourceAsStream("org/geysermc/geyser/skin/SkinManager.class")) {
+                if (smIn == null || !new String(smIn.readAllBytes(), StandardCharsets.ISO_8859_1).contains("purpurbedrock.safeRemotePlayerSkins")) {
+                    throw new IllegalStateException("SkinManager missing mobile-safe remote player skin guard!");
+                }
+            }
             Class<?> azimuthClass = Class.forName("org.geysermc.geyser.session.cache.waypoint.AzimuthWaypoint", true, cl);
             azimuthClass.getDeclaredField("tickCounter");
             Class<?> particlesTransClass = Class.forName("org.geysermc.geyser.translator.protocol.java.level.JavaLevelParticlesTranslator", true, cl);
@@ -948,6 +957,7 @@ public final class BedrockBridgeBootstrap {
             return "MULTIVERSION_685_TO_2193_SELFTEST_OK codecs=" + protocols.size()
                 + " versions=1.21.0..26.52 dialogWaitPopup=DISABLED chunkPublisher=RELIABLE ruLocale=OK"
                 + " pre818StartGame=OK attrSingleton=OK waypointFix=OK configDialogSafe=OK chunkBoundsSafe=OK"
+                + " safeRemoteSkins=" + (PurpurConfig.bedrockSafeRemotePlayerSkins ? "ON" : "OFF")
                 + " skullsToggle=" + (isCustomSkullsEnabled() ? "ON" : "OFF")
                 + " particleCap=" + activeParticleCap
                 + " mobileStaticSkulls=" + activeStaticSkullCap;

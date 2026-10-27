@@ -212,6 +212,8 @@ public final class PurpurBedrockCommand extends Command {
         sender.sendMessage(Component.text(" • Java-меню (DeluxeMenus / Chest GUI): " + (PurpurConfig.bedrockMenusEnabled ? "ВКЛЮЧЕНЫ" : "ВЫКЛЮЧЕНЫ"), NamedTextColor.AQUA));
         sender.sendMessage(Component.text(" • NPC-оптимизация (Citizens/FancyNPCs/ZNPCs): "
             + (PurpurConfig.bedrockNpcOptimizationEnabled ? "ВКЛЮЧЕНА (адаптивная SAFE/BALANCED/HIGH)" : "ВЫКЛЮЧЕНА"), NamedTextColor.AQUA));
+        sender.sendMessage(Component.text(" • Облегчённые скины других игроков на телефонах/консолях: "
+            + (PurpurConfig.bedrockSafeRemotePlayerSkins ? "ВКЛЮЧЕНЫ (без тяжёлой геометрии и плащей)" : "ВЫКЛЮЧЕНЫ"), NamedTextColor.AQUA));
         sender.sendMessage(Component.text(" • Кастомные головы (HeadDatabase / паки): "
             + (BedrockBridgeBootstrap.isCustomSkullsEnabled() ? "ВКЛЮЧЕНЫ (/pb skulls off — выключить)" : "ВЫКЛЮЧЕНЫ (без скачивания пака)"), NamedTextColor.AQUA));
         sender.sendMessage(Component.text(" • Мульти-версия Bedrock: 1.21.0 — 26.52 (v685 — v2193, 23 протокола)", NamedTextColor.AQUA));

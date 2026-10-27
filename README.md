@@ -63,7 +63,11 @@
       - `%purpurbedrock_ping%` — реальный RTT пинг RakNet / NetherNet WebRTC в мс *(также пробрасывается напрямую в `Player#getPing()`)*
       - Дополнительные плейсхолдеры: `%purpurbedrock_ping_colored%`, `%purpurbedrock_os%`, `%purpurbedrock_protocol%`, `%purpurbedrock_ui%`, `%purpurbedrock_xuid%`, `%purpurbedrock_is_bedrock%`.
 
-11. **Адаптивная оптимизация NPC без отключения логики**
+11. **Защита FPS телефона при появлении других игроков**
+    - На Android/iOS и консолях другие игроки отображаются с лёгким ванильным скином `64×64` без тяжёлой persona-геометрии и плащей, которые могут блокировать рендер мобильного клиента на 10–20 секунд.
+    - Собственный скин игрока всегда сохраняется; Windows-клиенты продолжают получать полные скины. Настройка: `bedrock.performance.safe-remote-player-skins: true`.
+
+12. **Адаптивная оптимизация NPC без отключения логики**
     - Citizens подключается через безопасную reflection-интеграцию без compile-time зависимости; также распознаются FancyNPCs, ZNPCs и пользовательские NPC с обычными metadata/scoreboard-тегами.
     - Для каждого Bedrock-игрока применяется профиль `SAFE / BALANCED / HIGH` по устройству, RTT и TPS: ядро ограничивает только ненужную сетевую видимость дальних NPC, не удаляя сущности и не отключая AI, трейты, навигацию или Java-плагины.
     - NPC в радиусе взаимодействия всегда остаются видимыми; сканирование мира выполняется раз в 100 тиков, а `hide/show` — только при реальном изменении состояния.
@@ -127,4 +131,3 @@ CheckNetIsolation LoopbackExempt -a -n="Microsoft.MinecraftUWP_8wekyb3d8bbwe"
 - **Меню истории игрока в стиле HolyWorld** (`/pac menu`, `/pac history <ник>`, право `purpurac.menu`) — **зелёные, оранжевые и красные** блоки истории и **блоки-инструкции по цветам внизу меню**.
 - **Право на алерты** (`purpurac.alerts`, переключение `/pac alerts`) и гибкая кастомизация в `plugins/PurpurBedrockAC/config.yml`.
 - Подробная документация: [`purpurbedrock-anticheat/README.md`](purpurbedrock-anticheat/README.md).
-

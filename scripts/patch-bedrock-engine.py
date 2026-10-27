@@ -4844,7 +4844,93 @@ import java.util.concurrent.ConcurrentHashMap;""",
         "CodecProcessor.nullSafeUpdateCodec",
     )
 
+    skin_provider = root / "core/src/main/java/org/geysermc/geyser/skin/SkinProvider.java"
+    replace_exact(
+        skin_provider,
+        """        return new SkinData(skin, cape, geometry);
+    }
+
+    /**
+     * Used as a fallback if an official Java cape doesn't exist for this user.
+     */""",
+        """        return new SkinData(skin, cape, geometry);
+    }
+
+    /**
+     * Lightweight 64x64 vanilla skin used for remote players on constrained Bedrock clients.
+     * It deliberately excludes Bedrock persona geometry and capes, which can stall mobile rendering.
+     */
+    static SkinData determinePerformanceSafeSkinData(UUID uuid) {
+        ProvidedSkins.ProvidedSkin providedSkin = ProvidedSkins.getDefaultPlayerSkin(uuid);
+        return new SkinData(
+            providedSkin.getData(),
+            EMPTY_CAPE,
+            providedSkin.isSlim() ? SkinGeometry.SLIM : SkinGeometry.WIDE
+        );
+    }
+
+    /**
+     * Used as a fallback if an official Java cape doesn't exist for this user.
+     */""",
+        "SkinProvider.performanceSafeRemoteSkin",
+    )
+
     skin_manager = root / "core/src/main/java/org/geysermc/geyser/skin/SkinManager.java"
+    replace_exact(
+        skin_manager,
+        """public class SkinManager {
+
+    private static final Map<ResolvableProfile, CompletableFuture<GameProfile>> requestedProfiles""",
+        """public class SkinManager {
+
+    private static boolean usePerformanceSafeRemoteSkin(GeyserSession session, UUID playerUuid) {
+        if (!Boolean.parseBoolean(System.getProperty("purpurbedrock.safeRemotePlayerSkins", "true"))
+                || session.getPlayerEntity() == null
+                || playerUuid.equals(session.getPlayerEntity().uuid())) {
+            return false;
+        }
+        BedrockClientData clientData = session.getClientData();
+        if (clientData == null || clientData.getDeviceOs() == null) {
+            return true;
+        }
+        String deviceOs = clientData.getDeviceOs().name();
+        // Keep full remote skins only for desktop Windows. Mobile, consoles and unknown 26.x
+        // DeviceOS values receive a fixed 64x64 vanilla skin with no cape/custom geometry.
+        return !deviceOs.equals("UWP") && !deviceOs.equals("WIN32") && !deviceOs.equals("WINDOWS");
+    }
+
+    private static final Map<ResolvableProfile, CompletableFuture<GameProfile>> requestedProfiles""",
+        "SkinManager.performanceSafeRemoteSkinClassifier",
+    )
+    replace_exact(
+        skin_manager,
+        """    public static PlayerListPacket.Entry buildEntryFromCachedSkin(GeyserSession session, AvatarEntity playerEntity) {
+        // First: see if we have the cached skin texture ID.""",
+        """    public static PlayerListPacket.Entry buildEntryFromCachedSkin(GeyserSession session, AvatarEntity playerEntity) {
+        if (usePerformanceSafeRemoteSkin(session, playerEntity.uuid())) {
+            SkinData safe = SkinProvider.determinePerformanceSafeSkinData(playerEntity.uuid());
+            return PlayerListUtils.buildEntryManually(
+                session,
+                playerEntity.uuid(),
+                playerEntity.getUsername(),
+                playerEntity.geyserId(),
+                getSkin(session, safe.skin().textureUrl(), safe.skin(), safe.cape(), safe.geometry())
+            );
+        }
+        // First: see if we have the cached skin texture ID.""",
+        "SkinManager.performanceSafeCachedEntry",
+    )
+    replace_exact(
+        skin_manager,
+        """    public static void sendSkinPacket(GeyserSession session, AvatarEntity entity, SkinData skinData) {
+        Skin skin = skinData.skin();""",
+        """    public static void sendSkinPacket(GeyserSession session, AvatarEntity entity, SkinData skinData) {
+        if (usePerformanceSafeRemoteSkin(session, entity.uuid())) {
+            skinData = SkinProvider.determinePerformanceSafeSkinData(entity.uuid());
+        }
+        Skin skin = skinData.skin();""",
+        "SkinManager.performanceSafeSkinUpdates",
+    )
     replace_exact(
         skin_manager,
         """        // Since 1.21.130: PlayerSkinPacket only works if player is listed; might as well always use the player list packet
