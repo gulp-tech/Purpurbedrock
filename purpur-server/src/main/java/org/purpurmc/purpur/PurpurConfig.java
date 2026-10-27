@@ -666,6 +666,15 @@ public class PurpurConfig {
     public static double bedrockMaxChunkSendRate = 28.0D;
     public static int bedrockMaxMobileRenderDistance = 8;
     public static int bedrockMaxClientCommands = 96;
+    public static boolean bedrockNpcOptimizationEnabled = true;
+    public static int bedrockNpcUpdateIntervalTicks = 10;
+    public static double bedrockNpcSafeDistance = 32.0D;
+    public static int bedrockNpcSafeMaxVisible = 12;
+    public static double bedrockNpcBalancedDistance = 48.0D;
+    public static int bedrockNpcBalancedMaxVisible = 24;
+    public static double bedrockNpcHighDistance = 64.0D;
+    public static int bedrockNpcHighMaxVisible = 40;
+    public static double bedrockNpcPressureTps = 18.5D;
     public static boolean bedrockCustomSkullsEnabled = true;
     public static boolean bedrockPromptOptionalPacks = true;
 
@@ -719,6 +728,15 @@ public class PurpurConfig {
         bedrockMaxChunkSendRate = Math.max(10.0D, getDouble("bedrock.chunks.max-chunk-send-rate", bedrockMaxChunkSendRate));
         bedrockMaxMobileRenderDistance = Math.max(5, getInt("bedrock.chunks.max-mobile-render-distance", bedrockMaxMobileRenderDistance));
         bedrockMaxClientCommands = Math.max(32, getInt("bedrock.performance.max-client-commands", bedrockMaxClientCommands));
+        bedrockNpcOptimizationEnabled = getBoolean("bedrock.npc-optimization.enabled", bedrockNpcOptimizationEnabled);
+        bedrockNpcUpdateIntervalTicks = Math.max(2, getInt("bedrock.npc-optimization.update-interval-ticks", bedrockNpcUpdateIntervalTicks));
+        bedrockNpcSafeDistance = Math.max(8.0D, getDouble("bedrock.npc-optimization.safe.distance", bedrockNpcSafeDistance));
+        bedrockNpcSafeMaxVisible = Math.max(1, getInt("bedrock.npc-optimization.safe.max-visible", bedrockNpcSafeMaxVisible));
+        bedrockNpcBalancedDistance = Math.max(bedrockNpcSafeDistance, getDouble("bedrock.npc-optimization.balanced.distance", bedrockNpcBalancedDistance));
+        bedrockNpcBalancedMaxVisible = Math.max(bedrockNpcSafeMaxVisible, getInt("bedrock.npc-optimization.balanced.max-visible", bedrockNpcBalancedMaxVisible));
+        bedrockNpcHighDistance = Math.max(bedrockNpcBalancedDistance, getDouble("bedrock.npc-optimization.high.distance", bedrockNpcHighDistance));
+        bedrockNpcHighMaxVisible = Math.max(bedrockNpcBalancedMaxVisible, getInt("bedrock.npc-optimization.high.max-visible", bedrockNpcHighMaxVisible));
+        bedrockNpcPressureTps = Math.clamp(getDouble("bedrock.npc-optimization.server-pressure-tps", bedrockNpcPressureTps), 12.0D, 20.0D);
         bedrockCustomSkullsEnabled = getBoolean("bedrock.custom-skulls.enabled", bedrockCustomSkullsEnabled);
         bedrockPromptOptionalPacks = getBoolean("bedrock.custom-skulls.prompt-optional-packs", bedrockPromptOptionalPacks);
     }

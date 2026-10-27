@@ -17,10 +17,11 @@ index 0000000000000000000000000000000000000000..00000000000000000000000000000000
 +        org.purpurmc.purpur.bedrock.BedrockBridgeBootstrap.initialize(this); // Purpurbedrock - Self-contained Bedrock 26.2 protocol & LAN engine
          this.server.enablePlugins(org.bukkit.plugin.PluginLoadOrder.STARTUP);
          // CraftBukkit end
-@@ -405,5 +406,6 @@
+@@ -405,5 +406,7 @@
          org.purpurmc.purpur.task.BossBarTask.startAll(); // Purpur - Implement TPSBar
          if (org.purpurmc.purpur.PurpurConfig.beeCountPayload) org.purpurmc.purpur.task.BeehiveTask.instance().register(); // Purpur - Give bee counts in beehives to Purpur clients
 +        org.purpurmc.purpur.bedrock.menu.JavaChestMenuManager.initAfterPlugins(); // Purpurbedrock - Native Java chest & GUI menus for Bedrock
++        org.purpurmc.purpur.bedrock.BedrockNpcOptimizer.initAfterPlugins(); // Purpurbedrock - Device-adaptive NPC packet culling
  
          this.saveEverything(false, true, true);
          this.notificationManager().serverStarted();

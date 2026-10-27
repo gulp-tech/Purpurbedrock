@@ -15,6 +15,7 @@ import org.purpurmc.purpur.PurpurConfig;
 import org.purpurmc.purpur.bedrock.BedrockBridgeBootstrap;
 import org.purpurmc.purpur.bedrock.BedrockChunkDowngrader;
 import org.purpurmc.purpur.bedrock.BedrockChunkHelper;
+import org.purpurmc.purpur.bedrock.BedrockNpcOptimizer;
 import org.purpurmc.purpur.bedrock.BedrockPlaceholderHook;
 import org.purpurmc.purpur.bedrock.menu.JavaChestMenuManager;
 
@@ -83,6 +84,7 @@ public final class PurpurBedrockCommand extends Command {
             BedrockChunkHelper.applyRuntimeChunkTuning();
             BedrockBridgeBootstrap.syncRuntimePackSettingsFromPurpurConfig();
             BedrockPlaceholderHook.initAfterPlugins();
+            BedrockNpcOptimizer.initAfterPlugins();
             sender.sendMessage(Component.text("[Purpurbedrock] Конфигурация Purpurbedrock 26.2 успешно перезагружена.", NamedTextColor.GREEN));
             return true;
         }
@@ -161,9 +163,11 @@ public final class PurpurBedrockCommand extends Command {
             String report = BedrockChunkDowngrader.runSelfTest(level);
             String protoReport = BedrockBridgeBootstrap.runProtocolSelfTest();
             String papiReport = BedrockPlaceholderHook.runSelfTest();
+            String npcReport = BedrockNpcOptimizer.runSelfTest();
             sender.sendMessage(Component.text("[Purpurbedrock] " + report, NamedTextColor.GREEN));
             sender.sendMessage(Component.text("[Purpurbedrock] " + protoReport, NamedTextColor.GREEN));
             sender.sendMessage(Component.text("[Purpurbedrock] " + papiReport, NamedTextColor.GREEN));
+            sender.sendMessage(Component.text("[Purpurbedrock] " + npcReport, NamedTextColor.GREEN));
             return true;
         }
 
@@ -206,6 +210,8 @@ public final class PurpurBedrockCommand extends Command {
         sender.sendMessage(Component.text(" • Защита от флагов движения и фантомных блоков: "
             + ((PurpurConfig.bedrockMovementLeniency && PurpurConfig.bedrockPreventGhostBlocks) ? "ВКЛЮЧЕНА" : "ЧАСТИЧНО"), NamedTextColor.AQUA));
         sender.sendMessage(Component.text(" • Java-меню (DeluxeMenus / Chest GUI): " + (PurpurConfig.bedrockMenusEnabled ? "ВКЛЮЧЕНЫ" : "ВЫКЛЮЧЕНЫ"), NamedTextColor.AQUA));
+        sender.sendMessage(Component.text(" • NPC-оптимизация (Citizens/FancyNPCs/ZNPCs): "
+            + (PurpurConfig.bedrockNpcOptimizationEnabled ? "ВКЛЮЧЕНА (адаптивная SAFE/BALANCED/HIGH)" : "ВЫКЛЮЧЕНА"), NamedTextColor.AQUA));
         sender.sendMessage(Component.text(" • Кастомные головы (HeadDatabase / паки): "
             + (BedrockBridgeBootstrap.isCustomSkullsEnabled() ? "ВКЛЮЧЕНЫ (/pb skulls off — выключить)" : "ВЫКЛЮЧЕНЫ (без скачивания пака)"), NamedTextColor.AQUA));
         sender.sendMessage(Component.text(" • Мульти-версия Bedrock: 1.21.0 — 26.52 (v685 — v2193, 23 протокола)", NamedTextColor.AQUA));

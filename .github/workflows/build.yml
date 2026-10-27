@@ -333,6 +333,7 @@ jobs:
               "MULTIVERSION_685_TO_2193_SELFTEST_OK codecs=23 versions=1.21.0..26.52 dialogWaitPopup=DISABLED chunkPublisher=RELIABLE",
               "PLACEHOLDER_PAPI_SELFTEST_OK",
               "adaptiveProfiles=SAFE|BALANCED|HIGH",
+              "NPC_OPTIMIZER_SELFTEST_OK profiles=SAFE|BALANCED|HIGH metadata=NPC citizens=REFLECTION",
               "PAPI_EXPANSION_LIVE_REGISTERED_OK id=purpurbedrock persist=true ver=26.2 isBedrock=true ping=0",
               "Встроенные плейсхолдеры %purpurbedrock_*% зарегистрированы в PlaceholderAPI",
               "PurpurBedrockAC 26.2 запущен! Адаптивный спящий режим активен",
@@ -345,6 +346,7 @@ jobs:
               "Встроенные плейсхолдеры (%purpurbedrock_*%): АКТИВНЫ В PAPI",
               "Защита от флагов движения и фантомных блоков: ВКЛЮЧЕНА",
               "Java-меню (DeluxeMenus / Chest GUI): ВКЛЮЧЕНЫ",
+              "NPC-оптимизация (Citizens/FancyNPCs/ZNPCs): ВКЛЮЧЕНА",
               "Мульти-версия Bedrock: 1.21.0 — 26.52 (v685 — v2193, 23 протокола)",
               "Окно ожидания диалога (gui.waitingForResponse): УБРАНО",
               "chunkBoundsSafe=OK",
@@ -372,10 +374,12 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v26.2.0-bedrock
-          name: "Purpurbedrock 26.2 FINAL + PurpurBedrockAC 26.2.6 (3x3 Drill Compatibility + Device-Adaptive Rendering + Anti-False-Alert)"
+          name: "Purpurbedrock 26.2 FINAL (Adaptive NPC Optimization) + PurpurBedrockAC 26.2.6"
           body: |
             ## Purpurbedrock `26.2` FINAL (`purpurbedrock-26.2.jar`) + Отдельный античит `PurpurBedrockAC-26.2.jar` (`v26.2.6`)
             Финальное автономное высокопроизводительное ядро на базе **Purpur `26.2` (`STABLE`)** и отдельный адаптивный античит, откалиброванный специально под него:
+            - **Адаптивная оптимизация NPC для Bedrock (`SAFE / BALANCED / HIGH`)**:
+              - Citizens (без жёсткой зависимости), FancyNPCs, ZNPCs и NPC с обычными metadata/scoreboard-тегами получают индивидуальный для каждого игрока лимит дальности и количества по устройству, RTT и TPS. Ядро скрывает только лишние сетевые обновления NPC и меняет видимость лишь при переходе состояния; AI, трейты, навигация, взаимодействия и логика Java-плагинов не отключаются.
             - **Встроенные системные локали `26.2` (`ru_ru`, `uk_ua`, `be_by`, `kk_kz`, `en_us`, `deprecated` + `REPLACED_KEYS`)**:
               - Все ванильные ключи (`block.minecraft.spawn.not_valid`, вход/выход игроков, смерти, команды, кровати/якоря возрождения) переводятся в текст автоматически прямо из `purpurbedrock-26.2.jar` без докачки с серверов Mojang.
             - **Умный анализатор 6 устройств Bedrock + КМ с телефона (`%purpurbedrock_device%`, `%purpurbedrock_device_id%`, `%purpurbedrock_is_phone_kbm%`)**:
