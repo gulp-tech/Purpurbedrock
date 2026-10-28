@@ -1318,9 +1318,9 @@ import org.cloudburstmc.netty.channel.nethernet.signaling.NetherNetServerSignali
         });
 
         // Purpurbedrock: auto-discover pre-cached HeadDatabase skull PNGs in bedrock/cache/player_skulls/,
-        // capped strictly to maxStaticSkulls (default 16 = 336 states) so mobile phones (e.g. Galaxy A07)
+        // capped strictly to maxStaticSkulls (default 8 = 168 states) so mobile phones (e.g. Galaxy A07)
         // never crash or freeze from 30,000+ CustomSkull VoxelShapes/Molang permutations in StartGamePacket!
-        int maxStaticSkulls = Math.max(0, Integer.getInteger("purpurbedrock.maxCachedCustomSkulls", 16));
+        int maxStaticSkulls = Math.max(0, Integer.getInteger("purpurbedrock.maxCachedCustomSkulls", 8));
         Path cachedSkullsDir = GeyserImpl.getInstance().getBootstrap().getConfigFolder().resolve("cache").resolve("player_skulls");
         try {
             Files.createDirectories(cachedSkullsDir);
@@ -2370,6 +2370,33 @@ import java.util.concurrent.ConcurrentHashMap;""",
     )
     replace_exact(
         geyser_session,
+        """        CreativeContentPacket creativePacket = new CreativeContentPacket();
+        creativePacket.getContents().addAll(this.itemMappings.getCreativeItems());
+        creativePacket.getGroups().addAll(this.itemMappings.getCreativeItemGroups());
+        upstream.sendPacket(creativePacket);""",
+        """        CreativeContentPacket creativePacket = new CreativeContentPacket();
+        String deviceOs = (this.getClientData() != null && this.getClientData().getDeviceOs() != null)
+            ? this.getClientData().getDeviceOs().name()
+            : "UNKNOWN";
+        boolean constrainedClient = !deviceOs.equals("UWP")
+            && !deviceOs.equals("WIN32")
+            && !deviceOs.equals("WINDOWS");
+        java.util.List<org.cloudburstmc.protocol.bedrock.data.inventory.CreativeItemData> creativeItems =
+            this.itemMappings.getCreativeItems();
+        if (constrainedClient) {
+            // The full creative catalogue is one of the largest persistent allocations made
+            // immediately after StartGame. Survival clients do not need every entry to join.
+            int safeLimit = Math.max(128, Integer.getInteger("purpurbedrock.mobileCreativeItemLimit", 512));
+            creativePacket.getContents().addAll(creativeItems.subList(0, Math.min(safeLimit, creativeItems.size())));
+        } else {
+            creativePacket.getContents().addAll(creativeItems);
+        }
+        creativePacket.getGroups().addAll(this.itemMappings.getCreativeItemGroups());
+        upstream.sendPacket(creativePacket);""",
+        "GeyserSession.mobileSafeCreativeContent",
+    )
+    replace_exact(
+        geyser_session,
         """        BiomeDefinitionListPacket biomeDefinitionListPacket = new BiomeDefinitionListPacket();
         biomeDefinitionListPacket.setBiomes(Registries.BIOMES.get());
         upstream.sendPacket(biomeDefinitionListPacket);""",
@@ -2593,9 +2620,10 @@ import java.util.concurrent.ConcurrentHashMap;""",
 
     public static int computePublisherBlockRadius(GeyserSession session) {
         int effectiveChunks = session.purpurAdaptiveRenderDistance();
-        // Two-chunk publisher margin is sufficient; larger margins make mobile clients queue
-        // hundreds of chunks they cannot decode before the login watchdog expires.
-        return (squareToCircle(effectiveChunks) + 2) << 4;
+        // Do not add a publisher margin: at a 5-chunk client distance, +2 expands the
+        // circular area from roughly 154 to 254 chunks. Low-memory phones can be killed by
+        // Android exactly as the loading-tip text disappears, before they ever spawn.
+        return squareToCircle(effectiveChunks) << 4;
     }
 
     public static Vector3i clampPublisherY(GeyserSession session, Vector3i position) {
@@ -2743,10 +2771,12 @@ import java.util.concurrent.ConcurrentHashMap;""",
         """        String devOs = (session.getClientData() != null && session.getClientData().getDeviceOs() != null)
             ? session.getClientData().getDeviceOs().name()
             : "";
-        boolean mobileClient = "GOOGLE".equals(devOs) || "IOS".equals(devOs) || "AMAZON".equals(devOs) || "NX".equals(devOs);
+        boolean desktopWindows = "UWP".equals(devOs) || "WIN32".equals(devOs) || "WINDOWS".equals(devOs);
         boolean consoleClient = "XBOX".equals(devOs) || "PS4".equals(devOs) || "SWITCH".equals(devOs);
         int rtt = session.ping();
-        float chunksPerSecond = mobileClient ? 10f : (consoleClient ? 16f : 24f);
+        // Keep the first world allocation below Android's low-memory kill threshold. Unknown
+        // device values are constrained too; modified Android clients frequently report UNKNOWN.
+        float chunksPerSecond = desktopWindows ? 24f : (consoleClient ? 12f : 6f);
         if (rtt >= 220) {
             chunksPerSecond = Math.min(chunksPerSecond, 10f);
         } else if (rtt >= 140) {
@@ -2815,9 +2845,11 @@ import java.util.concurrent.ConcurrentHashMap;""",
         // values; using it here repeatedly changed the publisher radius and made chunks unload
         // and reload (visible flashing). RTT still throttles chunk batch throughput separately.
         return switch (os) {
-            case "GOOGLE", "IOS", "AMAZON", "NX" -> 6;
+            case "UWP", "WIN32", "WINDOWS" -> 10;
             case "XBOX", "PS4", "SWITCH" -> 8;
-            default -> 10;
+            // Unknown 26.x OS values must be treated as constrained; Windows GDK is
+            // normalized to UWP earlier, while old/modified Android clients often report UNKNOWN.
+            default -> 5;
         };
     }
 

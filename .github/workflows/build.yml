@@ -67,6 +67,10 @@ jobs:
             grep -Fq 'Some servers repeat UPDATE_LISTED=true' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/translator/protocol/java/entity/player/JavaPlayerInfoUpdateTranslator.java
             grep -Fq 'Never move the publisher center to an out-of-range' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/util/ChunkUtils.java
             grep -Fq 'Keep this stable for the whole session' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/session/GeyserSession.java
+            grep -Fq 'purpurbedrock.mobileCreativeItemLimit' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/session/GeyserSession.java
+            grep -Fq 'loading-tip text disappears' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/util/ChunkUtils.java
+            grep -Fq 'low-memory kill threshold' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/translator/protocol/java/level/JavaChunkBatchFinishedTranslator.java
+            grep -Fq 'maxCachedCustomSkulls", 8' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/registry/populator/CustomSkullRegistryPopulator.java
             grep -Fq 'getDefaultPlayerSkin(new UUID(0L, 0L))' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinProvider.java
             grep -Fq 'determinePerformanceSafeSkinData' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinProvider.java
             grep -Fq 'register(Bedrock_v2225.CODEC, "26.60")' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/network/bedrock/GameProtocol.java
@@ -456,6 +460,7 @@ jobs:
             - **NPC полностью невосприимчивы к эффектам**: зелья, стрелы с эффектами, маяки, команды и плагины не могут наложить или усилить эффект на NPC; старые эффекты очищаются при создании.
             - **Убраны зависания слабых телефонов при прогрузке игроков**: Android/iOS/консоли используют одну общую встроенную текстуру 64×64 без удалённого XUID-поиска; ядро не скачивает полные скины и отбрасывает повторные обновления списка при телепортах/респавнах. Собственный скин и полные скины на Windows не изменены.
             - **Убрано моргание чанков**: радиус публикации больше не скачет вслед за колебаниями пинга, центр не переносится к дальним устаревшим чанкам и не отправляется повторно через 500 мс после входа. Ограничение скорости чанков по RTT сохранено.
+            - **Исправлен вылет части телефонов сразу после загрузочной подсказки «Выжить»**: начальная область уменьшена без пустых/мигающих чанков, поток чанков для телефонов и неизвестных Android-клиентов ограничен до безопасных 6/с, тяжёлый творческий каталог ограничен 512 записями, а статические кастомные головы — 8 текстурами. Windows не ограничен.
             - **Полная мульти-версия Bedrock от `1.21.0` до `26.60` (`v685` — `v2225`, все 24 кодека протокола)**: игроки могут бесшовно заходить с любых версий `1.21.x` (`1.21.0`, `1.21.20`, `1.21.30`, `1.21.40`, `1.21.50`, `1.21.60`, `1.21.70`, `1.21.80`, `1.21.90–94`, `1.21.100`, `1.21.110`, `1.21.120–124`, `1.21.130–132`) и `26.x` (`26.0–26.3`, `26.10–26.12`, `26.20–26.23`, `26.30–26.34`, `26.40–26.45`, `26.50–26.52`, `26.60`) без вылетов, киков и ошибок пакетов/палитр.
             - **Убрано навязчивое окно диалога `gui.waitingForResponse.title`** («Идёт ожидание нового диалога от сервера...»): переходы и закрытие Java Dialog-меню происходят мгновенно без промежуточного экрана ожидания.
             - **Исправлена ошибка консоли `[STDERR] [sun.instrument.InstrumentationImpl] WARNING: A Java agent has been loaded dynamically`**: встроенный фильтр в `SysoutCatcher` полностью убирает ложный `[ERROR]: [STDERR]` от ByteBuddy/плагинов на Java 25 (дополнительно можно добавить `-XX:+EnableDynamicAgentLoading` в `.bat`/`.sh`).
