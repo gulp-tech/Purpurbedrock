@@ -2657,9 +2657,9 @@ import java.util.concurrent.ConcurrentHashMap;""",
             int pdz = chunkZ - playerChunkZ;
             if ((pdx * pdx + pdz * pdz) <= (chunkRadius * chunkRadius)) {
                 updateChunkPosition(session, playerPos, true);
-            } else {
-                updateChunkPosition(session, Vector3i.from((chunkX << 4) + 8, playerPos.getY(), (chunkZ << 4) + 8), true);
             }
+            // Never move the publisher center to an out-of-range prefetch/stale chunk.
+            // Doing so unloads the chunks around the player and makes the world visibly flash.
         }
     }""",
         "ChunkUtils.reliableChunkPublisher",
@@ -2706,12 +2706,9 @@ import java.util.concurrent.ConcurrentHashMap;""",
     replace_exact(
         player_pos_translator,
         """            ChunkUtils.updateChunkPosition(session, entityPosition.toInt());""",
-        """            ChunkUtils.forceUpdateChunkPosition(session, entityPosition.toInt());
-            session.scheduleInEventLoop(() -> {
-                if (!session.isClosed() && session.getPlayerEntity() != null) {
-                    ChunkUtils.forceUpdateChunkPosition(session, session.getPlayerEntity().position().toInt());
-                }
-            }, 500, java.util.concurrent.TimeUnit.MILLISECONDS);""",
+        """            // Publish exactly once. A delayed duplicate publisher update can unload and
+            // reload the same ring of chunks on low-memory clients, causing a visible flash.
+            ChunkUtils.forceUpdateChunkPosition(session, entityPosition.toInt());""",
         "JavaPlayerPositionTranslator.forcePublishOnSpawnAndWorldSwitch",
     )
     replace_exact(
@@ -2720,7 +2717,9 @@ import java.util.concurrent.ConcurrentHashMap;""",
         entity.moveAbsolute(teleportDestination, newYaw, newPitch, false, true);""",
         """        session.setUnconfirmedTeleport(new TeleportCache(session, teleportDestination, deltaMovement, newPitch, newYaw, teleportId, type));
         entity.moveAbsolute(teleportDestination, newYaw, newPitch, false, true);
-        ChunkUtils.forceUpdateChunkPosition(session, teleportDestination.toInt());""",
+        // A normal teleport only needs a publisher update when its chunk actually changes.
+        // Forcing the same center on small corrections makes weak clients flash their chunk ring.
+        ChunkUtils.updateChunkPosition(session, teleportDestination.toInt());""",
         "JavaPlayerPositionTranslator.teleportUpdateChunkPosition",
     )
 
@@ -2812,18 +2811,14 @@ import java.util.concurrent.ConcurrentHashMap;""",
         String os = (this.getClientData() != null && this.getClientData().getDeviceOs() != null)
             ? this.getClientData().getDeviceOs().name()
             : "UNKNOWN";
-        int cap = switch (os) {
+        // Keep this stable for the whole session. RTT naturally fluctuates around threshold
+        // values; using it here repeatedly changed the publisher radius and made chunks unload
+        // and reload (visible flashing). RTT still throttles chunk batch throughput separately.
+        return switch (os) {
             case "GOOGLE", "IOS", "AMAZON", "NX" -> 6;
             case "XBOX", "PS4", "SWITCH" -> 8;
             default -> 10;
         };
-        int rtt = ping();
-        if (rtt >= 220) {
-            cap = Math.min(cap, 6);
-        } else if (rtt >= 140) {
-            cap = Math.min(cap, 8);
-        }
-        return cap;
     }
 
     public int purpurAdaptiveRenderDistance() {
@@ -5014,7 +5009,7 @@ import java.util.concurrent.ConcurrentHashMap;""",
     private static final Map<ResolvableProfile, CompletableFuture<GameProfile>> requestedProfiles""",
         """public class SkinManager {
 
-    private static boolean usePerformanceSafeRemoteSkin(GeyserSession session, UUID playerUuid) {
+    public static boolean usePerformanceSafeRemoteSkin(GeyserSession session, UUID playerUuid) {
         if (!Boolean.parseBoolean(System.getProperty("purpurbedrock.safeRemotePlayerSkins", "true"))
                 || session.getPlayerEntity() == null
                 || playerUuid.equals(session.getPlayerEntity().uuid())) {
@@ -5044,6 +5039,21 @@ import java.util.concurrent.ConcurrentHashMap;""",
         }
     }
 
+    private static PlayerListPacket.Entry buildPerformanceSafeEntry(GeyserSession session, AvatarEntity entity, SkinData safe) {
+        PlayerListPacket.Entry entry = PlayerListUtils.buildEntryManually(
+            session,
+            entity.uuid(),
+            entity.getUsername(),
+            entity.geyserId(),
+            getSkin(session, safe.skin().textureUrl(), safe.skin(), safe.cape(), safe.geometry())
+        );
+        // Never expose a remote Xbox identity on constrained clients. A non-empty XUID makes
+        // Bedrock perform its own profile/appearance lookup and defeats the shared bundled skin.
+        entry.setXuid("");
+        entry.setPlatformChatId("");
+        return entry;
+    }
+
     private static final Map<ResolvableProfile, CompletableFuture<GameProfile>> requestedProfiles""",
         "SkinManager.performanceSafeRemoteSkinClassifier",
     )
@@ -5055,13 +5065,7 @@ import java.util.concurrent.ConcurrentHashMap;""",
         if (usePerformanceSafeRemoteSkin(session, playerEntity.uuid())) {
             markPerformanceSafeSkinSent(session, playerEntity.uuid());
             SkinData safe = SkinProvider.determinePerformanceSafeSkinData(playerEntity.uuid());
-            return PlayerListUtils.buildEntryManually(
-                session,
-                playerEntity.uuid(),
-                playerEntity.getUsername(),
-                playerEntity.geyserId(),
-                getSkin(session, safe.skin().textureUrl(), safe.skin(), safe.cape(), safe.geometry())
-            );
+            return buildPerformanceSafeEntry(session, playerEntity, safe);
         }
         // First: see if we have the cached skin texture ID.""",
         "SkinManager.performanceSafeCachedEntry",
@@ -5071,7 +5075,8 @@ import java.util.concurrent.ConcurrentHashMap;""",
         """    public static void sendSkinPacket(GeyserSession session, AvatarEntity entity, SkinData skinData) {
         Skin skin = skinData.skin();""",
         """    public static void sendSkinPacket(GeyserSession session, AvatarEntity entity, SkinData skinData) {
-        if (usePerformanceSafeRemoteSkin(session, entity.uuid())) {
+        boolean performanceSafe = usePerformanceSafeRemoteSkin(session, entity.uuid());
+        if (performanceSafe) {
             if (!markPerformanceSafeSkinSent(session, entity.uuid())) {
                 return; // The shared lightweight skin is already installed for this viewer.
             }
@@ -5100,11 +5105,50 @@ import java.util.concurrent.ConcurrentHashMap;""",
     )
     replace_exact(
         skin_manager,
+        """            PlayerListPacket.Entry entry = PlayerListUtils.buildEntryManually(
+                session,
+                entity.uuid(),
+                entity.getUsername(),
+                entity.geyserId(),
+                getSkin(session, skin.textureUrl(), skin, cape, geometry)
+            );
+
+            // Slight delay ensures skins are actually shown""",
+        """            PlayerListPacket.Entry entry = performanceSafe
+                ? buildPerformanceSafeEntry(session, entity, skinData)
+                : PlayerListUtils.buildEntryManually(
+                    session,
+                    entity.uuid(),
+                    entity.getUsername(),
+                    entity.geyserId(),
+                    getSkin(session, skin.textureUrl(), skin, cape, geometry)
+                );
+
+            // Slight delay ensures skins are actually shown""",
+        "SkinManager.clearRemoteIdentityForSafeSkinUpdates",
+    )
+    replace_exact(
+        skin_manager,
         """        // Since 1.21.130: PlayerSkinPacket only works if player is listed; might as well always use the player list packet
         if (entity.uuid().equals(session.getPlayerEntity().uuid()) || !entity.isListed()) {""",
         """        // Upstream #6725: Since 1.21.130 (v898+), PlayerSkinPacket no longer reliably updates listed players
         if (session.protocolVersion() >= 898 || entity.uuid().equals(session.getPlayerEntity().uuid()) || !entity.isListed()) {""",
         "SkinManager.playerListSkinOnModernProtocols",
+    )
+
+    player_info_update = root / "core/src/main/java/org/geysermc/geyser/translator/protocol/java/entity/player/JavaPlayerInfoUpdateTranslator.java"
+    replace_exact(
+        player_info_update,
+        """                if (entry.isListed()) {
+                    if (!PlayerListUtils.shouldLimitPlayerListEntries(session)) {""",
+        """                if (entry.isListed()) {
+                    // Some servers repeat UPDATE_LISTED=true around respawns and teleports.
+                    // Re-adding an already listed player forces weak clients to rebuild appearance data.
+                    if (entity.isListed() && SkinManager.usePerformanceSafeRemoteSkin(session, entity.uuid())) {
+                        continue;
+                    }
+                    if (!PlayerListUtils.shouldLimitPlayerListEntries(session)) {""",
+        "JavaPlayerInfoUpdateTranslator.deduplicateConstrainedPlayerListAdds",
     )
 
     sign_translator = root / "core/src/main/java/org/geysermc/geyser/translator/level/block/entity/SignBlockEntityTranslator.java"
