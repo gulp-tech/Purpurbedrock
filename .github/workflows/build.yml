@@ -367,7 +367,7 @@ jobs:
               "Встроенные плейсхолдеры %purpurbedrock_*% зарегистрированы в PlaceholderAPI",
               "PurpurBedrockAC 26.2 запущен! Адаптивный спящий режим активен",
               "PurpurBedrockNPC 26.2 активен: mob-NPC AI=OFF, scheduler tasks=0, одна TextDisplay на голограмму.",
-              "PURPURBEDROCK_NPC_SELFTEST_OK engine=EVENT_DRIVEN ai=OFF tasks=0 hologram=ONE_DISPLAY actions=5",
+              "PURPURBEDROCK_NPC_SELFTEST_OK engine=EVENT_DRIVEN ai=OFF tasks=0 hologram=ONE_DISPLAY actions=5 potionEffects=IMMUNE",
               "PURPURBEDROCK_AC_SELFTEST_OK checks=25/25 wifiLagSafe=true antiFalseAlerts=CONFIRMED drill3x3=SAFE adaptiveRender=OK gui=54 legend=GREEN_ORANGE_RED stage=AWAKE idleHolo=0 devices=6",
               "Статус PurpurBedrockAC 26.2",
               "NetherNet LAN Discovery active on UDP",
@@ -446,6 +446,7 @@ jobs:
             - **Исправлено отображение сервера в локальной сети Bedrock 26.60**: сервер отвечает правильными форматами LAN-анонса `v6` и `v7` вместо устаревшего `v4`, а пустой сервер больше не скрывается клиентом; обновлённый `unlock-windows-lan.bat` автоматически находит все установленные пакеты Minecraft и открывает входящий/исходящий UDP `7551`, `19132–19134`.
             - **Исправлено отключение Bedrock-сессии без предупреждений и stack trace**: добавлена совместимость `TransportDisconnectReason`, а консольный префикс встроенного протокола заменён на `Purpurbedrock`.
             - **NPC теперь гарантированно создаётся перед игроком**: повторный `/pbnpc create` с занятым ID пересоздаёт существующего NPC перед игроком вместо отказа; команда сообщает успех только после реального появления моба и голограммы, загружает нужный чанк и сразу восстанавливает их видимость ближайшим игрокам.
+            - **NPC полностью невосприимчивы к эффектам**: зелья, стрелы с эффектами, маяки, команды и плагины не могут наложить или усилить эффект на NPC; старые эффекты очищаются при создании.
             - **Полная мульти-версия Bedrock от `1.21.0` до `26.60` (`v685` — `v2225`, все 24 кодека протокола)**: игроки могут бесшовно заходить с любых версий `1.21.x` (`1.21.0`, `1.21.20`, `1.21.30`, `1.21.40`, `1.21.50`, `1.21.60`, `1.21.70`, `1.21.80`, `1.21.90–94`, `1.21.100`, `1.21.110`, `1.21.120–124`, `1.21.130–132`) и `26.x` (`26.0–26.3`, `26.10–26.12`, `26.20–26.23`, `26.30–26.34`, `26.40–26.45`, `26.50–26.52`, `26.60`) без вылетов, киков и ошибок пакетов/палитр.
             - **Убрано навязчивое окно диалога `gui.waitingForResponse.title`** («Идёт ожидание нового диалога от сервера...»): переходы и закрытие Java Dialog-меню происходят мгновенно без промежуточного экрана ожидания.
             - **Исправлена ошибка консоли `[STDERR] [sun.instrument.InstrumentationImpl] WARNING: A Java agent has been loaded dynamically`**: встроенный фильтр в `SysoutCatcher` полностью убирает ложный `[ERROR]: [STDERR]` от ByteBuddy/плагинов на Java 25 (дополнительно можно добавить `-XX:+EnableDynamicAgentLoading` в `.bat`/`.sh`).

@@ -19,6 +19,7 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityCombustEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityPotionEffectEvent;
 import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
 import org.bukkit.event.player.PlayerInteractAtEntityEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
@@ -29,6 +30,7 @@ import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.metadata.FixedMetadataValue;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.potion.PotionEffect;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -348,6 +350,9 @@ final class NpcManager implements Listener {
         mob.setPersistent(true);
         mob.setRemoveWhenFarAway(false);
         mob.setCanPickupItems(false);
+        for (PotionEffect effect : List.copyOf(mob.getActivePotionEffects())) {
+            mob.removePotionEffect(effect.getType());
+        }
         mob.setVelocity(new org.bukkit.util.Vector());
         mob.setLootTable(null);
         mob.addScoreboardTag("npc");
@@ -416,6 +421,19 @@ final class NpcManager implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onCombust(EntityCombustEvent event) {
         if (isOurNpc(event.getEntity())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onPotionEffect(EntityPotionEffectEvent event) {
+        if (!isOurNpc(event.getEntity())) {
+            return;
+        }
+        // Allow an existing effect to be removed/cleared, but reject every new or
+        // upgraded effect from potions, arrows, beacons, commands and plugins.
+        if (event.getAction() == EntityPotionEffectEvent.Action.ADDED
+            || event.getAction() == EntityPotionEffectEvent.Action.CHANGED) {
             event.setCancelled(true);
         }
     }
@@ -588,7 +606,7 @@ final class NpcManager implements Listener {
                 throw new IllegalStateException("NPC action validation failed: " + action);
             }
         }
-        return "PURPURBEDROCK_NPC_SELFTEST_OK engine=EVENT_DRIVEN ai=OFF tasks=0 hologram=ONE_DISPLAY actions=5";
+        return "PURPURBEDROCK_NPC_SELFTEST_OK engine=EVENT_DRIVEN ai=OFF tasks=0 hologram=ONE_DISPLAY actions=5 potionEffects=IMMUNE";
     }
 
     private static Component parseHologram(String input) {
