@@ -4989,7 +4989,10 @@ import java.util.concurrent.ConcurrentHashMap;""",
      * It deliberately excludes Bedrock persona geometry and capes, which can stall mobile rendering.
      */
     static SkinData determinePerformanceSafeSkinData(UUID uuid) {
-        ProvidedSkins.ProvidedSkin providedSkin = ProvidedSkins.getDefaultPlayerSkin(uuid);
+        // Every constrained viewer receives the exact same pre-bundled skin and skin ID.
+        // This lets Bedrock reuse one GPU texture when many players appear at once instead
+        // of compiling a separate texture/geometry pair per remote UUID.
+        ProvidedSkins.ProvidedSkin providedSkin = ProvidedSkins.getDefaultPlayerSkin(new UUID(0L, 0L));
         return new SkinData(
             providedSkin.getData(),
             EMPTY_CAPE,
@@ -5027,6 +5030,20 @@ import java.util.concurrent.ConcurrentHashMap;""",
         return !deviceOs.equals("UWP") && !deviceOs.equals("WIN32") && !deviceOs.equals("WINDOWS");
     }
 
+    // A weak session map prevents repeated PlayerList ADD / skin recompilation every time
+    // the same remote player enters view, teleports or respawns. Bedrock 26.x can otherwise
+    // block its render thread for 10-20+ seconds on low-end Android/iOS devices.
+    private static final Map<GeyserSession, java.util.Set<UUID>> PERFORMANCE_SAFE_SKINS_SENT =
+        java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+
+    private static boolean markPerformanceSafeSkinSent(GeyserSession session, UUID playerUuid) {
+        synchronized (PERFORMANCE_SAFE_SKINS_SENT) {
+            return PERFORMANCE_SAFE_SKINS_SENT
+                .computeIfAbsent(session, ignored -> new java.util.HashSet<>())
+                .add(playerUuid);
+        }
+    }
+
     private static final Map<ResolvableProfile, CompletableFuture<GameProfile>> requestedProfiles""",
         "SkinManager.performanceSafeRemoteSkinClassifier",
     )
@@ -5036,6 +5053,7 @@ import java.util.concurrent.ConcurrentHashMap;""",
         // First: see if we have the cached skin texture ID.""",
         """    public static PlayerListPacket.Entry buildEntryFromCachedSkin(GeyserSession session, AvatarEntity playerEntity) {
         if (usePerformanceSafeRemoteSkin(session, playerEntity.uuid())) {
+            markPerformanceSafeSkinSent(session, playerEntity.uuid());
             SkinData safe = SkinProvider.determinePerformanceSafeSkinData(playerEntity.uuid());
             return PlayerListUtils.buildEntryManually(
                 session,
@@ -5054,10 +5072,31 @@ import java.util.concurrent.ConcurrentHashMap;""",
         Skin skin = skinData.skin();""",
         """    public static void sendSkinPacket(GeyserSession session, AvatarEntity entity, SkinData skinData) {
         if (usePerformanceSafeRemoteSkin(session, entity.uuid())) {
+            if (!markPerformanceSafeSkinSent(session, entity.uuid())) {
+                return; // The shared lightweight skin is already installed for this viewer.
+            }
             skinData = SkinProvider.determinePerformanceSafeSkinData(entity.uuid());
         }
         Skin skin = skinData.skin();""",
         "SkinManager.performanceSafeSkinUpdates",
+    )
+    replace_exact(
+        skin_manager,
+        """    public static void requestAndHandleSkinAndCape(AvatarEntity entity, GeyserSession session, Consumer<SkinProvider.SkinAndCape> skinAndCapeConsumer) {
+        SkinProvider.requestSkinData(entity, session).whenCompleteAsync((skinData, throwable) -> {""",
+        """    public static void requestAndHandleSkinAndCape(AvatarEntity entity, GeyserSession session, Consumer<SkinProvider.SkinAndCape> skinAndCapeConsumer) {
+        if (usePerformanceSafeRemoteSkin(session, entity.uuid())) {
+            SkinData safe = SkinProvider.determinePerformanceSafeSkinData(entity.uuid());
+            // Never download, decode or resend a remote custom skin to constrained clients.
+            // sendSkinPacket is de-duplicated if the safe PlayerList entry was already sent.
+            sendSkinPacket(session, entity, safe);
+            if (skinAndCapeConsumer != null) {
+                skinAndCapeConsumer.accept(new SkinProvider.SkinAndCape(safe.skin(), safe.cape()));
+            }
+            return;
+        }
+        SkinProvider.requestSkinData(entity, session).whenCompleteAsync((skinData, throwable) -> {""",
+        "SkinManager.skipRemoteSkinFetchOnConstrainedClients",
     )
     replace_exact(
         skin_manager,
