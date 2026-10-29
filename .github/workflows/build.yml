@@ -132,7 +132,20 @@ jobs:
           {
             gradle applyAllPatches --stacktrace
             echo 'include(":test-plugin")' > test-plugin.settings.gradle.kts
-            gradle createPaperclipJar :purpur-api:publishToMavenLocal :test-plugin:jar --stacktrace
+            # Public Maven mirrors occasionally return a transient 502. Retry dependency
+            # resolution without repeating patch application or hiding real compile failures.
+            core_built=false
+            for attempt in 1 2 3; do
+              if gradle createPaperclipJar :purpur-api:publishToMavenLocal :test-plugin:jar --stacktrace; then
+                core_built=true
+                break
+              fi
+              echo "Core build attempt ${attempt}/3 failed; retrying dependency resolution..."
+              sleep 20
+            done
+            if [ "$core_built" != true ]; then
+              exit 1
+            fi
 
             PURPUR_VER=$(ls -1 ~/.m2/repository/org/purpurmc/purpur/purpur-api | grep -v maven-metadata | head -n 1)
             echo "Building standalone PurpurBedrockAC against local maven purpur-api:${PURPUR_VER}..."
