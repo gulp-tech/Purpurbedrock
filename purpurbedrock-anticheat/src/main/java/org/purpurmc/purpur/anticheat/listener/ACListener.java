@@ -67,6 +67,7 @@ public final class ACListener implements Listener {
         profile.lastSafeLocation = player.getLocation();
 
         plugin.alerts().onPlayerJoin(player);
+        plugin.antiEsp().onJoin(player);
         plugin.holograms().onPlayerJoin(player);
 
         // Ensure Bedrock command tree always knows /pac and /purpurac

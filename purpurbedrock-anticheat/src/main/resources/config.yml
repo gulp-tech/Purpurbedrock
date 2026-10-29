@@ -1,5 +1,5 @@
 # ==============================================================================
-#  PurpurBedrockAC 26.2.7 — PvP-safe Anti-Cheat + Anti-Xray + Anti-ESP
+#  PurpurBedrockAC 26.2.8 — PvP-safe Anti-Cheat + Anti-Xray + Anti-ESP
 # ==============================================================================
 #  Разработан специально под физику Bedrock (1.21.0 — 26.60) и транслятор Geyser:
 #   • НЕ КИКАЕТ ПРОСТО ТАК: по умолчанию софт мгновенно блокируется сетбэками,
@@ -11,7 +11,7 @@
 #   • Живая настройка прямо в игре: /pac checks (ЛКМ — модуль, ПКМ — сетбэк/отмена).
 # ==============================================================================
 
-config-version: 6
+config-version: 7
 
 permissions:
   alerts: "purpurac.alerts"
@@ -38,6 +38,8 @@ protection:
     enabled: true
     interval-ticks: 5
     hide-after-samples: 3
+    # 15 секунд без hide/show-пакетов после входа: клиент успевает завершить StartGame.
+    join-grace-ticks: 300
     min-distance: 7.0
     max-distance: 128.0
 

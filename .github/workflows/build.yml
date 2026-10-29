@@ -404,7 +404,7 @@ jobs:
               "PurpurBedrockAC 26.2 запущен! Адаптивный спящий режим активен",
               "PurpurBedrockNPC 26.2.1 активен: mob-NPC AI=OFF, repeating scheduler tasks=0, одна TextDisplay на голограмму.",
               "PURPURBEDROCK_NPC_SELFTEST_OK engine=EVENT_DRIVEN ai=OFF repeatingTasks=0 hologram=ONE_DISPLAY actions=5 potionEffects=IMMUNE spawnFlag=BYPASS killall=RECOVER",
-              "PURPURBEDROCK_AC_SELFTEST_OK checks=25/25 wifiLagSafe=true pvpFalseAlerts=HARDENED antiEsp=PACKET_HIDE antiXray=ENGINE_HIDE drill3x3=SAFE adaptiveRender=OK gui=54 legend=GREEN_ORANGE_RED stage=AWAKE idleHolo=0 devices=6",
+              "PURPURBEDROCK_AC_SELFTEST_OK checks=25/25 wifiLagSafe=true pvpFalseAlerts=HARDENED antiEsp=PACKET_HIDE joinInit=SAFE antiXray=ENGINE_HIDE drill3x3=SAFE adaptiveRender=OK gui=54 legend=GREEN_ORANGE_RED stage=AWAKE idleHolo=0 devices=6",
               "Статус PurpurBedrockAC 26.2",
               "NetherNet LAN Discovery active on UDP",
               "Вход только с Bedrock (блок Java): ВКЛЮЧЁН",

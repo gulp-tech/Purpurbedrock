@@ -92,6 +92,7 @@ public final class ACConfig {
     public boolean antiEspEnabled;
     public int antiEspIntervalTicks;
     public int antiEspHideAfterSamples;
+    public int antiEspJoinGraceTicks;
     public double antiEspMinDistance;
     public double antiEspMaxDistance;
 
@@ -316,6 +317,13 @@ public final class ACConfig {
             c.set("config-version", 6);
             migrated = true;
         }
+        // v7 prevents entity visibility packets from being emitted during the client's
+        // StartGame / local-player initialization window (Terracotta InitialConnection-149).
+        if (cfgVersion < 7) {
+            c.set("protection.anti-esp.join-grace-ticks", 300);
+            c.set("config-version", 7);
+            migrated = true;
+        }
         if (migrated) {
             plugin.saveConfig();
         }
@@ -334,6 +342,7 @@ public final class ACConfig {
         antiEspEnabled = c.getBoolean("protection.anti-esp.enabled", true);
         antiEspIntervalTicks = Math.clamp(c.getInt("protection.anti-esp.interval-ticks", 5), 2, 20);
         antiEspHideAfterSamples = Math.clamp(c.getInt("protection.anti-esp.hide-after-samples", 3), 2, 10);
+        antiEspJoinGraceTicks = Math.clamp(c.getInt("protection.anti-esp.join-grace-ticks", 300), 100, 1200);
         antiEspMinDistance = Math.clamp(c.getDouble("protection.anti-esp.min-distance", 7.0), 3.0, 24.0);
         antiEspMaxDistance = Math.max(antiEspMinDistance + 8.0,
             Math.clamp(c.getDouble("protection.anti-esp.max-distance", 128.0), 24.0, 192.0));

@@ -30,6 +30,7 @@ public final class AntiEspManager {
 
     private final PurpurBedrockACPlugin plugin;
     private final Map<Pair, VisibilityState> states = new HashMap<>();
+    private final Map<UUID, Long> readyAfterMs = new HashMap<>();
     private BukkitTask task;
 
     public AntiEspManager(PurpurBedrockACPlugin plugin) {
@@ -39,6 +40,9 @@ public final class AntiEspManager {
     public void start() {
         // Reload must release every hide owned by this plugin before rebuilding state.
         stop(true);
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            onJoin(player);
+        }
         int interval = Math.max(2, plugin.cfg().antiEspIntervalTicks);
         task = Bukkit.getScheduler().runTaskTimer(plugin, this::tick, interval, interval);
     }
@@ -52,10 +56,22 @@ public final class AntiEspManager {
             revealAll();
         }
         states.clear();
+        readyAfterMs.clear();
+    }
+
+    public void onJoin(Player player) {
+        long graceMs = Math.max(200L, plugin.cfg().antiEspJoinGraceTicks * 50L);
+        UUID id = player.getUniqueId();
+        readyAfterMs.put(id, System.currentTimeMillis() + graceMs);
+        // A reconnect has a fresh server-side player object. Drop stale pair bookkeeping
+        // silently: showEntity here would itself emit an unsafe packet during StartGame.
+        states.entrySet().removeIf(entry -> entry.getKey().viewer.equals(id)
+            || entry.getKey().target.equals(id));
     }
 
     public void onQuit(Player player) {
         UUID id = player.getUniqueId();
+        readyAfterMs.remove(id);
         states.entrySet().removeIf(entry -> {
             Pair pair = entry.getKey();
             VisibilityState state = entry.getValue();
@@ -83,6 +99,8 @@ public final class AntiEspManager {
             return;
         }
 
+        long nowMs = System.currentTimeMillis();
+        readyAfterMs.entrySet().removeIf(entry -> entry.getValue() <= nowMs);
         Set<Pair> visited = new HashSet<>();
         double minSq = cfg.antiEspMinDistance * cfg.antiEspMinDistance;
         double maxSq = cfg.antiEspMaxDistance * cfg.antiEspMaxDistance;
@@ -93,7 +111,7 @@ public final class AntiEspManager {
                 continue;
             }
             for (Player viewer : players) {
-                if (!eligibleViewer(viewer, cfg)) {
+                if (!eligibleViewer(viewer, cfg) || !protocolReady(viewer, nowMs)) {
                     revealForViewer(viewer);
                     continue;
                 }
@@ -106,7 +124,8 @@ public final class AntiEspManager {
                     visited.add(pair);
                     VisibilityState state = states.computeIfAbsent(pair, ignored -> new VisibilityState());
 
-                    boolean mustShow = distanceSq <= minSq
+                    boolean mustShow = !protocolReady(target, nowMs)
+                        || distanceSq <= minSq
                         || distanceSq > maxSq
                         || viewer.hasLineOfSight(target);
                     if (mustShow) {
@@ -141,6 +160,10 @@ public final class AntiEspManager {
             }
             return true;
         });
+    }
+
+    private boolean protocolReady(Player player, long nowMs) {
+        return readyAfterMs.getOrDefault(player.getUniqueId(), 0L) <= nowMs;
     }
 
     private boolean eligibleViewer(Player viewer, ACConfig cfg) {

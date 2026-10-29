@@ -34,7 +34,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * PurpurBedrockAC 26.2.7 — Standalone adaptive anti-cheat plugin tailored specifically
+ * PurpurBedrockAC 26.2.8 — Standalone adaptive anti-cheat plugin tailored specifically
  * for Purpurbedrock 26.2 (Geyser 26.2 + Bedrock 1.21.0 — 26.60 physics, Touch/PC/Phone-KBM/Controller inputs,
  * 25 calibrated checks, adaptive Sleep to Wake CPU optimization, device-adaptive AVG holograms, and HolyWorld-style GUIs).
  */
@@ -328,7 +328,8 @@ public final class PurpurBedrockACPlugin extends JavaPlugin {
         }
         BedrockBridgeInfo.verifySelfTest();
         if (!config.antiEspEnabled || config.antiEspHideAfterSamples < 2
-            || config.antiEspMinDistance < 3.0 || config.antiEspMaxDistance <= config.antiEspMinDistance) {
+            || config.antiEspJoinGraceTicks < 100 || config.antiEspMinDistance < 3.0
+            || config.antiEspMaxDistance <= config.antiEspMinDistance) {
             throw new IllegalStateException("Anti-ESP visibility hysteresis configuration mismatch");
         }
         if (!config.hologramAdaptiveRendering
@@ -337,6 +338,6 @@ public final class PurpurBedrockACPlugin extends JavaPlugin {
             || config.hologramMobileMaxTargets > config.hologramDesktopMaxTargets) {
             throw new IllegalStateException("Device-adaptive hologram budget mismatch");
         }
-        return "PURPURBEDROCK_AC_SELFTEST_OK checks=25/25 wifiLagSafe=true pvpFalseAlerts=HARDENED antiEsp=PACKET_HIDE antiXray=ENGINE_HIDE drill3x3=SAFE adaptiveRender=OK gui=54 legend=GREEN_ORANGE_RED stage=" + demo.stage.name() + " idleHolo=0 devices=6";
+        return "PURPURBEDROCK_AC_SELFTEST_OK checks=25/25 wifiLagSafe=true pvpFalseAlerts=HARDENED antiEsp=PACKET_HIDE joinInit=SAFE antiXray=ENGINE_HIDE drill3x3=SAFE adaptiveRender=OK gui=54 legend=GREEN_ORANGE_RED stage=" + demo.stage.name() + " idleHolo=0 devices=6";
     }
 }
