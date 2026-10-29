@@ -149,14 +149,32 @@ jobs:
 
             PURPUR_VER=$(ls -1 ~/.m2/repository/org/purpurmc/purpur/purpur-api | grep -v maven-metadata | head -n 1)
             echo "Building standalone PurpurBedrockAC against local maven purpur-api:${PURPUR_VER}..."
-            gradle -p purpurbedrock-anticheat build -PpurpurVersion="${PURPUR_VER}" --no-daemon --stacktrace
+            ac_built=false
+            for attempt in 1 2 3; do
+              if gradle -p purpurbedrock-anticheat build -PpurpurVersion="${PURPUR_VER}" --no-daemon --stacktrace; then
+                ac_built=true
+                break
+              fi
+              echo "Anti-cheat build attempt ${attempt}/3 failed; retrying dependency resolution..."
+              sleep 20
+            done
+            [ "$ac_built" = true ] || exit 1
             cp purpurbedrock-anticheat/build/libs/PurpurBedrockAC-26.2.jar PurpurBedrockAC-26.2.jar
             sha256sum PurpurBedrockAC-26.2.jar > PurpurBedrockAC-26.2.jar.sha256
             jar tf PurpurBedrockAC-26.2.jar | grep -q 'org/purpurmc/purpur/anticheat/engine/AntiEspManager.class'
             grep -q 'xray.engineMode = EngineMode.HIDE;' purpur-server/src/main/java/org/purpurmc/purpur/bedrock/BedrockAntiXrayHelper.java
 
             echo "Building standalone PurpurBedrockNPC against local maven purpur-api:${PURPUR_VER}..."
-            gradle -p purpurbedrock-npc build -PpurpurVersion="${PURPUR_VER}" --no-daemon --stacktrace
+            npc_built=false
+            for attempt in 1 2 3; do
+              if gradle -p purpurbedrock-npc build -PpurpurVersion="${PURPUR_VER}" --no-daemon --stacktrace; then
+                npc_built=true
+                break
+              fi
+              echo "NPC build attempt ${attempt}/3 failed; retrying dependency resolution..."
+              sleep 20
+            done
+            [ "$npc_built" = true ] || exit 1
             cp purpurbedrock-npc/build/libs/PurpurBedrockNPC-26.2.jar PurpurBedrockNPC-26.2.jar
             sha256sum PurpurBedrockNPC-26.2.jar > PurpurBedrockNPC-26.2.jar.sha256
 
