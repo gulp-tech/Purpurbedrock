@@ -2595,8 +2595,58 @@ import java.util.concurrent.ConcurrentHashMap;""",
     )
 
     # =========================================================================
-    # 10. Bedrock Chunk-Loading Reliability Fixes & Real RakNet/NetherNet RTT Ping
+    # 10. Bedrock Connection Survival, Chunk Reliability & Real RTT Ping
     # =========================================================================
+    # RakNet's upstream default is only 10 seconds. Mobile radio handovers, VPNs and a client
+    # busy applying a resource pack can exceed that without representing a dead connection.
+    raknet_server = root / "core/src/main/java/org/geysermc/geyser/network/RaknetServer.java"
+    replace_exact(
+        raknet_server,
+        """            .option(RakChannelOption.RAK_THROTTLE, rakRateLimitingDisabled ? null : new DefaultRakServerThrottle(maxConnectionsPerAddress, 4_000, 3))
+            .childHandler(serverInitializer);""",
+        """            .option(RakChannelOption.RAK_THROTTLE, rakRateLimitingDisabled ? null : new DefaultRakServerThrottle(maxConnectionsPerAddress, 4_000, 3))
+            .childOption(RakChannelOption.RAK_SESSION_TIMEOUT,
+                Math.max(30_000L, Long.getLong("purpurbedrock.rakSessionTimeoutMs", 120_000L)))
+            .childHandler(serverInitializer);""",
+        "RaknetServer.mobileSessionTimeout",
+    )
+
+    # A 256 KiB pack chunk fragments into hundreds of UDP datagrams. Smaller chunks make
+    # retransmission practical on lossy Wi-Fi/LTE and keep the login progressing.
+    resource_pack = root / "core/src/main/java/org/geysermc/geyser/pack/GeyserResourcePack.java"
+    replace_exact(
+        resource_pack,
+        """    public static final int CHUNK_SIZE = 1024 * 256;""",
+        """    public static final int CHUNK_SIZE = 1024 * 64; // Purpurbedrock: loss-safe mobile pack transfer""",
+        "GeyserResourcePack.lossSafeChunkSize",
+    )
+
+    # Never make the Java server's keepalive depend on the Bedrock render/UI thread. During
+    # world loading that callback can pause long enough for the Java side to kick a healthy user.
+    java_keepalive = root / "core/src/main/java/org/geysermc/geyser/translator/protocol/java/JavaKeepAliveTranslator.java"
+    replace_exact(
+        java_keepalive,
+        """        final long javaId = packet.getPingId();
+        // ClientboundKeepAlivePacket's are async, hence we won't add additional delay ensuring it's sent in the event loop would add
+        session.sendNetworkLatencyStackPacket(javaId, false, () -> session.sendDownstreamPacket(new ServerboundKeepAlivePacket(javaId)));""",
+        """        final long javaId = packet.getPingId();
+        // Confirm immediately. Real client RTT is measured independently by the periodic
+        // NetworkStackLatency probe, so this cannot turn a loading-screen stall into a timeout.
+        session.sendDownstreamPacket(new ServerboundKeepAlivePacket(javaId));""",
+        "JavaKeepAliveTranslator.loadingSafeImmediateAck",
+    )
+
+    # Existing installations may still contain the former 120-second value. Clamp the runtime
+    # authentication window without requiring users to regenerate their configuration.
+    geyser_impl = root / "core/src/main/java/org/geysermc/geyser/GeyserImpl.java"
+    replace_exact(
+        geyser_impl,
+        """        pendingMicrosoftAuthentication = new PendingMicrosoftAuthentication(config.pendingAuthenticationTimeout());""",
+        """        pendingMicrosoftAuthentication = new PendingMicrosoftAuthentication(
+            config.pendingAuthenticationTimeout() == 0 ? 0 : Math.max(300, config.pendingAuthenticationTimeout()));""",
+        "GeyserImpl.minimumAuthenticationTimeout",
+    )
+
     chunk_utils = root / "core/src/main/java/org/geysermc/geyser/util/ChunkUtils.java"
     replace_exact(
         chunk_utils,

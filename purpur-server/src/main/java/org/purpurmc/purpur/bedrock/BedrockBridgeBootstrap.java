@@ -711,7 +711,7 @@ public final class BedrockBridgeBootstrap {
             default-locale: "ru_ru"
             log-player-ip-addresses: true
             saved-user-logins: []
-            pending-authentication-timeout: 120
+            pending-authentication-timeout: 300
             notify-on-new-bedrock-update: false
             advanced:
               cache-images: %d
