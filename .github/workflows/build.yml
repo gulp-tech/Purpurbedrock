@@ -139,6 +139,8 @@ jobs:
             gradle -p purpurbedrock-anticheat build -PpurpurVersion="${PURPUR_VER}" --no-daemon --stacktrace
             cp purpurbedrock-anticheat/build/libs/PurpurBedrockAC-26.2.jar PurpurBedrockAC-26.2.jar
             sha256sum PurpurBedrockAC-26.2.jar > PurpurBedrockAC-26.2.jar.sha256
+            jar tf PurpurBedrockAC-26.2.jar | grep -q 'org/purpurmc/purpur/anticheat/engine/AntiEspManager.class'
+            grep -q 'xray.engineMode = EngineMode.HIDE;' purpur-server/src/main/java/org/purpurmc/purpur/bedrock/BedrockAntiXrayHelper.java
 
             echo "Building standalone PurpurBedrockNPC against local maven purpur-api:${PURPUR_VER}..."
             gradle -p purpurbedrock-npc build -PpurpurVersion="${PURPUR_VER}" --no-daemon --stacktrace
@@ -389,7 +391,7 @@ jobs:
               "PurpurBedrockAC 26.2 запущен! Адаптивный спящий режим активен",
               "PurpurBedrockNPC 26.2 активен: mob-NPC AI=OFF, scheduler tasks=0, одна TextDisplay на голограмму.",
               "PURPURBEDROCK_NPC_SELFTEST_OK engine=EVENT_DRIVEN ai=OFF tasks=0 hologram=ONE_DISPLAY actions=5 potionEffects=IMMUNE",
-              "PURPURBEDROCK_AC_SELFTEST_OK checks=25/25 wifiLagSafe=true antiFalseAlerts=CONFIRMED drill3x3=SAFE adaptiveRender=OK gui=54 legend=GREEN_ORANGE_RED stage=AWAKE idleHolo=0 devices=6",
+              "PURPURBEDROCK_AC_SELFTEST_OK checks=25/25 wifiLagSafe=true pvpFalseAlerts=HARDENED antiEsp=PACKET_HIDE antiXray=ENGINE_HIDE drill3x3=SAFE adaptiveRender=OK gui=54 legend=GREEN_ORANGE_RED stage=AWAKE idleHolo=0 devices=6",
               "Статус PurpurBedrockAC 26.2",
               "NetherNet LAN Discovery active on UDP",
               "Вход только с Bedrock (блок Java): ВКЛЮЧЁН",

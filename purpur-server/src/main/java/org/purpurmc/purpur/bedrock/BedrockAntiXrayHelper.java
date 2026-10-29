@@ -71,13 +71,12 @@ public final class BedrockAntiXrayHelper {
             WorldConfiguration.Anticheat.AntiXray xray = paperConfig.anticheat.antiXray;
             if (environment != World.Environment.THE_END) {
                 xray.enabled = true;
-                // EngineMode.HIDE keeps Bedrock subchunk palettes small (fast chunk loads, zero fake-ore FPS lag)
-                if (xray.engineMode == null) {
-                    xray.engineMode = EngineMode.HIDE;
-                }
+                // Always enforce packet-level HIDE. Paper's non-null default may otherwise leave
+                // OBFUSCATE active, which bloats mobile palettes and can still leak ore patterns.
+                xray.engineMode = EngineMode.HIDE;
                 xray.maxBlockHeight = Math.max(xray.maxBlockHeight, PurpurConfig.bedrockAntiXrayMaxHeight);
                 xray.lavaObscures = PurpurConfig.bedrockAntiXrayLavaObscures;
-                xray.updateRadius = Math.max(1, xray.updateRadius);
+                xray.updateRadius = Math.max(2, xray.updateRadius);
 
                 Set<Block> merged = new LinkedHashSet<>();
                 if (xray.hiddenBlocks != null) {

@@ -91,8 +91,17 @@ public final class AlertManager {
         // time-separated gate confirms that the behaviour persists as real cheat evidence.
         boolean impossiblePacket = "badpackets".equalsIgnoreCase(checkKey);
         int evidenceRequired = cfg.alertConfirmationEnabled ? cfg.alertEvidenceRequired : 1;
+        boolean combatHeuristic = switch (checkKey.toLowerCase(java.util.Locale.ROOT)) {
+            case "reach", "hitbox", "killaura", "aim", "autoclicker", "criticals", "velocity" -> true;
+            default -> false;
+        };
+        // Combat events arrive after two different client/server interpolation paths. Require a
+        // longer, time-separated pattern so normal combos never become staff complaints.
+        if (!impossiblePacket && combatHeuristic) {
+            evidenceRequired = Math.min(7, evidenceRequired + 2);
+        }
         if (!impossiblePacket && ping > cfg.highPingLeniencyMs) {
-            evidenceRequired = Math.min(5, evidenceRequired + cfg.alertHighPingExtraEvidence);
+            evidenceRequired = Math.min(7, evidenceRequired + cfg.alertHighPingExtraEvidence);
         }
         if (!profile.confirmViolationEvidence(
             checkKey,

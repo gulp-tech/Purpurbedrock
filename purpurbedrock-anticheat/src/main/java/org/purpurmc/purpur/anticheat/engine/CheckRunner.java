@@ -959,8 +959,11 @@ public final class CheckRunner {
         if (clickCfg.enabled && !isSweep) {
             int cps = attackerProfile.recordClickAndCountCps(nowMs);
             int maxCps = inputCat == BedrockBridgeInfo.InputCategory.TOUCH ? cfg.maxCpsTouch : cfg.maxCpsPc;
-            double stdDev = cps >= 12 ? attackerProfile.computeClickIntervalStdDevMs() : 999.0;
-            if (cps > maxCps || stdDev < cfg.minClickStdDevMs) {
+            boolean macroTimingEnabled = cfg.minClickStdDevMs > 0.0
+                && inputCat == BedrockBridgeInfo.InputCategory.KEYBOARD_MOUSE;
+            double stdDev = macroTimingEnabled && cps >= 18
+                ? attackerProfile.computeClickIntervalStdDevMs() : 999.0;
+            if (cps > maxCps || (macroTimingEnabled && stdDev < cfg.minClickStdDevMs)) {
                 plugin.engine().nudgeSuspicion(attackerProfile, 1.2);
                 if (attackerProfile.addBuffer("autoclicker", 1.0) >= clickCfg.buffer) {
                     if (clickCfg.cancelAction) {
@@ -1112,12 +1115,12 @@ public final class CheckRunner {
         Vector toVictimCenter3D = victimBox.getCenter().subtract(eye.toVector());
 
         // 360° behind-the-back & 15-ray full-corner WallHit checks
-        if (auraCfg.enabled && dist > 1.55) {
+        if (auraCfg.enabled && dist > 2.20) {
             Vector lookXZ = lookDir3D.clone().setY(0.0);
             Vector toVictimXZ = toVictimCenter3D.clone().setY(0.0);
             if (lookXZ.lengthSquared() > 1.0E-4 && toVictimXZ.lengthSquared() > 1.0E-4) {
                 double dot = lookXZ.normalize().dot(toVictimXZ.normalize());
-                if (dot < -0.45) {
+                if (dot < -0.78) {
                     plugin.engine().nudgeSuspicion(attackerProfile, 1.5);
                     if (attackerProfile.addBuffer("killaura", 1.0) >= auraCfg.buffer) {
                         if (auraCfg.cancelAction) {
@@ -1132,7 +1135,7 @@ public final class CheckRunner {
                 }
             }
 
-            if (cfg.killauraThroughWalls && dist > 1.90 && victim instanceof LivingEntity) {
+            if (cfg.killauraThroughWalls && dist > 2.60 && victim instanceof LivingEntity) {
                 if (isAllHitboxCornersOccluded(attacker.getWorld(), eye, victimBox)) {
                     plugin.engine().nudgeSuspicion(attackerProfile, 1.5);
                     if (attackerProfile.addBuffer("killaura", 1.0) >= auraCfg.buffer) {
@@ -1494,31 +1497,9 @@ public final class CheckRunner {
             profile.snapMovesSinceAttack = 0;
         }
 
-        // Robotic horizontal lock on Keyboard+Mouse / Phone-KBM: rapid yaw tracking with exact 0.000 pitch delta
-        if (inputCat == BedrockBridgeInfo.InputCategory.KEYBOARD_MOUSE && nowMs - profile.lastAttackTimeMs < 650L) {
-            float hitYawDiff = wrapAngleAbs(currentYaw - profile.lastAttackYaw);
-            float pitchDiff = Math.abs(currentPitch - profile.lastPitch);
-            if (hitYawDiff > 6.5f && hitYawDiff < 120.0f && pitchDiff < 1.0E-5f && Math.abs(currentPitch) < 88.0f) {
-                profile.zeroPitchAimStreak++;
-                if (profile.zeroPitchAimStreak >= 10) {
-                    profile.zeroPitchAimStreak = 5;
-                    plugin.engine().nudgeSuspicion(profile, 1.3);
-                    if (profile.addBuffer("aim", 1.0) >= aimCfg.buffer) {
-                        if (aimCfg.cancelAction) {
-                            event.setCancelled(true);
-                        }
-                        plugin.alerts().handleViolation(
-                            attacker, profile, "aim", "Aim (AimLock)",
-                            String.format(Locale.US, "yaw=%.1f° dPitch=0.000", hitYawDiff),
-                            1.0, event.isCancelled() ? "Отмена удара" : "Лог"
-                        );
-                    }
-                }
-            } else if (pitchDiff > 0.02f) {
-                profile.zeroPitchAimStreak = Math.max(0, profile.zeroPitchAimStreak - 2);
-                profile.decayBuffer("aim", aimCfg.decay * 0.35);
-            }
-        }
+        // Do not infer AimLock merely from unchanged pitch between Bukkit damage events.
+        // Bedrock quantizes rotations and ordinary horizontal PvP produces that pattern for long
+        // combos. Silent snap-back remains checked from actual movement rotation samples above.
     }
 
     /**

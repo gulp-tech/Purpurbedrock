@@ -1,5 +1,5 @@
 # ==============================================================================
-#  PurpurBedrockAC 26.2.6 — Адаптивный Античит под Purpurbedrock 26.2 / Geyser 26.2
+#  PurpurBedrockAC 26.2.7 — PvP-safe Anti-Cheat + Anti-Xray + Anti-ESP
 # ==============================================================================
 #  Разработан специально под физику Bedrock (1.21.0 — 26.60) и транслятор Geyser:
 #   • НЕ КИКАЕТ ПРОСТО ТАК: по умолчанию софт мгновенно блокируется сетбэками,
@@ -11,7 +11,7 @@
 #   • Живая настройка прямо в игре: /pac checks (ЛКМ — модуль, ПКМ — сетбэк/отмена).
 # ==============================================================================
 
-config-version: 5
+config-version: 6
 
 permissions:
   alerts: "purpurac.alerts"
@@ -32,6 +32,14 @@ protection:
   min-tps-for-autopunish: 18.5
   # Минимальный интервал между сетбэками (мс), чтобы игрока никогда не застряло в цикле
   setback-cooldown-ms: 450
+  # Anti-ESP удаляет из сетевого потока только игроков, стабильно закрытых стеной.
+  # Вблизи и при появлении прямой видимости цель показывается немедленно.
+  anti-esp:
+    enabled: true
+    interval-ticks: 5
+    hide-after-samples: 3
+    min-distance: 7.0
+    max-distance: 128.0
 
 # Адаптивный спящий движок (0% CPU в тишине → плавное пробуждение при подозрении)
 adaptive-engine:
@@ -54,12 +62,12 @@ alerts:
   # Настоящий чит повторяет детект и подтверждается через 0.7–8 секунд.
   confirmation:
     enabled: true
-    evidence-required: 2
-    min-separation-ms: 700
-    window-ms: 8000
-    same-check-cooldown-ms: 4000
-    # При пинге выше high-ping-leniency-ms требуется ещё одно независимое подтверждение.
-    high-ping-extra-evidence: 1
+    evidence-required: 3
+    min-separation-ms: 900
+    window-ms: 12000
+    same-check-cooldown-ms: 6000
+    # При высоком пинге требуется ещё два независимых подтверждения.
+    high-ping-extra-evidence: 2
   play-sound: true
   prefix: "&#A855F7&lP&#EC4899&lA&#F43F5E&lC &8» "
   format: "{prefix}&f{player} &7флагнул {severity_color}{check} &8(&7VL: {severity_color}{vl}&8, &7AVG: {avg_color}{avg}&8) &8[&7{details}&8]"
@@ -143,13 +151,13 @@ checks:
   # 1. Reach — 3D AABB + кольцо отката 18 тиков под пинг + учёт Сенсора/Геймпада/ПК
   reach:
     enabled: true
-    max-reach-pc: 3.30
-    max-reach-controller: 3.40
-    max-reach-touch: 4.15
-    cancel-hit-above: 4.45
-    buffer: 3.5
-    decay: 0.35
-    cancel-action: true
+    max-reach-pc: 3.65
+    max-reach-controller: 3.85
+    max-reach-touch: 4.55
+    cancel-hit-above: 5.30
+    buffer: 6.0
+    decay: 0.80
+    cancel-action: false
     max-vl: 16.0
     punish-commands:
       - "kick {player} &c[PurpurAC] Обнаружен Reach ({details})"
@@ -157,11 +165,11 @@ checks:
   # 2. HitBox — 3D луч по откатанным хитбоксам на ПК/Геймпаде + конус экрана на Сенсоре
   hitbox:
     enabled: true
-    max-angle-expansion: 0.30
-    touch-max-angle-deg: 88.0
-    buffer: 4.0
-    decay: 0.40
-    cancel-action: true
+    max-angle-expansion: 0.55
+    touch-max-angle-deg: 120.0
+    buffer: 8.0
+    decay: 0.90
+    cancel-action: false
     max-vl: 16.0
     punish-commands:
       - "kick {player} &c[PurpurAC] Обнаружен HitBox ({details})"
@@ -169,12 +177,12 @@ checks:
   # 3. KillAura — MultiAura, 360° спиной, 15-лучевая проверка стен, удар с открытым сундуком
   killaura:
     enabled: true
-    multi-aura-window-ms: 45
+    multi-aura-window-ms: 25
     check-through-walls: true
     check-open-inventory: true
-    buffer: 3.0
-    decay: 0.35
-    cancel-action: true
+    buffer: 7.0
+    decay: 0.85
+    cancel-action: false
     max-vl: 14.0
     punish-commands:
       - "kick {player} &c[PurpurAC] Обнаружена KillAura ({details})"
@@ -182,12 +190,12 @@ checks:
   # 4. AutoClicker — лимит боевых CPS + анализ разброса макросов
   autoclicker:
     enabled: true
-    max-cps-pc: 22
-    max-cps-touch: 19
-    min-stddev-ms: 2.0
-    buffer: 4.0
-    decay: 0.40
-    cancel-action: true
+    max-cps-pc: 30
+    max-cps-touch: 28
+    min-stddev-ms: 0.0
+    buffer: 7.0
+    decay: 0.85
+    cancel-action: false
     max-vl: 16.0
     punish-commands:
       - "kick {player} &c[PurpurAC] Обнаружен AutoClicker / Макрос ({details})"
@@ -195,9 +203,9 @@ checks:
   # 5. Criticals — ловит пакетные микро-криты (ProtoHax / Horion Criticals) без прыжка
   criticals:
     enabled: true
-    buffer: 3.5
-    decay: 0.35
-    cancel-action: true
+    buffer: 8.0
+    decay: 0.90
+    cancel-action: false
     max-vl: 15.0
     punish-commands:
       - "kick {player} &c[PurpurAC] Обнаружены Criticals ({details})"
@@ -386,11 +394,11 @@ checks:
   # 22. Aim / SnapRotations — ловит SilentAim довороты/отвороты и роботизированный AimLock (ПК + КМ с телефона)
   aim:
     enabled: true
-    snap-min-yaw-deg: 58.0
-    snap-back-min-yaw-deg: 45.0
-    buffer: 3.5
-    decay: 0.35
-    cancel-action: true
+    snap-min-yaw-deg: 78.0
+    snap-back-min-yaw-deg: 68.0
+    buffer: 9.0
+    decay: 1.0
+    cancel-action: false
     max-vl: 16.0
     punish-commands:
       - "kick {player} &c[PurpurAC] Обнаружен Aim / SilentAim ({details})"

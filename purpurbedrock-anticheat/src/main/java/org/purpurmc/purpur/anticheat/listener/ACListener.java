@@ -139,6 +139,7 @@ public final class ACListener implements Listener {
     public void onQuit(PlayerQuitEvent event) {
         Player player = event.getPlayer();
         plugin.alerts().onPlayerQuit(player.getUniqueId());
+        plugin.antiEsp().onQuit(player);
         plugin.holograms().onPlayerQuit(player);
         plugin.trimOfflineProfilesIfNeeded();
     }

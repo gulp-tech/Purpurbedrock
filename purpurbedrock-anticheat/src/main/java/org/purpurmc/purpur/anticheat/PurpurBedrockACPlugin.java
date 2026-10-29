@@ -15,6 +15,7 @@ import org.purpurmc.purpur.anticheat.command.PACCommand;
 import org.purpurmc.purpur.anticheat.config.ACConfig;
 import org.purpurmc.purpur.anticheat.engine.AdaptiveEngine;
 import org.purpurmc.purpur.anticheat.engine.AlertManager;
+import org.purpurmc.purpur.anticheat.engine.AntiEspManager;
 import org.purpurmc.purpur.anticheat.engine.CheckRunner;
 import org.purpurmc.purpur.anticheat.gui.HolyHistoryMenu;
 import org.purpurmc.purpur.anticheat.hologram.AvgHologramManager;
@@ -33,7 +34,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * PurpurBedrockAC 26.2.6 — Standalone adaptive anti-cheat plugin tailored specifically
+ * PurpurBedrockAC 26.2.7 — Standalone adaptive anti-cheat plugin tailored specifically
  * for Purpurbedrock 26.2 (Geyser 26.2 + Bedrock 1.21.0 — 26.60 physics, Touch/PC/Phone-KBM/Controller inputs,
  * 25 calibrated checks, adaptive Sleep to Wake CPU optimization, device-adaptive AVG holograms, and HolyWorld-style GUIs).
  */
@@ -43,6 +44,7 @@ public final class PurpurBedrockACPlugin extends JavaPlugin {
     private AdaptiveEngine adaptiveEngine;
     private AlertManager alertManager;
     private CheckRunner checkRunner;
+    private AntiEspManager antiEspManager;
     private AvgHologramManager hologramManager;
     private HolyHistoryMenu historyMenu;
     private PACCommand pacCommandExecutor;
@@ -53,6 +55,7 @@ public final class PurpurBedrockACPlugin extends JavaPlugin {
         this.adaptiveEngine = new AdaptiveEngine(this);
         this.alertManager = new AlertManager(this);
         this.checkRunner = new CheckRunner(this);
+        this.antiEspManager = new AntiEspManager(this);
         this.hologramManager = new AvgHologramManager(this);
         this.historyMenu = new HolyHistoryMenu(this);
         this.pacCommandExecutor = new PACCommand(this);
@@ -71,6 +74,7 @@ public final class PurpurBedrockACPlugin extends JavaPlugin {
         }
 
         this.adaptiveEngine.start();
+        this.antiEspManager.start();
         getLogger().info(
             "PurpurBedrockAC 26.2 запущен! Адаптивный спящий режим активен ("
             + config.countEnabledChecks() + " проверок Bedrock, 0 ложных киков, мгновенная AVG-голограмма, меню HolyWorld)."
@@ -129,6 +133,9 @@ public final class PurpurBedrockACPlugin extends JavaPlugin {
         if (this.adaptiveEngine != null) {
             this.adaptiveEngine.stop();
         }
+        if (this.antiEspManager != null) {
+            this.antiEspManager.stop(true);
+        }
         if (this.hologramManager != null) {
             this.hologramManager.shutdownAllDisplays();
         }
@@ -139,6 +146,7 @@ public final class PurpurBedrockACPlugin extends JavaPlugin {
         this.config.reload(this);
         this.hologramManager.reload();
         this.adaptiveEngine.start();
+        this.antiEspManager.start();
     }
 
     public ACConfig cfg() {
@@ -155,6 +163,10 @@ public final class PurpurBedrockACPlugin extends JavaPlugin {
 
     public CheckRunner checks() {
         return checkRunner;
+    }
+
+    public AntiEspManager antiEsp() {
+        return antiEspManager;
     }
 
     public AvgHologramManager holograms() {
@@ -315,12 +327,16 @@ public final class PurpurBedrockACPlugin extends JavaPlugin {
             throw new IllegalStateException("Idle hologram entity count must be 0");
         }
         BedrockBridgeInfo.verifySelfTest();
+        if (!config.antiEspEnabled || config.antiEspHideAfterSamples < 2
+            || config.antiEspMinDistance < 3.0 || config.antiEspMaxDistance <= config.antiEspMinDistance) {
+            throw new IllegalStateException("Anti-ESP visibility hysteresis configuration mismatch");
+        }
         if (!config.hologramAdaptiveRendering
             || config.hologramMobileUpdateTicks < config.hologramDesktopUpdateTicks
             || config.hologramMobileViewDistanceSq > config.hologramDesktopViewDistanceSq
             || config.hologramMobileMaxTargets > config.hologramDesktopMaxTargets) {
             throw new IllegalStateException("Device-adaptive hologram budget mismatch");
         }
-        return "PURPURBEDROCK_AC_SELFTEST_OK checks=25/25 wifiLagSafe=true antiFalseAlerts=CONFIRMED drill3x3=SAFE adaptiveRender=OK gui=54 legend=GREEN_ORANGE_RED stage=" + demo.stage.name() + " idleHolo=0 devices=6";
+        return "PURPURBEDROCK_AC_SELFTEST_OK checks=25/25 wifiLagSafe=true pvpFalseAlerts=HARDENED antiEsp=PACKET_HIDE antiXray=ENGINE_HIDE drill3x3=SAFE adaptiveRender=OK gui=54 legend=GREEN_ORANGE_RED stage=" + demo.stage.name() + " idleHolo=0 devices=6";
     }
 }

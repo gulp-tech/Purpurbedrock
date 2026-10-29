@@ -89,6 +89,11 @@ public final class ACConfig {
     public int maxPingForAutoPunish;
     public double minTpsForAutoPunish;
     public long setbackCooldownMs;
+    public boolean antiEspEnabled;
+    public int antiEspIntervalTicks;
+    public int antiEspHideAfterSamples;
+    public double antiEspMinDistance;
+    public double antiEspMaxDistance;
 
     // Adaptive Sleep/Wake Engine
     public int sleepSampleInterval;
@@ -260,6 +265,57 @@ public final class ACConfig {
             c.set("config-version", 5);
             migrated = true;
         }
+        // v6 recalibrates combat around real Bedrock PvP and adds packet-level Anti-ESP.
+        // Existing installations are migrated too; otherwise old aggressive values continue
+        // complaining about legitimate combos even after the plugin JAR is updated.
+        if (cfgVersion < 6) {
+            c.set("protection.anti-esp.enabled", true);
+            c.set("protection.anti-esp.interval-ticks", 5);
+            c.set("protection.anti-esp.hide-after-samples", 3);
+            c.set("protection.anti-esp.min-distance", 7.0);
+            c.set("protection.anti-esp.max-distance", 128.0);
+
+            c.set("alerts.confirmation.evidence-required", 3);
+            c.set("alerts.confirmation.min-separation-ms", 900L);
+            c.set("alerts.confirmation.window-ms", 12000L);
+            c.set("alerts.confirmation.same-check-cooldown-ms", 6000L);
+            c.set("alerts.confirmation.high-ping-extra-evidence", 2);
+
+            c.set("checks.reach.max-reach-pc", 3.65);
+            c.set("checks.reach.max-reach-controller", 3.85);
+            c.set("checks.reach.max-reach-touch", 4.55);
+            c.set("checks.reach.cancel-hit-above", 5.30);
+            c.set("checks.reach.buffer", 6.0);
+            c.set("checks.reach.decay", 0.80);
+            c.set("checks.reach.cancel-action", false);
+
+            c.set("checks.hitbox.max-angle-expansion", 0.55);
+            c.set("checks.hitbox.touch-max-angle-deg", 120.0);
+            c.set("checks.hitbox.buffer", 8.0);
+            c.set("checks.hitbox.decay", 0.90);
+            c.set("checks.hitbox.cancel-action", false);
+
+            c.set("checks.killaura.multi-aura-window-ms", 25L);
+            c.set("checks.killaura.buffer", 7.0);
+            c.set("checks.killaura.decay", 0.85);
+            c.set("checks.killaura.cancel-action", false);
+
+            c.set("checks.aim.snap-min-yaw-deg", 78.0);
+            c.set("checks.aim.snap-back-min-yaw-deg", 68.0);
+            c.set("checks.aim.buffer", 9.0);
+            c.set("checks.aim.decay", 1.0);
+
+            c.set("checks.autoclicker.max-cps-pc", 30);
+            c.set("checks.autoclicker.max-cps-touch", 28);
+            c.set("checks.autoclicker.min-stddev-ms", 0.0);
+            c.set("checks.autoclicker.buffer", 7.0);
+            c.set("checks.autoclicker.cancel-action", false);
+
+            c.set("checks.criticals.buffer", 8.0);
+            c.set("checks.criticals.cancel-action", false);
+            c.set("config-version", 6);
+            migrated = true;
+        }
         if (migrated) {
             plugin.saveConfig();
         }
@@ -275,6 +331,12 @@ public final class ACConfig {
         maxPingForAutoPunish = Math.max(120, c.getInt("protection.max-ping-for-autopunish", 320));
         minTpsForAutoPunish = Math.clamp(c.getDouble("protection.min-tps-for-autopunish", 18.5), 12.0, 20.0);
         setbackCooldownMs = Math.max(150L, c.getLong("protection.setback-cooldown-ms", 450L));
+        antiEspEnabled = c.getBoolean("protection.anti-esp.enabled", true);
+        antiEspIntervalTicks = Math.clamp(c.getInt("protection.anti-esp.interval-ticks", 5), 2, 20);
+        antiEspHideAfterSamples = Math.clamp(c.getInt("protection.anti-esp.hide-after-samples", 3), 2, 10);
+        antiEspMinDistance = Math.clamp(c.getDouble("protection.anti-esp.min-distance", 7.0), 3.0, 24.0);
+        antiEspMaxDistance = Math.max(antiEspMinDistance + 8.0,
+            Math.clamp(c.getDouble("protection.anti-esp.max-distance", 128.0), 24.0, 192.0));
 
         sleepSampleInterval = Math.max(1, c.getInt("adaptive-engine.sleep-sample-interval", 4));
         wakingSampleInterval = Math.max(1, c.getInt("adaptive-engine.waking-sample-interval", 2));
@@ -348,24 +410,24 @@ public final class ACConfig {
         legendRedName = c.getString("menu.legend.red-name", "&c&l🔴 КРАСНЫЙ УРОВЕНЬ — ВЫСОКИЙ РИСК (СОФТ)");
         legendRedLore = c.getStringList("menu.legend.red-lore");
 
-        maxReachPc = c.getDouble("checks.reach.max-reach-pc", 3.30);
-        maxReachController = c.getDouble("checks.reach.max-reach-controller", 3.40);
-        maxReachTouch = c.getDouble("checks.reach.max-reach-touch", 4.15);
-        cancelReachAbove = c.getDouble("checks.reach.cancel-hit-above", 4.45);
+        maxReachPc = c.getDouble("checks.reach.max-reach-pc", 3.65);
+        maxReachController = c.getDouble("checks.reach.max-reach-controller", 3.85);
+        maxReachTouch = c.getDouble("checks.reach.max-reach-touch", 4.55);
+        cancelReachAbove = c.getDouble("checks.reach.cancel-hit-above", 5.30);
 
-        hitboxMaxExpansion = c.getDouble("checks.hitbox.max-angle-expansion", 0.30);
-        hitboxTouchMaxAngleDeg = c.getDouble("checks.hitbox.touch-max-angle-deg", 88.0);
+        hitboxMaxExpansion = c.getDouble("checks.hitbox.max-angle-expansion", 0.55);
+        hitboxTouchMaxAngleDeg = c.getDouble("checks.hitbox.touch-max-angle-deg", 120.0);
 
-        multiAuraWindowMs = c.getLong("checks.killaura.multi-aura-window-ms", 45L);
+        multiAuraWindowMs = c.getLong("checks.killaura.multi-aura-window-ms", 25L);
         killauraThroughWalls = c.getBoolean("checks.killaura.check-through-walls", true);
         killauraOpenInventory = c.getBoolean("checks.killaura.check-open-inventory", true);
 
-        aimSnapMinYawDeg = (float) c.getDouble("checks.aim.snap-min-yaw-deg", 58.0);
-        aimSnapBackMinYawDeg = (float) c.getDouble("checks.aim.snap-back-min-yaw-deg", 45.0);
+        aimSnapMinYawDeg = (float) c.getDouble("checks.aim.snap-min-yaw-deg", 78.0);
+        aimSnapBackMinYawDeg = (float) c.getDouble("checks.aim.snap-back-min-yaw-deg", 68.0);
 
-        maxCpsPc = c.getInt("checks.autoclicker.max-cps-pc", 22);
-        maxCpsTouch = c.getInt("checks.autoclicker.max-cps-touch", 19);
-        minClickStdDevMs = c.getDouble("checks.autoclicker.min-stddev-ms", 2.0);
+        maxCpsPc = c.getInt("checks.autoclicker.max-cps-pc", 30);
+        maxCpsTouch = c.getInt("checks.autoclicker.max-cps-touch", 28);
+        minClickStdDevMs = c.getDouble("checks.autoclicker.min-stddev-ms", 0.0);
 
         minVelocityRatio = c.getDouble("checks.velocity.min-vertical-ratio", 0.14);
         autoTotemMinPopDelayMs = c.getLong("checks.autototem.min-pop-delay-ms", 65L);
