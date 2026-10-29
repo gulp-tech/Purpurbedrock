@@ -1,4 +1,4 @@
-# PurpurBedrockNPC 26.2
+# PurpurBedrockNPC 26.2.1
 settings:
   # Защищает от двойного клика Bedrock/Java и повторного события основной/второй руки.
   click-cooldown-ms: 350

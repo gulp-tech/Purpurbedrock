@@ -17,9 +17,11 @@ import org.bukkit.entity.TextDisplay;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.event.entity.EntityCombustEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityPotionEffectEvent;
+import org.bukkit.event.entity.EntityRemoveEvent;
 import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
 import org.bukkit.event.player.PlayerInteractAtEntityEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
@@ -53,6 +55,8 @@ final class NpcManager implements Listener {
     private final Map<String, SpawnedNpc> spawned = new HashMap<>();
     private final Map<UUID, String> entityToNpc = new HashMap<>();
     private final Set<String> spawning = new HashSet<>();
+    private final Set<String> recoveryQueued = new HashSet<>();
+    private final Set<UUID> intentionalRemoval = new HashSet<>();
     private final Map<UUID, Long> clickCooldown = new HashMap<>();
     private long clickCooldownMillis;
     private double defaultHologramHeight;
@@ -252,6 +256,8 @@ final class NpcManager implements Listener {
     void shutdown() {
         removeSpawnedEntities();
         definitions.clear();
+        recoveryQueued.clear();
+        intentionalRemoval.clear();
         clickCooldown.clear();
     }
 
@@ -283,7 +289,7 @@ final class NpcManager implements Listener {
             String storedId = entity.getPersistentDataContainer().get(npcIdKey, PersistentDataType.STRING);
             if (definition.id.equals(storedId)
                 && (entity.getScoreboardTags().contains(NPC_TAG) || entity.getScoreboardTags().contains(HOLOGRAM_TAG))) {
-                entity.remove();
+                removeIntentionally(entity);
             }
         }
 
@@ -322,7 +328,7 @@ final class NpcManager implements Listener {
                 display.getPersistentDataContainer().set(npcIdKey, PersistentDataType.STRING, definition.id);
             });
         } catch (RuntimeException ex) {
-            mob.remove();
+            removeIntentionally(mob);
             plugin.getLogger().severe("Не удалось создать голограмму NPC '" + definition.id + "': " + ex.getMessage());
             return false;
         }
@@ -382,14 +388,14 @@ final class NpcManager implements Listener {
             return;
         }
         entityToNpc.remove(live.mob().getUniqueId());
-        live.mob().remove();
-        live.hologram().remove();
+        removeIntentionally(live.mob());
+        removeIntentionally(live.hologram());
     }
 
     private void removeSpawnedEntities() {
         for (SpawnedNpc live : new ArrayList<>(spawned.values())) {
-            live.mob().remove();
-            live.hologram().remove();
+            removeIntentionally(live.mob());
+            removeIntentionally(live.hologram());
         }
         spawned.clear();
         entityToNpc.clear();
@@ -397,7 +403,7 @@ final class NpcManager implements Listener {
         for (World world : Bukkit.getWorlds()) {
             for (Entity entity : world.getEntities()) {
                 if (entity.getScoreboardTags().contains(NPC_TAG) || entity.getScoreboardTags().contains(HOLOGRAM_TAG)) {
-                    entity.remove();
+                    removeIntentionally(entity);
                 }
             }
         }
@@ -409,6 +415,48 @@ final class NpcManager implements Listener {
         ConfigurationSection section = plugin.getConfig().createSection(path);
         definition.save(section);
         plugin.saveConfig();
+    }
+
+    /**
+     * Region mob-spawn flags commonly cancel every CreatureSpawnEvent, including explicitly
+     * managed CUSTOM entities. Our spawn context is synchronous and exact, so only this
+     * plugin's configured NPC is uncancelled; ordinary mobs remain blocked by the flag.
+     */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
+    public void onNpcCreatureSpawn(CreatureSpawnEvent event) {
+        if (!(event.getEntity() instanceof Mob mob)) {
+            return;
+        }
+        NpcDefinition definition = pendingSpawnDefinition(mob);
+        if (definition == null) {
+            return;
+        }
+        configureMob(mob, definition.id);
+        event.setCancelled(false);
+    }
+
+    /** Recreate managed NPCs removed by mass-kill commands or cleanup plugins. */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onEntityRemove(EntityRemoveEvent event) {
+        Entity entity = event.getEntity();
+        UUID uuid = entity.getUniqueId();
+        if (intentionalRemoval.remove(uuid)) {
+            return;
+        }
+        String id = entity.getPersistentDataContainer().get(npcIdKey, PersistentDataType.STRING);
+        if (id == null || (!entity.getScoreboardTags().contains(NPC_TAG)
+            && !entity.getScoreboardTags().contains(HOLOGRAM_TAG))) {
+            return;
+        }
+        // Chunk unload is normal persistence lifecycle; ChunkLoadEvent restores the NPC.
+        if (event.getCause().name().contains("UNLOAD")) {
+            entityToNpc.remove(uuid);
+            spawned.remove(id);
+            return;
+        }
+        entityToNpc.remove(uuid);
+        spawned.remove(id);
+        queueRecovery(id);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
@@ -559,6 +607,49 @@ final class NpcManager implements Listener {
             .replace("%world%", player.getWorld().getName());
     }
 
+    private NpcDefinition pendingSpawnDefinition(Mob mob) {
+        for (String id : spawning) {
+            NpcDefinition definition = definitions.get(id);
+            if (definition == null || definition.type != mob.getType()
+                || definition.location.getWorld() != mob.getWorld()) {
+                continue;
+            }
+            if (definition.location.distanceSquared(mob.getLocation()) <= 0.25D) {
+                return definition;
+            }
+        }
+        return null;
+    }
+
+    private void queueRecovery(String id) {
+        String normalized = normalizeId(id);
+        if (!definitions.containsKey(normalized) || !recoveryQueued.add(normalized)
+            || !plugin.isEnabled()) {
+            return;
+        }
+        // Recreate on the following tick, after the external removal command has finished
+        // iterating the world's entity collection. There is no repeating maintenance task.
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            recoveryQueued.remove(normalized);
+            NpcDefinition definition = definitions.get(normalized);
+            if (definition != null) {
+                spawn(definition);
+            }
+        });
+    }
+
+    private void removeIntentionally(Entity entity) {
+        if (entity == null) {
+            return;
+        }
+        intentionalRemoval.add(entity.getUniqueId());
+        entity.remove();
+        // Some server paths do not emit EntityRemoveEvent for an already-invalid entity.
+        if (!entity.isValid()) {
+            intentionalRemoval.remove(entity.getUniqueId());
+        }
+    }
+
     private boolean isOurNpc(Entity entity) {
         return entityToNpc.containsKey(entity.getUniqueId())
             || (entity.getScoreboardTags().contains(NPC_TAG)
@@ -606,7 +697,7 @@ final class NpcManager implements Listener {
                 throw new IllegalStateException("NPC action validation failed: " + action);
             }
         }
-        return "PURPURBEDROCK_NPC_SELFTEST_OK engine=EVENT_DRIVEN ai=OFF tasks=0 hologram=ONE_DISPLAY actions=5 potionEffects=IMMUNE";
+        return "PURPURBEDROCK_NPC_SELFTEST_OK engine=EVENT_DRIVEN ai=OFF repeatingTasks=0 hologram=ONE_DISPLAY actions=5 potionEffects=IMMUNE spawnFlag=BYPASS killall=RECOVER";
     }
 
     private static Component parseHologram(String input) {

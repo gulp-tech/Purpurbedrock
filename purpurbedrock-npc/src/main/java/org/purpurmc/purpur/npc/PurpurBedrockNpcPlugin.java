@@ -19,7 +19,7 @@ public final class PurpurBedrockNpcPlugin extends JavaPlugin {
         command.setTabCompleter(commandHandler);
         getServer().getPluginManager().registerEvents(manager, this);
         manager.load();
-        getLogger().info("PurpurBedrockNPC 26.2 активен: mob-NPC AI=OFF, scheduler tasks=0, одна TextDisplay на голограмму.");
+        getLogger().info("PurpurBedrockNPC 26.2.1 активен: mob-NPC AI=OFF, repeating scheduler tasks=0, одна TextDisplay на голограмму.");
         getLogger().info(NpcManager.runSelfTest());
     }
 

@@ -259,7 +259,7 @@ final class NpcCommand implements CommandExecutor, TabCompleter {
     }
 
     private static void help(CommandSender sender) {
-        sender.sendMessage(Component.text("=== PurpurBedrockNPC 26.2 ===", NamedTextColor.GOLD));
+        sender.sendMessage(Component.text("=== PurpurBedrockNPC 26.2.1 ===", NamedTextColor.GOLD));
         sender.sendMessage(Component.text("/pbnpc create <id> <mob> — создать неподвижного моба", NamedTextColor.AQUA));
         sender.sendMessage(Component.text("/pbnpc remove <id> | movehere <id> | type <id> <mob>", NamedTextColor.AQUA));
         sender.sendMessage(Component.text("/pbnpc holo <id> set <текст | новая строка> | clear", NamedTextColor.AQUA));
