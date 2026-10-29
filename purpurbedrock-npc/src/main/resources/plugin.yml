@@ -1,5 +1,5 @@
 name: PurpurBedrockNPC
-version: "26.2.1"
+version: "26.2.2"
 main: org.purpurmc.purpur.npc.PurpurBedrockNpcPlugin
 api-version: "26.2"
 folia-supported: false

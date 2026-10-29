@@ -23,8 +23,10 @@ import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityPotionEffectEvent;
 import org.bukkit.event.entity.EntityRemoveEvent;
 import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
+import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerInteractAtEntityEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.event.world.ChunkUnloadEvent;
@@ -57,8 +59,10 @@ final class NpcManager implements Listener {
     private final Set<String> spawning = new HashSet<>();
     private final Set<String> recoveryQueued = new HashSet<>();
     private final Set<UUID> intentionalRemoval = new HashSet<>();
+    private final Map<UUID, Long> viewerReadyAfterMs = new HashMap<>();
     private final Map<UUID, Long> clickCooldown = new HashMap<>();
     private long clickCooldownMillis;
+    private long joinVisibilityDelayTicks;
     private double defaultHologramHeight;
 
     private record SpawnedNpc(Mob mob, TextDisplay hologram) {
@@ -81,6 +85,7 @@ final class NpcManager implements Listener {
         removeSpawnedEntities();
         definitions.clear();
         clickCooldownMillis = Math.max(100L, plugin.getConfig().getLong("settings.click-cooldown-ms", 350L));
+        joinVisibilityDelayTicks = Math.clamp(plugin.getConfig().getLong("settings.join-visibility-delay-ticks", 300L), 100L, 1200L);
         defaultHologramHeight = Math.max(0.5D, plugin.getConfig().getDouble("settings.default-hologram-height", 2.3D));
         ConfigurationSection root = plugin.getConfig().getConfigurationSection("npcs");
         if (root != null) {
@@ -258,6 +263,7 @@ final class NpcManager implements Listener {
         definitions.clear();
         recoveryQueued.clear();
         intentionalRemoval.clear();
+        viewerReadyAfterMs.clear();
         clickCooldown.clear();
     }
 
@@ -313,7 +319,8 @@ final class NpcManager implements Listener {
         try {
             hologram = world.spawn(hologramLocation, TextDisplay.class, display -> {
                 display.setPersistent(false);
-                display.setVisibleByDefault(true);
+                // Opt-in visibility: never inject a display entity into StartGame/chunk loading.
+                display.setVisibleByDefault(false);
                 display.setBillboard(Display.Billboard.CENTER);
                 display.setShadowed(true);
                 display.setSeeThrough(false);
@@ -335,8 +342,10 @@ final class NpcManager implements Listener {
         spawned.put(definition.id, new SpawnedNpc(mob, hologram));
         entityToNpc.put(mob.getUniqueId(), definition.id);
         // Explicitly clear plugin visibility overrides for players already tracking this chunk.
+        long nowMs = System.currentTimeMillis();
         for (Player viewer : world.getPlayers()) {
-            if (viewer.getLocation().distanceSquared(location) <= 4096.0D) {
+            if (viewerReadyAfterMs.getOrDefault(viewer.getUniqueId(), 0L) <= nowMs
+                && viewer.getLocation().distanceSquared(location) <= 4096.0D) {
                 viewer.showEntity(plugin, mob);
                 viewer.showEntity(plugin, hologram);
             }
@@ -348,7 +357,8 @@ final class NpcManager implements Listener {
         mob.setAI(false);
         mob.setAware(false);
         mob.setInvisible(false);
-        mob.setVisibleByDefault(true);
+        // Players receive this managed entity only after their client initialization grace.
+        mob.setVisibleByDefault(false);
         mob.setGravity(false);
         mob.setSilent(plugin.getConfig().getBoolean("settings.silent", true));
         mob.setInvulnerable(plugin.getConfig().getBoolean("settings.invulnerable", true));
@@ -494,8 +504,35 @@ final class NpcManager implements Listener {
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
+    public void onJoin(PlayerJoinEvent event) {
+        Player player = event.getPlayer();
+        UUID uuid = player.getUniqueId();
+        long readyAt = System.currentTimeMillis() + joinVisibilityDelayTicks * 50L;
+        viewerReadyAfterMs.put(uuid, readyAt);
+        // NPCs are visibleByDefault=false, so no mob/display packets enter the fragile
+        // InitialConnection stage. Reveal once, after StartGame and local-player init.
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (!player.isOnline() || viewerReadyAfterMs.getOrDefault(uuid, 0L) != readyAt) {
+                return;
+            }
+            viewerReadyAfterMs.remove(uuid);
+            showNpcsTo(player);
+        }, joinVisibilityDelayTicks);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onChangedWorld(PlayerChangedWorldEvent event) {
+        Player player = event.getPlayer();
+        if (viewerReadyAfterMs.getOrDefault(player.getUniqueId(), 0L) <= System.currentTimeMillis()) {
+            showNpcsTo(player);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
     public void onQuit(PlayerQuitEvent event) {
-        clickCooldown.remove(event.getPlayer().getUniqueId());
+        UUID uuid = event.getPlayer().getUniqueId();
+        viewerReadyAfterMs.remove(uuid);
+        clickCooldown.remove(uuid);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -607,6 +644,18 @@ final class NpcManager implements Listener {
             .replace("%world%", player.getWorld().getName());
     }
 
+    private void showNpcsTo(Player viewer) {
+        World world = viewer.getWorld();
+        for (SpawnedNpc live : spawned.values()) {
+            if (live.mob().isValid() && live.mob().getWorld() == world) {
+                viewer.showEntity(plugin, live.mob());
+            }
+            if (live.hologram().isValid() && live.hologram().getWorld() == world) {
+                viewer.showEntity(plugin, live.hologram());
+            }
+        }
+    }
+
     private NpcDefinition pendingSpawnDefinition(Mob mob) {
         for (String id : spawning) {
             NpcDefinition definition = definitions.get(id);
@@ -697,7 +746,7 @@ final class NpcManager implements Listener {
                 throw new IllegalStateException("NPC action validation failed: " + action);
             }
         }
-        return "PURPURBEDROCK_NPC_SELFTEST_OK engine=EVENT_DRIVEN ai=OFF repeatingTasks=0 hologram=ONE_DISPLAY actions=5 potionEffects=IMMUNE spawnFlag=BYPASS killall=RECOVER";
+        return "PURPURBEDROCK_NPC_SELFTEST_OK engine=EVENT_DRIVEN ai=OFF repeatingTasks=0 hologram=ONE_DISPLAY actions=5 potionEffects=IMMUNE spawnFlag=BYPASS killall=RECOVER joinVisibility=DEFERRED";
     }
 
     private static Component parseHologram(String input) {

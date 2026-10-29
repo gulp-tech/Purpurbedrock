@@ -1,7 +1,9 @@
-# PurpurBedrockNPC 26.2.1
+# PurpurBedrockNPC 26.2.2
 settings:
   # Защищает от двойного клика Bedrock/Java и повторного события основной/второй руки.
   click-cooldown-ms: 350
+  # Не отправлять моба/голограмму во время начальной загрузки клиента (15 секунд).
+  join-visibility-delay-ticks: 300
   # Одна TextDisplay-сущность используется для всей многострочной голограммы.
   default-hologram-height: 2.3
   # NPC не имеют AI, гравитации, коллизии, звука, урона и лута.
