@@ -2636,6 +2636,77 @@ import java.util.concurrent.ConcurrentHashMap;""",
         "JavaKeepAliveTranslator.loadingSafeImmediateAck",
     )
 
+    # A crashed app can leave its pending/active XUID registered briefly. The next connection
+    # must replace that stale session instead of being rejected forever as "already logged in".
+    session_manager = root / "core/src/main/java/org/geysermc/geyser/session/SessionManager.java"
+    replace_exact(
+        session_manager,
+        """    public void addSession(UUID uuid, GeyserSession session) {
+        pendingSessions.remove(session);
+        sessions.put(uuid, session);
+    }
+
+    public void removeSession(GeyserSession session) {
+        UUID uuid = session.getPlayerEntity().uuid();
+        if (uuid == null || sessions.remove(uuid) == null) {
+            // Connection was likely pending
+            pendingSessions.remove(session);
+        }
+    }""",
+        """    public void addSession(UUID uuid, GeyserSession session) {
+        pendingSessions.remove(session);
+        GeyserSession previous = sessions.put(uuid, session);
+        if (previous != null && previous != session) {
+            previous.disconnect("Replaced by a newer connection");
+        }
+    }
+
+    public void removeSession(GeyserSession session) {
+        // Always remove pending state, including sessions that obtained a UUID just before
+        // failing. Remove active state conditionally so an old disconnect race cannot erase
+        // the replacement session stored under the same Java UUID.
+        pendingSessions.remove(session);
+        UUID uuid = session.getPlayerEntity().uuid();
+        if (uuid != null) {
+            sessions.remove(uuid, session);
+        }
+        sessions.entrySet().removeIf(entry -> entry.getValue() == session);
+    }
+
+    public void replaceSessionsByXuid(String xuid, GeyserSession replacement) {
+        if (xuid == null || xuid.isBlank()) {
+            return;
+        }
+        for (GeyserSession previous : getAllSessions()) {
+            if (previous != replacement && xuid.equals(previous.xuid())) {
+                pendingSessions.remove(previous);
+                UUID uuid = previous.getPlayerEntity().uuid();
+                if (uuid != null) {
+                    sessions.remove(uuid, previous);
+                }
+                previous.disconnect("Replaced by a newer connection");
+            }
+        }
+    }""",
+        "SessionManager.atomicReconnectReplacement",
+    )
+
+    replace_exact(
+        upstream_handler,
+        """        if (geyser.getSessionManager().isXuidAlreadyPending(session.xuid()) || geyser.getSessionManager().sessionByXuid(session.xuid()) != null) {
+            session.disconnect(GeyserLocale.getLocaleStringLog("geyser.auth.already_loggedin", session.bedrockUsername()));
+            return PacketSignal.HANDLED;
+        }
+
+        // Set the block translation based off of version""",
+        """        // Mobile clients often reconnect before a timed-out socket's close event reaches
+        // the server. Atomically evict that stale XUID so the second login can proceed.
+        geyser.getSessionManager().replaceSessionsByXuid(session.xuid(), session);
+
+        // Set the block translation based off of version""",
+        "UpstreamPacketHandler.replaceStaleSessionOnReconnect",
+    )
+
     # Existing installations may still contain the former 120-second value. Clamp the runtime
     # authentication window without requiring users to regenerate their configuration.
     geyser_impl = root / "core/src/main/java/org/geysermc/geyser/GeyserImpl.java"
