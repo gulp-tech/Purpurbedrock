@@ -2604,7 +2604,10 @@ import java.util.concurrent.ConcurrentHashMap;""",
         raknet_server,
         """            .option(RakChannelOption.RAK_THROTTLE, rakRateLimitingDisabled ? null : new DefaultRakServerThrottle(maxConnectionsPerAddress, 4_000, 3))
             .childHandler(serverInitializer);""",
-        """            .option(RakChannelOption.RAK_THROTTLE, rakRateLimitingDisabled ? null : new DefaultRakServerThrottle(maxConnectionsPerAddress, 4_000, 3))
+        """            // Permit rapid retries after app crashes and Wi-Fi/LTE handovers. The packet/global
+            // limiters still protect the socket; three admissions per four seconds was too low
+            // for a client retry sequence and silently produced a timeout screen.
+            .option(RakChannelOption.RAK_THROTTLE, rakRateLimitingDisabled ? null : new DefaultRakServerThrottle(maxConnectionsPerAddress, 1_000, 20))
             .childOption(RakChannelOption.RAK_SESSION_TIMEOUT,
                 Math.max(30_000L, Long.getLong("purpurbedrock.rakSessionTimeoutMs", 120_000L)))
             .childHandler(serverInitializer);""",
@@ -3114,10 +3117,12 @@ import java.util.concurrent.ConcurrentHashMap;""",
         int rakGlobalPacketLimit = positivePropOrDefault("Geyser.RakGlobalPacketLimit", Math.max(300000, DEFAULT_GLOBAL_PACKET_LIMIT));
         this.geyser.getLogger().debug("Setting RakNet global packet limit to " + rakGlobalPacketLimit);
 
-        boolean rakSendCookie = Boolean.parseBoolean(System.getProperty("Geyser.RakSendCookie", "false"));
+        // Keep stateless cookies enabled: they prove ownership of the source endpoint and let
+        // a new handshake safely close a stale child channel immediately on the second join.
+        boolean rakSendCookie = Boolean.parseBoolean(System.getProperty("Geyser.RakSendCookie", "true"));
         this.geyser.getLogger().debug("Setting RakNet send cookie to " + rakSendCookie);
 
-        int maxConnectionsPerAddress = positivePropOrDefault("Geyser.MaxConnectionsPerAddress", 32);""",
+        int maxConnectionsPerAddress = positivePropOrDefault("Geyser.MaxConnectionsPerAddress", 100);""",
         "RaknetServer.safeRateLimitsForPackAndCgnat",
     )
 
