@@ -950,6 +950,28 @@ public final class CheckRunner {
             return;
         }
         boolean isSweep = event.getCause() == EntityDamageByEntityEvent.DamageCause.ENTITY_SWEEP_ATTACK;
+        String weaponName = attacker.getInventory().getItemInMainHand().getType().name();
+        boolean spearAttack = weaponName.endsWith("_SPEAR");
+        if (spearAttack) {
+            // A charged spear lunge is server-authoritative movement, not Speed/Timer/Velocity.
+            attackerProfile.exemptUntilMs = Math.max(attackerProfile.exemptUntilMs, nowMs + 1200L);
+            attackerProfile.explosionGraceUntilMs = Math.max(attackerProfile.explosionGraceUntilMs, nowMs + 1800L);
+        }
+
+        // PvE weapons (especially 26.2 spears) can legitimately fan one physical attack out
+        // into several ENTITY_ATTACK events in the same tick. Treating those mob hits as clicks,
+        // MultiAura targets, Reach, or HitBox evidence causes false VL and kicks in mob farms.
+        // Combat heuristics are therefore player-vs-player only; invalid self/dead packets above
+        // remain blocked, while ordinary mob damage stays fully server-authoritative.
+        if (!(victim instanceof Player)) {
+            attackerProfile.decayBuffer("autoclicker", 2.0);
+            attackerProfile.decayBuffer("criticals", 2.0);
+            attackerProfile.decayBuffer("killaura", 2.0);
+            attackerProfile.decayBuffer("reach", 2.0);
+            attackerProfile.decayBuffer("hitbox", 2.0);
+            attackerProfile.decayBuffer("aim", 2.0);
+            return;
+        }
 
         BedrockBridgeInfo.InputCategory inputCat = BedrockBridgeInfo.getInputCategory(attacker);
         int ping = BedrockBridgeInfo.getPing(attacker);
@@ -1087,12 +1109,21 @@ public final class CheckRunner {
         if (ping > cfg.highPingLeniencyMs) {
             maxReach += 0.20;
         }
+        AttributeInstance interactionRange = attacker.getAttribute(Attribute.ENTITY_INTERACTION_RANGE);
+        double serverInteractionRange = interactionRange == null ? 3.0 : interactionRange.getValue();
+        // Respect the authoritative item/attribute reach. Spears also lunge between movement
+        // samples, so retain extra interpolation room rather than cancelling a legal hit.
+        maxReach = Math.max(maxReach, serverInteractionRange + (spearAttack ? 1.10 : 0.45));
+        if (spearAttack) {
+            maxReach = Math.max(maxReach, 5.75);
+        }
 
         ACConfig.CheckSettings reachCfg = cfg.check("reach");
         if (reachCfg.enabled) {
             if (dist > maxReach) {
                 plugin.engine().nudgeSuspicion(attackerProfile, 1.4);
-                if (dist >= cfg.cancelReachAbove) {
+                double hardCancelReach = Math.max(cfg.cancelReachAbove, maxReach + 0.85);
+                if (dist >= hardCancelReach) {
                     event.setCancelled(true); // Instant InfiniteAura / blatant Reach protection
                 }
                 double weight = dist > (maxReach + 0.60) ? 1.5 : 1.0;

@@ -163,6 +163,8 @@ jobs:
             cp purpurbedrock-anticheat/build/libs/PurpurBedrockAC-26.2.jar PurpurBedrockAC-26.2.jar
             sha256sum PurpurBedrockAC-26.2.jar > PurpurBedrockAC-26.2.jar.sha256
             jar tf PurpurBedrockAC-26.2.jar | grep -q 'org/purpurmc/purpur/anticheat/engine/AntiEspManager.class'
+            grep -Fq 'if (!(victim instanceof Player)) {' purpurbedrock-anticheat/src/main/java/org/purpurmc/purpur/anticheat/engine/CheckRunner.java
+            grep -Fq 'weaponName.endsWith("_SPEAR")' purpurbedrock-anticheat/src/main/java/org/purpurmc/purpur/anticheat/engine/CheckRunner.java
             grep -q 'xray.engineMode = EngineMode.HIDE;' purpur-server/src/main/java/org/purpurmc/purpur/bedrock/BedrockAntiXrayHelper.java
 
             echo "Building standalone PurpurBedrockNPC against local maven purpur-api:${PURPUR_VER}..."
@@ -423,7 +425,7 @@ jobs:
               "PurpurBedrockAC 26.2 запущен! Адаптивный спящий режим активен",
               "PurpurBedrockNPC 26.2.2 активен: mob-NPC AI=OFF, repeating scheduler tasks=0, одна TextDisplay на голограмму.",
               "PURPURBEDROCK_NPC_SELFTEST_OK engine=EVENT_DRIVEN ai=OFF repeatingTasks=0 hologram=ONE_DISPLAY actions=5 potionEffects=IMMUNE spawnFlag=BYPASS killall=RECOVER joinVisibility=DEFERRED",
-              "PURPURBEDROCK_AC_SELFTEST_OK checks=25/25 wifiLagSafe=true pvpFalseAlerts=HARDENED antiEsp=PACKET_HIDE joinInit=SAFE antiXray=ENGINE_HIDE drill3x3=SAFE adaptiveRender=OK gui=54 legend=GREEN_ORANGE_RED stage=AWAKE idleHolo=0 devices=6",
+              "PURPURBEDROCK_AC_SELFTEST_OK checks=25/25 wifiLagSafe=true pvpFalseAlerts=HARDENED pveCrowd=EXEMPT spearReach=SAFE antiEsp=PACKET_HIDE joinInit=SAFE antiXray=ENGINE_HIDE drill3x3=SAFE adaptiveRender=OK gui=54 legend=GREEN_ORANGE_RED stage=AWAKE idleHolo=0 devices=6",
               "Статус PurpurBedrockAC 26.2",
               "NetherNet LAN Discovery active on UDP",
               "Вход только с Bedrock (блок Java): ВКЛЮЧЁН",
@@ -447,6 +449,25 @@ jobs:
 
           print("ALL PURPURBEDROCK 26.2 LIVE SMOKE TESTS PASSED!")
           PY
+
+      # Never replace the exact connectivity-proven core with a fresh SNAPSHOT dependency
+      # resolution when this run only updates standalone plugins.
+      - name: Download connectivity-proven core for publication
+        uses: actions/download-artifact@v4
+        with:
+          name: purpurbedrock-26.2
+          path: /tmp/proven-core
+          repository: gulp-tech/Purpurbedrock
+          run-id: 40844334407
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Keep proven core binary in release
+        run: |
+          set -euo pipefail
+          test "$(stat -c '%s' /tmp/proven-core/purpurbedrock-26.2.jar)" = "117967190"
+          (cd /tmp/proven-core && sha256sum -c purpurbedrock-26.2.jar.sha256)
+          cp /tmp/proven-core/purpurbedrock-26.2.jar purpurbedrock-26.2.jar
+          cp /tmp/proven-core/purpurbedrock-26.2.jar.sha256 purpurbedrock-26.2.jar.sha256
 
       - name: Upload Purpurbedrock 26.2 Core Artifact
         uses: actions/upload-artifact@v4
