@@ -165,6 +165,9 @@ jobs:
             grep -Fq 'if (!(victim instanceof Player)) {' purpurbedrock-anticheat/src/main/java/org/purpurmc/purpur/anticheat/engine/CheckRunner.java
             grep -Fq 'weaponName.endsWith("_SPEAR")' purpurbedrock-anticheat/src/main/java/org/purpurmc/purpur/anticheat/engine/CheckRunner.java
             grep -q 'xray.engineMode = EngineMode.HIDE;' purpur-server/src/main/java/org/purpurmc/purpur/bedrock/BedrockAntiXrayHelper.java
+            grep -q 'bedrockAntiXrayMaxHeight = 320;' purpur-server/src/main/java/org/purpurmc/purpur/PurpurConfig.java
+            grep -q 'Blocks.SHULKER_BOX' purpur-server/src/main/java/org/purpurmc/purpur/bedrock/BedrockAntiXrayHelper.java
+            grep -q 'entity instanceof InventoryHolder' purpurbedrock-anticheat/src/main/java/org/purpurmc/purpur/anticheat/engine/AntiEspManager.java
 
             echo "Building standalone PurpurBedrockNPC against local maven purpur-api:${PURPUR_VER}..."
             npc_built=false
@@ -424,7 +427,7 @@ jobs:
               "PurpurBedrockAC 26.2 запущен! Адаптивный спящий режим активен",
               "PurpurBedrockNPC 26.2.2 активен: mob-NPC AI=OFF, repeating scheduler tasks=0, одна TextDisplay на голограмму.",
               "PURPURBEDROCK_NPC_SELFTEST_OK engine=EVENT_DRIVEN ai=OFF repeatingTasks=0 hologram=ONE_DISPLAY actions=5 potionEffects=IMMUNE spawnFlag=BYPASS killall=RECOVER joinVisibility=DEFERRED",
-              "PURPURBEDROCK_AC_SELFTEST_OK checks=25/25 wifiLagSafe=true pvpFalseAlerts=HARDENED pveCrowd=EXEMPT spearReach=SAFE antiEsp=PACKET_HIDE joinInit=SAFE antiXray=ENGINE_HIDE drill3x3=SAFE adaptiveRender=OK gui=54 legend=GREEN_ORANGE_RED stage=AWAKE idleHolo=0 devices=6",
+              "PURPURBEDROCK_AC_SELFTEST_OK checks=25/25 wifiLagSafe=true pvpFalseAlerts=HARDENED pveCrowd=EXEMPT spearReach=SAFE antiEsp=BASE_ENTITY_HIDE joinInit=SAFE antiXray=FULL_HEIGHT_HIDE drill3x3=SAFE adaptiveRender=OK gui=54 legend=GREEN_ORANGE_RED stage=AWAKE idleHolo=0 devices=6",
               "Статус PurpurBedrockAC 26.2",
               "NetherNet LAN Discovery active on UDP",
               "Вход только с Bedrock (блок Java): ВКЛЮЧЁН",
@@ -540,7 +543,7 @@ jobs:
               - `bedrock/packs` (`.mcpack` / `.zip` ресурспаки Bedrock)
             - **Полная обратная совместимость карт и плагинов `26.3 -> 26.2`**: бесшовная конвертация палитр блоков, тайлов, предметов (`golden_dandelion`, `sulfur_cube` и др.), `blending_data` и `DataVersion 5023 -> 4903` без сброса блоков в `air` и без ошибок `Invalid block entity`, а плагины с `api-version: 26.3` (`WorldGuard 7.0.20` и др.) загружаются штатно.
             - **Полная поддержка Java-меню (`9x1`–`9x6`)**: нативный перехват кликов и переходов между подменю в `ServerGamePacketListenerImpl` + встроенная команда `/purpurbedrock menu` (`/pb menu`).
-            - **Bedrock Anti-Xray (из коробки)**: `EngineMode.HIDE` (`Y <= 128`, `lava-obscures: true`) для Обычного мира и Незера с минимальной нагрузкой на FPS телефонов и TPS сервера.
+            - **Bedrock Anti-Xray (из коробки)**: `EngineMode.HIDE` (`Y <= 320`, `lava-obscures: true`) для Обычного мира и Незера с минимальной нагрузкой на FPS телефонов и TPS сервера.
             - **Ноль флагов движения и ноль фантомных блоков**: встроенные `BedrockMovementGuard` и `BedrockGhostBlockResync`.
             - **Нативная боёвка Bedrock (`1.8` / без КД)**: полный урон без кулдауна 1.9, криты в спринте, сохранение спринта в комбо, мгновенный щит + щит на шифте, откидывание снежками и яйцами.
             - **Видимость в локальной сети Windows 11**: при первом запуске автоматически создаётся `unlock-windows-lan.bat`.

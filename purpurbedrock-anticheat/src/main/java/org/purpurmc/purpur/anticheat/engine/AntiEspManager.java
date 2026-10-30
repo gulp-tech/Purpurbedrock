@@ -3,7 +3,11 @@ package org.purpurmc.purpur.anticheat.engine;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.World;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.Hanging;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.scheduler.BukkitTask;
 import org.purpurmc.purpur.anticheat.PurpurBedrockACPlugin;
 import org.purpurmc.purpur.anticheat.config.ACConfig;
@@ -15,8 +19,10 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Packet-level player ESP protection. A target that remains fully occluded is removed from the
- * viewer's entity stream; it is restored immediately when visible or close enough for normal PvP.
+ * Packet-level player and base-entity ESP protection. A target that remains fully occluded is removed
+ * from the viewer's entity stream; it is restored immediately when visible or close enough for normal PvP.
+ * Besides players this covers mobs, armour stands, item frames and container vehicles commonly used
+ * by base-finder modules. Dropped items/projectiles are intentionally ignored to keep churn negligible.
  * Hysteresis prevents entity flicker at doorways and corners.
  */
 public final class AntiEspManager {
@@ -80,7 +86,7 @@ public final class AntiEspManager {
             }
             if (state.hidden) {
                 Player viewer = Bukkit.getPlayer(pair.viewer);
-                Player target = Bukkit.getPlayer(pair.target);
+                Entity target = Bukkit.getEntity(pair.target);
                 if (viewer != null && target != null) {
                     viewer.showEntity(plugin, target);
                 }
@@ -107,16 +113,21 @@ public final class AntiEspManager {
 
         for (World world : Bukkit.getWorlds()) {
             var players = world.getPlayers();
-            if (players.size() < 2) {
+            if (players.isEmpty()) {
                 continue;
             }
+            // Materialize only stable ESP-relevant entities once per world/tick. This avoids
+            // O(players * every projectile/item) work on mob farms and busy survival worlds.
+            var protectedTargets = world.getEntities().stream()
+                .filter(this::isProtectedTarget)
+                .toList();
             for (Player viewer : players) {
                 if (!eligibleViewer(viewer, cfg) || !protocolReady(viewer, nowMs)) {
                     revealForViewer(viewer);
                     continue;
                 }
-                for (Player target : players) {
-                    if (viewer == target || !target.isOnline() || target.isDead()) {
+                for (Entity target : protectedTargets) {
+                    if (viewer == target || !target.isValid() || target.isDead()) {
                         continue;
                     }
                     double distanceSq = viewer.getLocation().distanceSquared(target.getLocation());
@@ -124,7 +135,7 @@ public final class AntiEspManager {
                     visited.add(pair);
                     VisibilityState state = states.computeIfAbsent(pair, ignored -> new VisibilityState());
 
-                    boolean mustShow = !protocolReady(target, nowMs)
+                    boolean mustShow = (target instanceof Player targetPlayer && !protocolReady(targetPlayer, nowMs))
                         || distanceSq <= minSq
                         || distanceSq > maxSq
                         || viewer.hasLineOfSight(target);
@@ -153,7 +164,7 @@ public final class AntiEspManager {
             VisibilityState state = entry.getValue();
             if (state.hidden) {
                 Player viewer = Bukkit.getPlayer(entry.getKey().viewer);
-                Player target = Bukkit.getPlayer(entry.getKey().target);
+                Entity target = Bukkit.getEntity(entry.getKey().target);
                 if (viewer != null && target != null) {
                     viewer.showEntity(plugin, target);
                 }
@@ -164,6 +175,15 @@ public final class AntiEspManager {
 
     private boolean protocolReady(Player player, long nowMs) {
         return readyAfterMs.getOrDefault(player.getUniqueId(), 0L) <= nowMs;
+    }
+
+    private boolean isProtectedTarget(Entity entity) {
+        // LivingEntity includes players, villagers, animals and armour stands. Hanging covers
+        // item frames/paintings; InventoryHolder catches chest/hopper minecarts and similar
+        // storage entities without hiding high-churn item drops or projectiles.
+        return entity instanceof LivingEntity
+            || entity instanceof Hanging
+            || entity instanceof InventoryHolder;
     }
 
     private boolean eligibleViewer(Player viewer, ACConfig cfg) {
@@ -181,7 +201,7 @@ public final class AntiEspManager {
         UUID id = viewer.getUniqueId();
         states.forEach((pair, state) -> {
             if (state.hidden && pair.viewer.equals(id)) {
-                Player target = Bukkit.getPlayer(pair.target);
+                Entity target = Bukkit.getEntity(pair.target);
                 if (target != null) {
                     viewer.showEntity(plugin, target);
                 }
@@ -197,7 +217,7 @@ public final class AntiEspManager {
                 return;
             }
             Player viewer = Bukkit.getPlayer(pair.viewer);
-            Player target = Bukkit.getPlayer(pair.target);
+            Entity target = Bukkit.getEntity(pair.target);
             if (viewer != null && target != null) {
                 viewer.showEntity(plugin, target);
             }

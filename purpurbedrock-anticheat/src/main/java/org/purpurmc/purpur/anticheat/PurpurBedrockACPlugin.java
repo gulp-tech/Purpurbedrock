@@ -338,6 +338,6 @@ public final class PurpurBedrockACPlugin extends JavaPlugin {
             || config.hologramMobileMaxTargets > config.hologramDesktopMaxTargets) {
             throw new IllegalStateException("Device-adaptive hologram budget mismatch");
         }
-        return "PURPURBEDROCK_AC_SELFTEST_OK checks=25/25 wifiLagSafe=true pvpFalseAlerts=HARDENED pveCrowd=EXEMPT spearReach=SAFE antiEsp=PACKET_HIDE joinInit=SAFE antiXray=ENGINE_HIDE drill3x3=SAFE adaptiveRender=OK gui=54 legend=GREEN_ORANGE_RED stage=" + demo.stage.name() + " idleHolo=0 devices=6";
+        return "PURPURBEDROCK_AC_SELFTEST_OK checks=25/25 wifiLagSafe=true pvpFalseAlerts=HARDENED pveCrowd=EXEMPT spearReach=SAFE antiEsp=BASE_ENTITY_HIDE joinInit=SAFE antiXray=FULL_HEIGHT_HIDE drill3x3=SAFE adaptiveRender=OK gui=54 legend=GREEN_ORANGE_RED stage=" + demo.stage.name() + " idleHolo=0 devices=6";
     }
 }

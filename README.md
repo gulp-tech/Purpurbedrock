@@ -32,7 +32,7 @@
 
 5. **Встроенный Anti-Xray специально под Bedrock (`EngineMode.HIDE`)**
    - Автоматически включён во всех мирах (`BedrockAntiXrayHelper` + дефолты Paper `WorldConfiguration`):
-     - **Обычный мир (`Y <= 128`, `lava-obscures: true`)**: скрывает `diamond_ore`, `deepslate_diamond_ore`, `emerald_ore`, `gold_ore`, `iron_ore`, `copper_ore`, `lapis_ore`, `redstone_ore`, `coal_ore` и `raw_iron_block` / `raw_copper_block`, заменяя несоприкасающиеся с воздухом жилы на камень/глубинный сланец.
+     - **Обычный мир (`Y <= 320`, `lava-obscures: true`)**: скрывает `diamond_ore`, `deepslate_diamond_ore`, `emerald_ore`, `gold_ore`, `iron_ore`, `copper_ore`, `lapis_ore`, `redstone_ore`, `coal_ore` и `raw_iron_block` / `raw_copper_block`, заменяя несоприкасающиеся с воздухом жилы на камень/глубинный сланец.
      - **Незер (`Y <= 128`, `lava-obscures: true`)**: скрывает **`ancient_debris`** (древние обломки / незерит), `nether_gold_ore` и `nether_quartz_ore`, заменяя их на незерак.
    - Режим `HIDE` даёт **0 фейковых руд**, поэтому **не просаживает FPS на слабых телефонах** и практически не нагружает CPU сервера.
 

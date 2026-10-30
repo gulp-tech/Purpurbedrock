@@ -324,6 +324,16 @@ public final class ACConfig {
             c.set("config-version", 7);
             migrated = true;
         }
+        // v8 closes base-finder leaks: less near-wall exposure, faster concealment and
+        // full entity tracking range. AntiEspManager now also masks stable base entities.
+        if (cfgVersion < 8) {
+            c.set("protection.anti-esp.interval-ticks", 4);
+            c.set("protection.anti-esp.hide-after-samples", 2);
+            c.set("protection.anti-esp.min-distance", 3.0);
+            c.set("protection.anti-esp.max-distance", 192.0);
+            c.set("config-version", 8);
+            migrated = true;
+        }
         if (migrated) {
             plugin.saveConfig();
         }
@@ -340,12 +350,12 @@ public final class ACConfig {
         minTpsForAutoPunish = Math.clamp(c.getDouble("protection.min-tps-for-autopunish", 18.5), 12.0, 20.0);
         setbackCooldownMs = Math.max(150L, c.getLong("protection.setback-cooldown-ms", 450L));
         antiEspEnabled = c.getBoolean("protection.anti-esp.enabled", true);
-        antiEspIntervalTicks = Math.clamp(c.getInt("protection.anti-esp.interval-ticks", 5), 2, 20);
-        antiEspHideAfterSamples = Math.clamp(c.getInt("protection.anti-esp.hide-after-samples", 3), 2, 10);
+        antiEspIntervalTicks = Math.clamp(c.getInt("protection.anti-esp.interval-ticks", 4), 2, 20);
+        antiEspHideAfterSamples = Math.clamp(c.getInt("protection.anti-esp.hide-after-samples", 2), 2, 10);
         antiEspJoinGraceTicks = Math.clamp(c.getInt("protection.anti-esp.join-grace-ticks", 300), 100, 1200);
-        antiEspMinDistance = Math.clamp(c.getDouble("protection.anti-esp.min-distance", 7.0), 3.0, 24.0);
+        antiEspMinDistance = Math.clamp(c.getDouble("protection.anti-esp.min-distance", 3.0), 3.0, 24.0);
         antiEspMaxDistance = Math.max(antiEspMinDistance + 8.0,
-            Math.clamp(c.getDouble("protection.anti-esp.max-distance", 128.0), 24.0, 192.0));
+            Math.clamp(c.getDouble("protection.anti-esp.max-distance", 192.0), 24.0, 192.0));
 
         sleepSampleInterval = Math.max(1, c.getInt("adaptive-engine.sleep-sample-interval", 4));
         wakingSampleInterval = Math.max(1, c.getInt("adaptive-engine.waking-sample-interval", 2));

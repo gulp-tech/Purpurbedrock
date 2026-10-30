@@ -637,7 +637,7 @@ public class PurpurConfig {
     public static float bedrockInstaMineProgressThreshold = 0.65F;
     public static boolean bedrockAntiXrayEnabled = true;
     public static boolean bedrockAntiXrayLavaObscures = true;
-    public static int bedrockAntiXrayMaxHeight = 128;
+    public static int bedrockAntiXrayMaxHeight = 320;
     public static boolean bedrockPerformanceOptimizeWorlds = true;
     public static boolean bedrockChunkLoadingFix = true;
     public static boolean bedrockPlaceholdersEnabled = true;

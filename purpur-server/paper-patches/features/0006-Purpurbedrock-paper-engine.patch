@@ -92,7 +92,7 @@ index 86ae93a9cad3d165bbe0aec5babbe98dbf50d625..9461dc118eb49d14da4fbf665b76f95d
 +            public boolean enabled = true; // Purpurbedrock - Bedrock-tuned Anti-Xray enabled by default
              public EngineMode engineMode = EngineMode.HIDE;
 -            public int maxBlockHeight = 64;
-+            public int maxBlockHeight = 128; // Purpurbedrock - Cover all Overworld caves & Nether Ancient Debris
++            public int maxBlockHeight = 320; // Purpurbedrock - Full build height and buried base storage
              public int updateRadius = 2;
 -            public boolean lavaObscures = false;
 +            public boolean lavaObscures = true; // Purpurbedrock - Hide ores under lava from Bedrock X-Ray packs

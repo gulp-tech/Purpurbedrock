@@ -48,6 +48,35 @@ public final class BedrockAntiXrayHelper {
         Blocks.TRAPPED_CHEST,
         Blocks.ENDER_CHEST,
         Blocks.SPAWNER,
+        // Buried storage / redstone blocks frequently targeted by base-finder clients.
+        // HIDE only masks blocks that are not exposed, so normal opened containers remain usable.
+        Blocks.BARREL,
+        Blocks.HOPPER,
+        Blocks.DISPENSER,
+        Blocks.DROPPER,
+        Blocks.FURNACE,
+        Blocks.BLAST_FURNACE,
+        Blocks.SMOKER,
+        Blocks.BREWING_STAND,
+        Blocks.CHISELED_BOOKSHELF,
+        Blocks.DECORATED_POT,
+        Blocks.SHULKER_BOX,
+        Blocks.WHITE_SHULKER_BOX,
+        Blocks.ORANGE_SHULKER_BOX,
+        Blocks.MAGENTA_SHULKER_BOX,
+        Blocks.LIGHT_BLUE_SHULKER_BOX,
+        Blocks.YELLOW_SHULKER_BOX,
+        Blocks.LIME_SHULKER_BOX,
+        Blocks.PINK_SHULKER_BOX,
+        Blocks.GRAY_SHULKER_BOX,
+        Blocks.LIGHT_GRAY_SHULKER_BOX,
+        Blocks.CYAN_SHULKER_BOX,
+        Blocks.PURPLE_SHULKER_BOX,
+        Blocks.BLUE_SHULKER_BOX,
+        Blocks.BROWN_SHULKER_BOX,
+        Blocks.GREEN_SHULKER_BOX,
+        Blocks.RED_SHULKER_BOX,
+        Blocks.BLACK_SHULKER_BOX,
         // Nether ores & structures (Ancient Debris / Netherite protection)
         Blocks.ANCIENT_DEBRIS,
         Blocks.NETHER_GOLD_ORE,
@@ -69,23 +98,21 @@ public final class BedrockAntiXrayHelper {
 
         if (PurpurConfig.bedrockAntiXrayEnabled && paperConfig.anticheat != null && paperConfig.anticheat.antiXray != null) {
             WorldConfiguration.Anticheat.AntiXray xray = paperConfig.anticheat.antiXray;
-            if (environment != World.Environment.THE_END) {
-                xray.enabled = true;
-                // EngineMode.HIDE keeps Bedrock subchunk palettes small (fast chunk loads, zero fake-ore FPS lag)
-                if (xray.engineMode == null) {
-                    xray.engineMode = EngineMode.HIDE;
-                }
-                xray.maxBlockHeight = Math.max(xray.maxBlockHeight, PurpurConfig.bedrockAntiXrayMaxHeight);
-                xray.lavaObscures = PurpurConfig.bedrockAntiXrayLavaObscures;
-                xray.updateRadius = Math.max(1, xray.updateRadius);
+            xray.enabled = true;
+            // EngineMode.HIDE keeps Bedrock subchunk palettes small (fast chunk loads, zero fake-ore FPS lag).
+            // Always retain the mobile-safe mode. A stale per-world mode must not silently
+            // weaken or inflate the Bedrock palette after a configuration migration.
+            xray.engineMode = EngineMode.HIDE;
+            xray.maxBlockHeight = Math.max(xray.maxBlockHeight, PurpurConfig.bedrockAntiXrayMaxHeight);
+            xray.lavaObscures = PurpurConfig.bedrockAntiXrayLavaObscures;
+            xray.updateRadius = Math.max(1, xray.updateRadius);
 
-                Set<Block> merged = new LinkedHashSet<>();
-                if (xray.hiddenBlocks != null) {
-                    merged.addAll(xray.hiddenBlocks);
-                }
-                merged.addAll(BEDROCK_HIDDEN_ORES);
-                xray.hiddenBlocks = new ArrayList<>(merged);
+            Set<Block> merged = new LinkedHashSet<>();
+            if (xray.hiddenBlocks != null) {
+                merged.addAll(xray.hiddenBlocks);
             }
+            merged.addAll(BEDROCK_HIDDEN_ORES);
+            xray.hiddenBlocks = new ArrayList<>(merged);
         }
 
         if (PurpurConfig.bedrockPerformanceOptimizeWorlds) {
