@@ -1,0 +1,47 @@
+name: Restore Proven Working 26.2 Core
+
+on:
+  push:
+    branches:
+      - "arena/**"
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  restore:
+    if: ${{ contains(github.event.head_commit.message, '[restore-core]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download exact core from successful working run 40844334407
+        uses: actions/download-artifact@v4
+        with:
+          name: purpurbedrock-26.2
+          path: restored
+          repository: gulp-tech/Purpurbedrock
+          run-id: 40844334407
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify proven artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f restored/purpurbedrock-26.2.jar
+          test -f restored/purpurbedrock-26.2.jar.sha256
+          actual_size=$(stat -c '%s' restored/purpurbedrock-26.2.jar)
+          test "$actual_size" = "117967190"
+          (cd restored && sha256sum -c purpurbedrock-26.2.jar.sha256)
+          unzip -t restored/purpurbedrock-26.2.jar >/dev/null
+          echo "PROVEN_WORKING_CORE_OK size=${actual_size} sourceRun=40844334407"
+
+      - name: Restore exact working JAR to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v26.2.0-bedrock
+          files: |
+            restored/purpurbedrock-26.2.jar
+            restored/purpurbedrock-26.2.jar.sha256
+          overwrite_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
