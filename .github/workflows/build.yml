@@ -452,9 +452,9 @@ jobs:
           print("ALL PURPURBEDROCK 26.2 LIVE SMOKE TESTS PASSED!")
           PY
 
-      # Never replace the exact connectivity-proven core with a fresh SNAPSHOT dependency
-      # resolution when this run only updates standalone plugins.
-      - name: Download connectivity-proven core for publication
+      # Keep the exact connectivity-proven binary as a rollback asset while publishing the
+      # freshly smoke-tested core when native Anti-Xray itself changes.
+      - name: Download connectivity-proven rollback core
         uses: actions/download-artifact@v4
         with:
           name: purpurbedrock-26.2
@@ -463,13 +463,13 @@ jobs:
           run-id: 40844334407
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Keep proven core binary in release
+      - name: Preserve proven core as rollback asset
         run: |
           set -euo pipefail
           test "$(stat -c '%s' /tmp/proven-core/purpurbedrock-26.2.jar)" = "117967190"
           (cd /tmp/proven-core && sha256sum -c purpurbedrock-26.2.jar.sha256)
-          cp /tmp/proven-core/purpurbedrock-26.2.jar purpurbedrock-26.2.jar
-          cp /tmp/proven-core/purpurbedrock-26.2.jar.sha256 purpurbedrock-26.2.jar.sha256
+          cp /tmp/proven-core/purpurbedrock-26.2.jar purpurbedrock-26.2-connectivity-backup.jar
+          sha256sum purpurbedrock-26.2-connectivity-backup.jar > purpurbedrock-26.2-connectivity-backup.jar.sha256
 
       - name: Upload Purpurbedrock 26.2 Core Artifact
         uses: actions/upload-artifact@v4
@@ -478,6 +478,8 @@ jobs:
           path: |
             purpurbedrock-26.2.jar
             purpurbedrock-26.2.jar.sha256
+            purpurbedrock-26.2-connectivity-backup.jar
+            purpurbedrock-26.2-connectivity-backup.jar.sha256
             PurpurBedrockAC-26.2.jar
             PurpurBedrockAC-26.2.jar.sha256
             PurpurBedrockNPC-26.2.jar
@@ -488,9 +490,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v26.2.0-bedrock
-          name: "Purpurbedrock 26.2 FINAL (Mobile Player FPS Fix) + PurpurBedrockNPC 26.2 + PurpurBedrockAC 26.2.6"
+          name: "Purpurbedrock 26.2 FINAL (Mobile Player FPS Fix) + PurpurBedrockNPC 26.2 + PurpurBedrockAC 26.2.10"
           body: |
-            ## Purpurbedrock `26.2` FINAL (`purpurbedrock-26.2.jar`) + Отдельный античит `PurpurBedrockAC-26.2.jar` (`v26.2.6`)
+            ## Purpurbedrock `26.2` FINAL (`purpurbedrock-26.2.jar`) + Отдельный античит `PurpurBedrockAC-26.2.jar` (`v26.2.10`)
             Финальное автономное высокопроизводительное ядро на базе **Purpur `26.2` (`STABLE`)** и отдельный адаптивный античит, откалиброванный специально под него:
             - **Исправлено 20-секундное зависание телефона при появлении другого игрока**: Android/iOS/консоли получают для других игроков лёгкий ванильный скин `64×64` без тяжёлой persona-геометрии и плащей. Собственный скин игрока не меняется, а Windows продолжает видеть полные скины.
             - **Исправлен повторный `ClientboundLoginPacket` с GeyserGlowing**: очередь `postStartGamePackets` теперь потокобезопасно и идемпотентно очищается; повторный login/reconfiguration больше не вызывает `NullPointerException` и не срывает вход Bedrock-игрока.
@@ -550,6 +552,8 @@ jobs:
           files: |
             purpurbedrock-26.2.jar
             purpurbedrock-26.2.jar.sha256
+            purpurbedrock-26.2-connectivity-backup.jar
+            purpurbedrock-26.2-connectivity-backup.jar.sha256
             PurpurBedrockAC-26.2.jar
             PurpurBedrockAC-26.2.jar.sha256
             PurpurBedrockNPC-26.2.jar
