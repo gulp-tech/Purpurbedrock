@@ -90,6 +90,9 @@ jobs:
             grep -Fq 'static final int[] VERSIONS = {6, 7}' /tmp/geyser-26.2/core/src/main/java/org/cloudburstmc/netty/channel/nethernet/signaling/ServerData.java
             grep -Fq 'enum TransportDisconnectReason' /tmp/geyser-26.2/core/src/main/java/org/cloudburstmc/netty/channel/TransportDisconnectReason.java
             grep -Fq 'prefix: Purpurbedrock' /tmp/geyser-26.2/bootstrap/spigot/src/main/resources/plugin.yml
+            grep -Fq 'flatPlayerPosition.down(3)' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/util/InventoryUtils.java
+            grep -Fq 'protectFreshMenu(holder.session())' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/util/InventoryUtils.java
+            grep -Fq 'FRESH_MENU_UNTIL' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/translator/protocol/bedrock/BedrockContainerCloseTranslator.java
             test -s /tmp/geyser-26.2/core/src/main/resources/bedrock/block_palette.26_60.nbt
             test -s /tmp/geyser-26.2/core/src/main/resources/bedrock/runtime_item_states.26_60.json
             test -s /tmp/geyser-26.2/core/src/main/resources/bedrock/creative_items.26_60.json
