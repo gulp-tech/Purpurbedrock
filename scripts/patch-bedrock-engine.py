@@ -5173,14 +5173,11 @@ import java.util.concurrent.ConcurrentHashMap;""",
                 || playerUuid.equals(session.getPlayerEntity().uuid())) {
             return false;
         }
-        BedrockClientData clientData = session.getClientData();
-        if (clientData == null || clientData.getDeviceOs() == null) {
-            return true;
-        }
-        String deviceOs = clientData.getDeviceOs().name();
-        // Keep full remote skins only for desktop Windows. Mobile, consoles and unknown 26.x
-        // DeviceOS values receive a fixed 64x64 vanilla skin with no cape/custom geometry.
-        return !deviceOs.equals("UWP") && !deviceOs.equals("WIN32") && !deviceOs.equals("WINDOWS");
+        // Apply the shared lightweight appearance to every remote player on every client.
+        // Device reports are not trustworthy enough for this hot path: Android launchers can
+        // report Windows/UWP and would then receive expensive persona geometry again.
+        // The viewer's own skin is explicitly excluded above.
+        return true;
     }
 
     // A weak session map prevents repeated PlayerList ADD / skin recompilation every time
@@ -6309,6 +6306,61 @@ import java.util.concurrent.ConcurrentHashMap;""",
         "ItemTranslator.getCustomSkullRespectToggle",
     )
 
+
+    # Reliable plugin-formatted chat: Bedrock social/XUID filtering can silently discard
+    # CHAT packets when performance-safe player entries intentionally have no Xbox identity.
+    # Deliver already-formatted Java chat as SYSTEM text and queue it during StartGame.
+    message_translator = root / "core/src/main/java/org/geysermc/geyser/translator/text/MessageTranslator.java"
+    replace_exact(
+        message_translator,
+        """        if (senderUuid == null) {
+            textPacket.setXuid(session.getAuthData().xuid());
+        } else {
+            String xuid = "";
+            GeyserSession playerSession = GeyserImpl.getInstance().connectionByUuid(senderUuid);
+
+            // Prefer looking up xuid using the session to catch linked players
+            if (playerSession != null) {
+                xuid = playerSession.getAuthData().xuid();
+            } else if (senderUuid.version() == 0) {
+                xuid = Long.toString(senderUuid.getLeastSignificantBits());
+            }
+            textPacket.setXuid(xuid);
+        }
+        textPacket.setType(TextPacket.Type.CHAT);""",
+        """        // The Java decoration below already contains the sender and ChatEX format.
+        // SYSTEM bypasses Bedrock's local Xbox/social filter, which otherwise drops messages
+        // whose sender intentionally uses the shared performance-safe player-list identity.
+        textPacket.setXuid("");
+        textPacket.setType(TextPacket.Type.SYSTEM);""",
+        "MessageTranslator.reliablePluginChatIdentity",
+    )
+    replace_exact(
+        message_translator,
+        """        session.sendUpstreamPacket(textPacket);
+    }
+
+    /**
+     * Checks if the given message is over 256 characters""",
+        """        if (session.isSentSpawnPacket()) {
+            session.sendUpstreamPacket(textPacket);
+        } else {
+            session.getUpstream().queuePostStartGamePacket(textPacket);
+        }
+    }
+
+    /**
+     * Checks if the given message is over 256 characters""",
+        "MessageTranslator.queueChatDuringStartGame",
+    )
+
+    system_chat = root / "core/src/main/java/org/geysermc/geyser/translator/protocol/java/JavaSystemChatTranslator.java"
+    replace_exact(
+        system_chat,
+        """        textPacket.setXuid(session.getAuthData().xuid());""",
+        """        textPacket.setXuid(""); // Purpurbedrock: never let Bedrock social filtering hide plugin/system chat""",
+        "JavaSystemChatTranslator.noRecipientXuidFiltering",
+    )
 
     # Virtual Java chest menus need a temporary Bedrock block. Prefer a block three positions
     # below the player so it never appears above their head, and suppress the client's stale

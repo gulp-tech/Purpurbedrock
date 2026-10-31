@@ -74,6 +74,10 @@ jobs:
             grep -Fq 'PERFORMANCE_SAFE_SKINS_SENT' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
             grep -Fq 'Never download, decode or resend a remote custom skin' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
             grep -Fq 'entry.setXuid("")' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
+            grep -Fq 'Apply the shared lightweight appearance to every remote player' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
+            grep -Fq 'textPacket.setType(TextPacket.Type.SYSTEM)' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/translator/text/MessageTranslator.java
+            grep -Fq 'queuePostStartGamePacket(textPacket)' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/translator/text/MessageTranslator.java
+            grep -Fq 'never let Bedrock social filtering hide plugin/system chat' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/translator/protocol/java/JavaSystemChatTranslator.java
             grep -Fq 'Some servers repeat UPDATE_LISTED=true' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/translator/protocol/java/entity/player/JavaPlayerInfoUpdateTranslator.java
             grep -Fq 'Never move the publisher center to an out-of-range' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/util/ChunkUtils.java
             grep -Fq 'Keep this stable for the whole session' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/session/GeyserSession.java
@@ -98,7 +102,7 @@ jobs:
             test -s /tmp/geyser-26.2/core/src/main/resources/bedrock/creative_items.26_60.json
             test -s /tmp/geyser-26.2/core/src/main/resources/bedrock/item_components.26_60.nbt
             test -s /tmp/geyser-26.2/core/src/main/resources/bedrock/data_driven_blocks.26_60.nbt
-            echo "BEDROCK_26_60_V2225_SOURCE_OK POST_START_GAME_QUEUE_IDEMPOTENT_SOURCE_OK MOBILE_REMOTE_SKINS_SAFE_SOURCE_OK"
+            echo "BEDROCK_26_60_V2225_SOURCE_OK POST_START_GAME_QUEUE_IDEMPOTENT_SOURCE_OK ALL_REMOTE_SKINS_SAFE_SOURCE_OK CHATEX_RELIABLE_SOURCE_OK"
 
             echo "=== Bundling official 26.2 Russian/CIS/English system locales for 100% offline Bedrock translations ==="
             python3 "$GITHUB_WORKSPACE/scripts/bundle-bedrock-locales.py" /tmp/geyser-26.2
