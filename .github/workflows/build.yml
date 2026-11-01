@@ -96,6 +96,8 @@ jobs:
             grep -Fq 'prefix: Purpurbedrock' /tmp/geyser-26.2/bootstrap/spigot/src/main/resources/plugin.yml
             grep -Fq 'flatPlayerPosition.down(3)' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/util/InventoryUtils.java
             grep -Fq 'protectFreshMenu(holder.session())' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/util/InventoryUtils.java
+            grep -Fq 'exact same holder is still pending' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/util/InventoryUtils.java
+            grep -Fq 'current.bedrockId() == expectedBedrockId' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/util/InventoryUtils.java
             grep -Fq 'FRESH_MENU_UNTIL' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/translator/protocol/bedrock/BedrockContainerCloseTranslator.java
             grep -Fq 'TimeUnit.MILLISECONDS.toNanos(2000)' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/translator/protocol/bedrock/BedrockContainerCloseTranslator.java
             grep -Fq 'purpurbedrock.throttleRemotePlayerMovement' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/entity/type/Entity.java

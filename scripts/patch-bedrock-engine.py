@@ -6451,6 +6451,36 @@ import java.util.concurrent.ConcurrentHashMap;""",
     }""",
         "InventoryUtils.protectFreshSubmenu",
     )
+    replace_exact(
+        inventory_utils,
+        """    public static void scheduleInventoryOpen(GeyserSession session) {
+        session.sendNetworkLatencyStackPacket(MAGIC_VIRTUAL_INVENTORY_HACK, true, () -> {
+            if (session.getPendingOrCurrentBedrockInventoryId() != -1) {
+                InventoryUtils.openPendingInventory(session);
+            }
+        });
+    }""",
+        """    public static void scheduleInventoryOpen(GeyserSession session) {
+        final int expectedBedrockId = session.getPendingOrCurrentBedrockInventoryId();
+        session.sendNetworkLatencyStackPacket(MAGIC_VIRTUAL_INVENTORY_HACK, true, () -> {
+            if (session.getPendingOrCurrentBedrockInventoryId() != -1) {
+                InventoryUtils.openPendingInventory(session);
+            }
+        });
+        // Some mobile/WebRTC clients occasionally lose the latency-stack response used as
+        // the virtual-block readiness acknowledgement. Never leave the Java inventory pending
+        // forever: a serialized fallback opens it only if the exact same holder is still pending.
+        session.scheduleInEventLoop(() -> {
+            InventoryHolder<?> current = session.getInventoryHolder();
+            if (current != null && current.pending()
+                    && current.bedrockId() == expectedBedrockId
+                    && session.getPendingOrCurrentBedrockInventoryId() == expectedBedrockId) {
+                InventoryUtils.openPendingInventory(session);
+            }
+        }, 350, java.util.concurrent.TimeUnit.MILLISECONDS);
+    }""",
+        "InventoryUtils.virtualMenuOpenFallback",
+    )
 
     container_close = root / "core/src/main/java/org/geysermc/geyser/translator/protocol/bedrock/BedrockContainerCloseTranslator.java"
     replace_exact(
