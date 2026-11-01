@@ -1,0 +1,53 @@
+name: Package Purpurbedrock ZIP
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Successful build run containing the current release core"
+        required: true
+        default: "41317048872"
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download current built artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: purpurbedrock-26.2
+          path: artifacts
+          repository: gulp-tech/Purpurbedrock
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create ready ZIP archive
+        run: |
+          set -euo pipefail
+          test -s artifacts/purpurbedrock-26.2.jar
+          mkdir package
+          cp artifacts/purpurbedrock-26.2.jar package/
+          cp artifacts/purpurbedrock-26.2.jar.sha256 package/
+          cat > package/INSTALL.txt <<'EOF'
+          Purpurbedrock 26.2
+
+          1. Stop the server completely.
+          2. Extract purpurbedrock-26.2.jar into the server root and replace the old core.
+          3. Keep transport: both in bedrock.yml.
+          4. Start the server. Do not use /reload.
+          EOF
+          (cd package && zip -9 ../Purpurbedrock-26.2-ready.zip *)
+          sha256sum Purpurbedrock-26.2-ready.zip > Purpurbedrock-26.2-ready.zip.sha256
+
+      - name: Publish ZIP archive
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload v26.2.0-bedrock \
+            Purpurbedrock-26.2-ready.zip \
+            Purpurbedrock-26.2-ready.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" --clobber
