@@ -6307,6 +6307,51 @@ import java.util.concurrent.ConcurrentHashMap;""",
     )
 
 
+    # Remote-player motion is the remaining high-frequency render hot path after skins are
+    # flattened. Keep authoritative internal coordinates at 20 Hz, but send one interpolatable
+    # absolute update per two Java deltas (10 Hz) for remote players only. Local movement,
+    # teleports, combat state and all non-player entities remain immediate.
+    entity_cls = root / "core/src/main/java/org/geysermc/geyser/entity/type/Entity.java"
+    replace_exact(
+        entity_cls,
+        """    protected int entityId;
+    @Accessors(fluent = true)""",
+        """    protected int entityId;
+    private int purpurbedrockRemotePlayerMoveCounter;
+    @Accessors(fluent = true)""",
+        "Entity.remotePlayerMoveCounter",
+    )
+    replace_exact(
+        entity_cls,
+        """        if (isValid()) {
+            MoveEntityDeltaPacket moveEntityPacket = new MoveEntityDeltaPacket();
+            moveEntityPacket.setRuntimeEntityId(geyserId);""",
+        """        boolean throttleRemotePlayer = this instanceof PlayerEntity
+            && !(this instanceof SessionPlayerEntity)
+            && Boolean.parseBoolean(System.getProperty("purpurbedrock.throttleRemotePlayerMovement", "true"));
+        if (throttleRemotePlayer) {
+            purpurbedrockRemotePlayerMoveCounter++;
+            if ((purpurbedrockRemotePlayerMoveCounter & 1) != 0) {
+                return; // State above remains authoritative; the next packet sends the accumulated position.
+            }
+            if (isValid()) {
+                MoveEntityAbsolutePacket coalesced = new MoveEntityAbsolutePacket();
+                coalesced.setRuntimeEntityId(geyserId);
+                coalesced.setPosition(bedrockPosition());
+                coalesced.setRotation(bedrockRotation());
+                coalesced.setOnGround(isOnGround);
+                coalesced.setTeleported(false);
+                session.sendUpstreamPacket(coalesced);
+            }
+            return;
+        }
+
+        if (isValid()) {
+            MoveEntityDeltaPacket moveEntityPacket = new MoveEntityDeltaPacket();
+            moveEntityPacket.setRuntimeEntityId(geyserId);""",
+        "Entity.coalesceRemotePlayerMovement",
+    )
+
     # Reliable plugin-formatted chat: Bedrock social/XUID filtering can silently discard
     # CHAT packets when performance-safe player entries intentionally have no Xbox identity.
     # Deliver already-formatted Java chat as SYSTEM text and queue it during StartGame.
@@ -6420,7 +6465,7 @@ import java.util.concurrent.ConcurrentHashMap;""",
     public static void protectFreshMenu(GeyserSession session) {
         // Bedrock can emit a delayed close for the previous virtual chest after the new
         // DeluxeMenus section is already visible. Ignore only that tiny transition window.
-        FRESH_MENU_UNTIL.put(session, System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(650));
+        FRESH_MENU_UNTIL.put(session, System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(2000));
     }
 
     @Override""",
