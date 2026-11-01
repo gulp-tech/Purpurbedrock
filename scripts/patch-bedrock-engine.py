@@ -6413,6 +6413,46 @@ import java.util.concurrent.ConcurrentHashMap;""",
     inventory_utils = root / "core/src/main/java/org/geysermc/geyser/util/InventoryUtils.java"
     replace_exact(
         inventory_utils,
+        """    public static void openInventory(InventoryHolder<?> holder) {
+        holder.markCurrent();
+        if (holder.shouldSetPending()) {""",
+        """    public static void openInventory(InventoryHolder<?> holder) {
+        GeyserSession session = holder.session();
+        // Recover an orphaned virtual-container ID left by a Java menu that was closed
+        // before the Bedrock client displayed it. Without this, every later /shop or /menu
+        // remains pending forever because there can never be a close acknowledgement.
+        if (session.getInventoryHolder() == null
+                && !session.isClosingInventory()
+                && session.getPendingOrCurrentBedrockInventoryId() != -1) {
+            session.setPendingOrCurrentBedrockInventoryId(-1);
+        }
+        holder.markCurrent();
+        if (holder.shouldSetPending()) {""",
+        "InventoryUtils.recoverOrphanBeforeOpen",
+    )
+    replace_exact(
+        inventory_utils,
+        """        session.setInventoryHolder(null);
+    }
+
+    /**
+     * A util method to get an (open) inventory based on a Java id. This method should be used over""",
+        """        if (holder != null && holder.pending()
+                && session.getPendingOrCurrentBedrockInventoryId() == holder.bedrockId()) {
+            // A pending holder was never visible and therefore cannot produce a Bedrock close
+            // acknowledgement. Release its ID immediately so the next command can open a menu.
+            session.setPendingOrCurrentBedrockInventoryId(-1);
+            session.setClosingInventory(false);
+        }
+        session.setInventoryHolder(null);
+    }
+
+    /**
+     * A util method to get an (open) inventory based on a Java id. This method should be used over""",
+        "InventoryUtils.releaseNeverDisplayedHolder",
+    )
+    replace_exact(
+        inventory_utils,
         """        Vector3i flatPlayerPosition = session.getPlayerEntity().bedrockPosition().toInt();
         Vector3i position = flatPlayerPosition.add(Vector3i.UP);
         if (position.getY() < minY) {
