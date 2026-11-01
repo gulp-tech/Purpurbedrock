@@ -1,6 +1,11 @@
 name: Package Purpurbedrock ZIP
 
 on:
+  push:
+    branches:
+      - "arena/**"
+    paths:
+      - ".github/workflows/package-zip.yml"
   workflow_dispatch:
     inputs:
       run_id:
@@ -22,7 +27,7 @@ jobs:
           name: purpurbedrock-26.2
           path: artifacts
           repository: gulp-tech/Purpurbedrock
-          run-id: ${{ inputs.run_id }}
+          run-id: ${{ inputs.run_id || '41317048872' }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create ready ZIP archive
