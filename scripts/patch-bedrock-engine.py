@@ -6410,6 +6410,49 @@ import java.util.concurrent.ConcurrentHashMap;""",
     # Virtual Java chest menus need a temporary Bedrock block. Prefer a block three positions
     # below the player so it never appears above their head, and suppress the client's stale
     # close acknowledgement briefly after a submenu has been opened.
+    inventory_translator = root / "core/src/main/java/org/geysermc/geyser/translator/inventory/InventoryTranslator.java"
+    replace_exact(
+        inventory_translator,
+        """        if (inventory.getContainerType() == null || previous.getContainerType() == null ||
+            !Objects.equals(inventory.getContainerType(), previous.getContainerType()) ||
+            !Objects.equals(inventory.getTitle(), previous.getTitle()) ||
+            inventory.getSize() != previous.getSize()
+        ) {""",
+        """        if (inventory.getContainerType() == null || previous.getContainerType() == null ||
+            !Objects.equals(inventory.getContainerType(), previous.getContainerType()) ||
+            inventory.getSize() != previous.getSize()
+        ) {
+            // Purpurbedrock: a title-only change must not tear down the virtual chest.
+            // DeluxeMenus sections commonly keep the same 54-slot type with a new title;
+            // reusing the holder avoids the Bedrock close/open race entirely.""",
+        "InventoryTranslator.reuseSameSizeSubmenusAcrossTitles",
+    )
+
+    game_event_translator = root / "core/src/main/java/org/geysermc/geyser/translator/protocol/java/level/JavaGameEventTranslator.java"
+    replace_exact(
+        game_event_translator,
+        """            case CHANGE_GAME_MODE:
+                GameMode gameMode = (GameMode) packet.getValue();
+
+                SetPlayerGameTypePacket playerGameTypePacket = new SetPlayerGameTypePacket();""",
+        """            case CHANGE_GAME_MODE:
+                GameMode gameMode = (GameMode) packet.getValue();
+
+                // Creative inventory is client-native. A pending virtual chest from /shop must
+                // never remain selected across the mode change or every inventory-open attempt
+                // is interpreted as belonging to that stale Java container.
+                var openHolder = session.getInventoryHolder();
+                if (openHolder != null) {
+                    org.geysermc.geyser.util.InventoryUtils.sendJavaContainerClose(openHolder);
+                    org.geysermc.geyser.util.InventoryUtils.closeInventory(session, openHolder, false);
+                }
+                session.setPendingOrCurrentBedrockInventoryId(-1);
+                session.setClosingInventory(false);
+
+                SetPlayerGameTypePacket playerGameTypePacket = new SetPlayerGameTypePacket();""",
+        "JavaGameEventTranslator.clearVirtualMenuOnGameModeChange",
+    )
+
     inventory_utils = root / "core/src/main/java/org/geysermc/geyser/util/InventoryUtils.java"
     replace_exact(
         inventory_utils,
@@ -6535,7 +6578,7 @@ import java.util.concurrent.ConcurrentHashMap;""",
     public static void protectFreshMenu(GeyserSession session) {
         // Bedrock can emit a delayed close for the previous virtual chest after the new
         // DeluxeMenus section is already visible. Ignore only that tiny transition window.
-        FRESH_MENU_UNTIL.put(session, System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(2000));
+        FRESH_MENU_UNTIL.put(session, System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(750));
     }
 
     @Override""",
