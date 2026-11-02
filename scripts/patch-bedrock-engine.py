@@ -5209,6 +5209,17 @@ import java.util.concurrent.ConcurrentHashMap;""",
         return entry;
     }
 
+    public static void ensurePerformanceSafeEntryBeforeSpawn(GeyserSession session, AvatarEntity entity) {
+        if (!usePerformanceSafeRemoteSkin(session, entity.uuid())
+                || !markPerformanceSafeSkinSent(session, entity.uuid())) {
+            return;
+        }
+        SkinData safe = SkinProvider.determinePerformanceSafeSkinData(entity.uuid());
+        PlayerListUtils.sendSkinUsingPlayerList(
+            session, buildPerformanceSafeEntry(session, entity, safe), entity, true
+        );
+    }
+
     private static final Map<ResolvableProfile, CompletableFuture<GameProfile>> requestedProfiles""",
         "SkinManager.performanceSafeRemoteSkinClassifier",
     )
@@ -5304,6 +5315,61 @@ import java.util.concurrent.ConcurrentHashMap;""",
                     }
                     if (!PlayerListUtils.shouldLimitPlayerListEntries(session)) {""",
         "JavaPlayerInfoUpdateTranslator.deduplicateConstrainedPlayerListAdds",
+    )
+
+    add_entity_translator = root / "core/src/main/java/org/geysermc/geyser/translator/protocol/java/entity/JavaAddEntityTranslator.java"
+    replace_exact(
+        add_entity_translator,
+        """            entity.sendPlayer();
+            // only load skin if we're not in a test environment.
+            // Otherwise, it tries to load various resources
+            if (!EnvironmentUtils.IS_UNIT_TESTING) {
+                SkinManager.requestAndHandleSkinAndCape(entity, session, null);
+            }""",
+        """            // Install the shared 64x64 skin before AddPlayer. If AddPlayer arrives first,
+            // Bedrock may synchronously resolve/compile the remote persona and freeze rendering.
+            SkinManager.ensurePerformanceSafeEntryBeforeSpawn(session, entity);
+            entity.sendPlayer();
+            // Never start a second asynchronous skin pipeline for a protected remote player.
+            if (!EnvironmentUtils.IS_UNIT_TESTING
+                    && !SkinManager.usePerformanceSafeRemoteSkin(session, entity.uuid())) {
+                SkinManager.requestAndHandleSkinAndCape(entity, session, null);
+            }""",
+        "JavaAddEntityTranslator.safeSkinBeforeSpawn",
+    )
+
+    avatar_entity = root / "core/src/main/java/org/geysermc/geyser/entity/type/player/AvatarEntity.java"
+    replace_exact(
+        avatar_entity,
+        """    private String cachedScore = "";
+    private boolean scoreVisible = true;""",
+        """    private String cachedScore = "";
+    private boolean scoreVisible = true;
+    private int purpurbedrockRemoteMoveCounter;""",
+        "AvatarEntity.remoteMoveCounter",
+    )
+    replace_exact(
+        avatar_entity,
+        """        this.position = this.position.add(relX, relY, relZ);
+
+        setOnGround(isOnGround);
+
+        MovePlayerPacket movePlayerPacket = new MovePlayerPacket();""",
+        """        this.position = this.position.add(relX, relY, relZ);
+
+        setOnGround(isOnGround);
+
+        // AvatarEntity has its own movement implementation, so throttling Entity alone does
+        // not affect players. Keep every authoritative state update above, but coalesce the
+        // outgoing remote render stream to 10 Hz. The local player remains completely untouched.
+        if (!(this instanceof SessionPlayerEntity)
+                && Boolean.parseBoolean(System.getProperty("purpurbedrock.throttleRemotePlayerMovement", "true"))
+                && (++purpurbedrockRemoteMoveCounter & 1) != 0) {
+            return;
+        }
+
+        MovePlayerPacket movePlayerPacket = new MovePlayerPacket();""",
+        "AvatarEntity.coalesceActualRemotePlayerMovement",
     )
 
     sign_translator = root / "core/src/main/java/org/geysermc/geyser/translator/level/block/entity/SignBlockEntityTranslator.java"
