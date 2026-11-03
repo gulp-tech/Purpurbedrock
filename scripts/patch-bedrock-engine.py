@@ -5220,6 +5220,25 @@ import java.util.concurrent.ConcurrentHashMap;""",
         );
     }
 
+    public static void commitPerformanceSafeSkinAfterSpawn(GeyserSession session, AvatarEntity entity) {
+        if (!usePerformanceSafeRemoteSkin(session, entity.uuid())) {
+            return;
+        }
+        // Some 26.x clients keep AddPlayer waiting on the first PlayerList appearance until a
+        // later skin change arrives. Commit the already-bundled 64x64 texture under one shared,
+        // stable ID just after AddPlayer. This is deliberately not a download or persona decode:
+        // it is the same in-memory pixels for every remote player and makes the client leave its
+        // pending-skin state immediately instead of freezing until an actual skin change.
+        SkinData safe = SkinProvider.determinePerformanceSafeSkinData(entity.uuid());
+        PlayerSkinPacket packet = new PlayerSkinPacket();
+        packet.setUuid(entity.uuid());
+        packet.setOldSkinName(safe.skin().textureUrl());
+        packet.setNewSkinName("purpurbedrock:remote-safe-v2");
+        packet.setSkin(getSkin(session, "purpurbedrock:remote-safe-v2", safe.skin(), safe.cape(), safe.geometry()));
+        packet.setTrustedSkin(true);
+        session.scheduleInEventLoop(() -> session.sendUpstreamPacket(packet), 50, TimeUnit.MILLISECONDS);
+    }
+
     private static final Map<ResolvableProfile, CompletableFuture<GameProfile>> requestedProfiles""",
         "SkinManager.performanceSafeRemoteSkinClassifier",
     )
@@ -5330,6 +5349,7 @@ import java.util.concurrent.ConcurrentHashMap;""",
             // Bedrock may synchronously resolve/compile the remote persona and freeze rendering.
             SkinManager.ensurePerformanceSafeEntryBeforeSpawn(session, entity);
             entity.sendPlayer();
+            SkinManager.commitPerformanceSafeSkinAfterSpawn(session, entity);
             // Never start a second asynchronous skin pipeline for a protected remote player.
             if (!EnvironmentUtils.IS_UNIT_TESTING
                     && !SkinManager.usePerformanceSafeRemoteSkin(session, entity.uuid())) {
