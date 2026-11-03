@@ -11,7 +11,7 @@ on:
       run_id:
         description: "Successful build run containing the current release core"
         required: true
-        default: "41487211598"
+        default: "41723701296"
 
 permissions:
   actions: read
@@ -24,10 +24,10 @@ jobs:
       - name: Download current built artifacts
         uses: actions/download-artifact@v4
         with:
-          name: purpurbedrock-26.2
+          name: purpurbedrock-smoke-diagnostics
           path: artifacts
           repository: gulp-tech/Purpurbedrock
-          run-id: ${{ inputs.run_id || '41487211598' }}
+          run-id: ${{ inputs.run_id || '41723701296' }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create ready ZIP archive
@@ -53,6 +53,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload v26.2.0-bedrock \
+            artifacts/purpurbedrock-26.2.jar \
+            artifacts/purpurbedrock-26.2.jar.sha256 \
             Purpurbedrock-26.2-ready.zip \
             Purpurbedrock-26.2-ready.zip.sha256 \
             --repo "$GITHUB_REPOSITORY" --clobber
