@@ -5145,7 +5145,8 @@ import java.util.concurrent.ConcurrentHashMap;""",
         // Every constrained viewer receives the exact same pre-bundled skin and skin ID.
         // This lets Bedrock reuse one GPU texture when many players appear at once instead
         // of compiling a separate texture/geometry pair per remote UUID.
-        ProvidedSkins.ProvidedSkin providedSkin = ProvidedSkins.getDefaultPlayerSkin(new UUID(0L, 0L));
+        // UUID hash 15 selects the bundled wide Steve entry (not slim Alex).
+        ProvidedSkins.ProvidedSkin providedSkin = ProvidedSkins.getDefaultPlayerSkin(new UUID(0L, 15L));
         return new SkinData(
             providedSkin.getData(),
             EMPTY_CAPE,
@@ -5168,16 +5169,12 @@ import java.util.concurrent.ConcurrentHashMap;""",
         """public class SkinManager {
 
     public static boolean usePerformanceSafeRemoteSkin(GeyserSession session, UUID playerUuid) {
-        if (!Boolean.parseBoolean(System.getProperty("purpurbedrock.safeRemotePlayerSkins", "true"))
-                || session.getPlayerEntity() == null
-                || playerUuid.equals(session.getPlayerEntity().uuid())) {
-            return false;
-        }
-        // Apply the shared lightweight appearance to every remote player on every client.
-        // Device reports are not trustworthy enough for this hot path: Android launchers can
-        // report Windows/UWP and would then receive expensive persona geometry again.
-        // The viewer's own skin is explicitly excluded above.
-        return true;
+        // Every remote player is always rendered with one bundled wide Steve skin. This is
+        // deliberately unconditional: no JVM flag, device detection, custom skin download,
+        // persona geometry, cape, or post-spawn skin replacement can re-enter this hot path.
+        // Only the viewer's own player keeps their real skin.
+        return session.getPlayerEntity() != null
+            && !playerUuid.equals(session.getPlayerEntity().uuid());
     }
 
     // A weak session map prevents repeated PlayerList ADD / skin recompilation every time
@@ -5220,25 +5217,6 @@ import java.util.concurrent.ConcurrentHashMap;""",
         );
     }
 
-    public static void commitPerformanceSafeSkinAfterSpawn(GeyserSession session, AvatarEntity entity) {
-        if (!usePerformanceSafeRemoteSkin(session, entity.uuid())) {
-            return;
-        }
-        // Some 26.x clients keep AddPlayer waiting on the first PlayerList appearance until a
-        // later skin change arrives. Commit the already-bundled 64x64 texture under one shared,
-        // stable ID just after AddPlayer. This is deliberately not a download or persona decode:
-        // it is the same in-memory pixels for every remote player and makes the client leave its
-        // pending-skin state immediately instead of freezing until an actual skin change.
-        SkinData safe = SkinProvider.determinePerformanceSafeSkinData(entity.uuid());
-        PlayerSkinPacket packet = new PlayerSkinPacket();
-        packet.setUuid(entity.uuid());
-        packet.setOldSkinName(safe.skin().textureUrl());
-        packet.setNewSkinName("purpurbedrock:remote-safe-v2");
-        packet.setSkin(getSkin(session, "purpurbedrock:remote-safe-v2", safe.skin(), safe.cape(), safe.geometry()));
-        packet.setTrustedSkin(true);
-        session.scheduleInEventLoop(() -> session.sendUpstreamPacket(packet), 50, TimeUnit.MILLISECONDS);
-    }
-
     private static final Map<ResolvableProfile, CompletableFuture<GameProfile>> requestedProfiles""",
         "SkinManager.performanceSafeRemoteSkinClassifier",
     )
@@ -5262,10 +5240,10 @@ import java.util.concurrent.ConcurrentHashMap;""",
         """    public static void sendSkinPacket(GeyserSession session, AvatarEntity entity, SkinData skinData) {
         boolean performanceSafe = usePerformanceSafeRemoteSkin(session, entity.uuid());
         if (performanceSafe) {
-            if (!markPerformanceSafeSkinSent(session, entity.uuid())) {
-                return; // The shared lightweight skin is already installed for this viewer.
-            }
-            skinData = SkinProvider.determinePerformanceSafeSkinData(entity.uuid());
+            // Remote appearance is installed once through PlayerList before AddPlayer. Never send
+            // PlayerSkin or another PlayerList ADD afterwards: even an identical replacement can
+            // synchronously rebuild the model and freeze the render thread on powerful clients.
+            return;
         }
         Skin skin = skinData.skin();""",
         "SkinManager.performanceSafeSkinUpdates",
@@ -5277,9 +5255,8 @@ import java.util.concurrent.ConcurrentHashMap;""",
         """    public static void requestAndHandleSkinAndCape(AvatarEntity entity, GeyserSession session, Consumer<SkinProvider.SkinAndCape> skinAndCapeConsumer) {
         if (usePerformanceSafeRemoteSkin(session, entity.uuid())) {
             SkinData safe = SkinProvider.determinePerformanceSafeSkinData(entity.uuid());
-            // Never download, decode or resend a remote custom skin to constrained clients.
-            // sendSkinPacket is de-duplicated if the safe PlayerList entry was already sent.
-            sendSkinPacket(session, entity, safe);
+            // The single Steve entry is installed before AddPlayer. Satisfy callbacks without
+            // downloading or sending any skin update after the remote entity becomes visible.
             if (skinAndCapeConsumer != null) {
                 skinAndCapeConsumer.accept(new SkinProvider.SkinAndCape(safe.skin(), safe.cape()));
             }
@@ -5349,8 +5326,7 @@ import java.util.concurrent.ConcurrentHashMap;""",
             // Bedrock may synchronously resolve/compile the remote persona and freeze rendering.
             SkinManager.ensurePerformanceSafeEntryBeforeSpawn(session, entity);
             entity.sendPlayer();
-            SkinManager.commitPerformanceSafeSkinAfterSpawn(session, entity);
-            // Never start a second asynchronous skin pipeline for a protected remote player.
+            // Never send a post-spawn skin replacement or start a second asynchronous pipeline.
             if (!EnvironmentUtils.IS_UNIT_TESTING
                     && !SkinManager.usePerformanceSafeRemoteSkin(session, entity.uuid())) {
                 SkinManager.requestAndHandleSkinAndCape(entity, session, null);

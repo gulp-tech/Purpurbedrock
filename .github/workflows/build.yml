@@ -107,8 +107,9 @@ jobs:
             grep -Fq 'purpurbedrock.throttleRemotePlayerMovement' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/entity/type/Entity.java
             grep -Fq 'MoveEntityAbsolutePacket coalesced' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/entity/type/Entity.java
             grep -Fq 'ensurePerformanceSafeEntryBeforeSpawn' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
-            grep -Fq 'commitPerformanceSafeSkinAfterSpawn' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
-            grep -Fq 'purpurbedrock:remote-safe-v2' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
+            grep -Fq 'new UUID(0L, 15L)' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinProvider.java
+            grep -Fq 'Never send' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
+            ! grep -Fq 'commitPerformanceSafeSkinAfterSpawn' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
             grep -Fq 'safeSkinBeforeSpawn' "$GITHUB_WORKSPACE/scripts/patch-bedrock-engine.py"
             grep -Fq 'purpurbedrockRemoteMoveCounter' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/entity/type/player/AvatarEntity.java
             grep -Fq 'AvatarEntity has its own movement implementation' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/entity/type/player/AvatarEntity.java
