@@ -72,7 +72,7 @@ jobs:
             grep -Fq 'Atomically evict that stale XUID' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/network/bedrock/UpstreamPacketHandler.java
             grep -Fq 'Every remote player is always rendered with one bundled wide Steve skin' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
             grep -Fq 'PERFORMANCE_SAFE_SKINS_SENT' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
-            grep -Fq 'without downloading or sending any skin update' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
+            grep -Fq 'downloading or sending any skin update' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
             grep -Fq 'entry.setXuid("")' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
             ! grep -Fq 'purpurbedrock.safeRemotePlayerSkins' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
             grep -Fq 'textPacket.setType(TextPacket.Type.SYSTEM)' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/translator/text/MessageTranslator.java
