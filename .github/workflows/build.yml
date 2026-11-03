@@ -334,7 +334,7 @@ jobs:
               booted = False
               # GitHub's 2026 runner image can need several minutes for the first
               # Paperclip remap/bootstrap. This CI allowance is not a server timeout.
-              for _ in range(300):
+              for _ in range(900):
                   if proc.poll() is not None:
                       raise RuntimeError(f"Server exited early with code {proc.returncode}")
                   txt = log_path.read_text(encoding="utf-8", errors="replace")
