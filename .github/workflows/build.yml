@@ -70,11 +70,11 @@ jobs:
             grep -Fq 'replaceSessionsByXuid' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/session/SessionManager.java
             grep -Fq 'sessions.remove(uuid, session)' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/session/SessionManager.java
             grep -Fq 'Atomically evict that stale XUID' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/network/bedrock/UpstreamPacketHandler.java
-            grep -Fq 'purpurbedrock.safeRemotePlayerSkins' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
+            grep -Fq 'Every remote player is always rendered with one bundled wide Steve skin' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
             grep -Fq 'PERFORMANCE_SAFE_SKINS_SENT' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
-            grep -Fq 'Never download, decode or resend a remote custom skin' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
+            grep -Fq 'without downloading or sending any skin update' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
             grep -Fq 'entry.setXuid("")' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
-            grep -Fq 'Apply the shared lightweight appearance to every remote player' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
+            ! grep -Fq 'purpurbedrock.safeRemotePlayerSkins' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
             grep -Fq 'textPacket.setType(TextPacket.Type.SYSTEM)' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/translator/text/MessageTranslator.java
             grep -Fq 'queuePostStartGamePacket(textPacket)' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/translator/text/MessageTranslator.java
             grep -Fq 'never let Bedrock social filtering hide plugin/system chat' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/translator/protocol/java/JavaSystemChatTranslator.java
@@ -85,7 +85,7 @@ jobs:
             grep -Fq 'loading-tip text disappears' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/util/ChunkUtils.java
             grep -Fq 'low-memory kill threshold' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/translator/protocol/java/level/JavaChunkBatchFinishedTranslator.java
             grep -Fq 'maxCachedCustomSkulls", 8' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/registry/populator/CustomSkullRegistryPopulator.java
-            grep -Fq 'getDefaultPlayerSkin(new UUID(0L, 0L))' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinProvider.java
+            grep -Fq 'getDefaultPlayerSkin(new UUID(0L, 15L))' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinProvider.java
             grep -Fq 'determinePerformanceSafeSkinData' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinProvider.java
             grep -Fq 'register(Bedrock_v2225.CODEC, "26.60")' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/network/bedrock/GameProtocol.java
             grep -Fq 'ClientboundMatchmakingStatePacket.class' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/network/bedrock/CodecProcessor.java
