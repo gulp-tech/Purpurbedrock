@@ -320,7 +320,7 @@ jobs:
           log_path = pathlib.Path("/tmp/server_out.log")
           out_f = log_path.open("w", encoding="utf-8")
           proc = subprocess.Popen(
-              ["java", "-Xms1G", "-Xmx3G", "-jar", "purpurbedrock-26.2.jar", "--nogui"],
+              [os.environ["JAVA_HOME_21_X64"] + "/bin/java", "-Xms1G", "-Xmx3G", "-jar", "purpurbedrock-26.2.jar", "--nogui"],
               cwd="/tmp/smoke-server",
               stdin=subprocess.PIPE,
               stdout=out_f,
