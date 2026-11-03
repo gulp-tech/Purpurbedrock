@@ -33,10 +33,15 @@ jobs:
       - name: Create ready ZIP archive
         run: |
           set -euo pipefail
-          test -s artifacts/purpurbedrock-26.2.jar
+          JAR="$(find artifacts -type f -name 'purpurbedrock-26.2.jar' -print -quit)"
+          SHA="$(find artifacts -type f -name 'purpurbedrock-26.2.jar.sha256' -print -quit)"
+          test -n "$JAR" && test -s "$JAR"
+          test -n "$SHA" && test -s "$SHA"
+          cp "$JAR" purpurbedrock-26.2.jar
+          cp "$SHA" purpurbedrock-26.2.jar.sha256
           mkdir package
-          cp artifacts/purpurbedrock-26.2.jar package/
-          cp artifacts/purpurbedrock-26.2.jar.sha256 package/
+          cp purpurbedrock-26.2.jar package/
+          cp purpurbedrock-26.2.jar.sha256 package/
           cat > package/INSTALL.txt <<'EOF'
           Purpurbedrock 26.2
 
@@ -53,8 +58,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload v26.2.0-bedrock \
-            artifacts/purpurbedrock-26.2.jar \
-            artifacts/purpurbedrock-26.2.jar.sha256 \
+            purpurbedrock-26.2.jar \
+            purpurbedrock-26.2.jar.sha256 \
             Purpurbedrock-26.2-ready.zip \
             Purpurbedrock-26.2-ready.zip.sha256 \
             --repo "$GITHUB_REPOSITORY" --clobber
