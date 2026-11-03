@@ -587,6 +587,19 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Upload failed smoke-test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: purpurbedrock-smoke-diagnostics
+          path: |
+            /tmp/server_out.log
+            /tmp/smoke-server/logs/latest.log
+            purpurbedrock-26.2.jar
+            purpurbedrock-26.2.jar.sha256
+          if-no-files-found: warn
+          retention-days: 3
+
       - name: Post Diagnostic Summary on Failure
         if: failure()
         env:
