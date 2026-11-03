@@ -332,7 +332,9 @@ jobs:
           try:
               print("Waiting for Purpurbedrock 26.2 server to finish booting...")
               booted = False
-              for _ in range(150):
+              # GitHub's 2026 runner image can need more than 150 seconds for the first
+              # Paperclip remap/bootstrap. This is a CI timeout only, not a server timeout.
+              for _ in range(300):
                   if proc.poll() is not None:
                       raise RuntimeError(f"Server exited early with code {proc.returncode}")
                   txt = log_path.read_text(encoding="utf-8", errors="replace")
