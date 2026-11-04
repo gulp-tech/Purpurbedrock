@@ -191,6 +191,7 @@ jobs:
             grep -q 'bedrockAntiXrayMaxHeight = 320;' purpur-server/src/main/java/org/purpurmc/purpur/PurpurConfig.java
             grep -q 'Blocks.SHULKER_BOX' purpur-server/src/main/java/org/purpurmc/purpur/bedrock/BedrockAntiXrayHelper.java
             grep -q 'entity instanceof InventoryHolder' purpurbedrock-anticheat/src/main/java/org/purpurmc/purpur/anticheat/engine/AntiEspManager.java
+            grep -q 'Never hide/show a real player through Bukkit visibility' purpurbedrock-anticheat/src/main/java/org/purpurmc/purpur/anticheat/engine/AntiEspManager.java
 
             echo "Building standalone PurpurBedrockNPC against local maven purpur-api:${PURPUR_VER}..."
             npc_built=false
@@ -597,6 +598,8 @@ jobs:
             /tmp/smoke-server/logs/latest.log
             purpurbedrock-26.2.jar
             purpurbedrock-26.2.jar.sha256
+            PurpurBedrockAC-26.2.jar
+            PurpurBedrockAC-26.2.jar.sha256
           if-no-files-found: warn
           retention-days: 3
 

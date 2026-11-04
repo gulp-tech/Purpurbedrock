@@ -178,9 +178,15 @@ public final class AntiEspManager {
     }
 
     private boolean isProtectedTarget(Entity entity) {
-        // LivingEntity includes players, villagers, animals and armour stands. Hanging covers
-        // item frames/paintings; InventoryHolder catches chest/hopper minecarts and similar
-        // storage entities without hiding high-churn item drops or projectiles.
+        // Never hide/show a real player through Bukkit visibility. Restoring a hidden player
+        // creates a second AddPlayer appearance pipeline (list entry, metadata and equipment)
+        // exactly as they cross line of sight; clients can freeze for seconds on that burst even
+        // with one immutable Steve skin. Player visibility therefore stays stable for the whole
+        // tracking lifetime. Base protection remains active for mobs, armour stands, item frames,
+        // paintings and container vehicles without touching high-churn drops or projectiles.
+        if (entity instanceof Player) {
+            return false;
+        }
         return entity instanceof LivingEntity
             || entity instanceof Hanging
             || entity instanceof InventoryHolder;
