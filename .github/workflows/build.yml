@@ -85,7 +85,7 @@ jobs:
             grep -Fq 'loading-tip text disappears' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/util/ChunkUtils.java
             grep -Fq 'low-memory kill threshold' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/translator/protocol/java/level/JavaChunkBatchFinishedTranslator.java
             grep -Fq 'maxCachedCustomSkulls", 8' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/registry/populator/CustomSkullRegistryPopulator.java
-            grep -Fq 'getDefaultPlayerSkin(new UUID(0L, 15L))' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinProvider.java
+            grep -Fq 'return BasicSteve.DATA;' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinProvider.java
             grep -Fq 'determinePerformanceSafeSkinData' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinProvider.java
             grep -Fq 'register(Bedrock_v2225.CODEC, "26.60")' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/network/bedrock/GameProtocol.java
             grep -Fq 'ClientboundMatchmakingStatePacket.class' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/network/bedrock/CodecProcessor.java
@@ -109,6 +109,8 @@ jobs:
             grep -Fq 'ItemData.AIR' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/entity/type/player/AvatarEntity.java
             grep -Fq 'livingEntity != session.getPlayerEntity()' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/translator/protocol/java/entity/JavaSetEquipmentTranslator.java
             grep -Fq 'ensurePerformanceSafeEntryBeforeSpawn' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
+            test -s /tmp/geyser-26.2/core/src/main/resources/bedrock/steve-wide.png
+            grep -Fq 'basicRemoteEquipment && item != null' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/translator/protocol/java/entity/JavaSetEquipmentTranslator.java
             grep -Fq 'purpurbedrock:steve_wide_v1' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinProvider.java
             grep -Fq 'Never send' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
             ! grep -Fq 'commitPerformanceSafeSkinAfterSpawn' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
