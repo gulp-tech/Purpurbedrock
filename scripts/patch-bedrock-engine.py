@@ -5334,38 +5334,56 @@ import java.util.concurrent.ConcurrentHashMap;""",
         "JavaAddEntityTranslator.safeSkinBeforeSpawn",
     )
 
+    # Keep upstream 20 Hz player movement semantics. Coalescing player deltas here can
+    # desynchronise the first movement after AddPlayer and prolong the client's spawn stall.
+
     avatar_entity = root / "core/src/main/java/org/geysermc/geyser/entity/type/player/AvatarEntity.java"
     replace_exact(
         avatar_entity,
-        """    private String cachedScore = "";
-    private boolean scoreVisible = true;""",
-        """    private String cachedScore = "";
-    private boolean scoreVisible = true;
-    private int purpurbedrockRemoteMoveCounter;""",
-        "AvatarEntity.remoteMoveCounter",
+        """import org.cloudburstmc.protocol.bedrock.data.command.CommandPermission;
+import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataTypes;""",
+        """import org.cloudburstmc.protocol.bedrock.data.command.CommandPermission;
+import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData;
+import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataTypes;""",
+        "AvatarEntity.importAirItem",
     )
     replace_exact(
         avatar_entity,
-        """        this.position = this.position.add(relX, relY, relZ);
+        """        addPlayerPacket.setHand(ItemTranslator.translateToBedrock(session, getMainHandItem()));""",
+        """        // Remote players are deliberately one immutable basic Steve. Do not put custom
+        // item components into AddPlayer: decoding a large held item on the render thread can
+        // freeze every class of client exactly when the actor enters tracking distance.
+        addPlayerPacket.setHand(this instanceof SessionPlayerEntity
+            ? ItemTranslator.translateToBedrock(session, getMainHandItem())
+            : ItemData.AIR);""",
+        "AvatarEntity.basicRemoteSpawnHand",
+    )
 
-        setOnGround(isOnGround);
-
-        MovePlayerPacket movePlayerPacket = new MovePlayerPacket();""",
-        """        this.position = this.position.add(relX, relY, relZ);
-
-        setOnGround(isOnGround);
-
-        // AvatarEntity has its own movement implementation, so throttling Entity alone does
-        // not affect players. Keep every authoritative state update above, but coalesce the
-        // outgoing remote render stream to 10 Hz. The local player remains completely untouched.
-        if (!(this instanceof SessionPlayerEntity)
-                && Boolean.parseBoolean(System.getProperty("purpurbedrock.throttleRemotePlayerMovement", "true"))
-                && (++purpurbedrockRemoteMoveCounter & 1) != 0) {
+    equipment_translator = root / "core/src/main/java/org/geysermc/geyser/translator/protocol/java/entity/JavaSetEquipmentTranslator.java"
+    replace_exact(
+        equipment_translator,
+        """        if (!(entity instanceof LivingEntity livingEntity)) {
+            session.getGeyser().getLogger().debug("Attempted to add armor to a non-living entity (" +
+                    entity.definition().identifier() + ").");
             return;
         }
 
-        MovePlayerPacket movePlayerPacket = new MovePlayerPacket();""",
-        "AvatarEntity.coalesceActualRemotePlayerMovement",
+        boolean armorUpdated = false;""",
+        """        if (!(entity instanceof LivingEntity livingEntity)) {
+            session.getGeyser().getLogger().debug("Attempted to add armor to a non-living entity (" +
+                    entity.definition().identifier() + ").");
+            return;
+        }
+
+        // Match the immutable Steve policy: a remote player never receives armor, head/profile,
+        // main-hand or off-hand visual packets. This removes the remaining appearance burst while
+        // preserving the viewer's own inventory and every non-player entity's equipment.
+        if (livingEntity instanceof PlayerEntity && livingEntity != session.getPlayerEntity()) {
+            return;
+        }
+
+        boolean armorUpdated = false;""",
+        "JavaSetEquipmentTranslator.suppressRemotePlayerVisualEquipment",
     )
 
     sign_translator = root / "core/src/main/java/org/geysermc/geyser/translator/level/block/entity/SignBlockEntityTranslator.java"
@@ -6369,50 +6387,8 @@ import java.util.concurrent.ConcurrentHashMap;""",
     )
 
 
-    # Remote-player motion is the remaining high-frequency render hot path after skins are
-    # flattened. Keep authoritative internal coordinates at 20 Hz, but send one interpolatable
-    # absolute update per two Java deltas (10 Hz) for remote players only. Local movement,
-    # teleports, combat state and all non-player entities remain immediate.
-    entity_cls = root / "core/src/main/java/org/geysermc/geyser/entity/type/Entity.java"
-    replace_exact(
-        entity_cls,
-        """    protected int entityId;
-    @Accessors(fluent = true)""",
-        """    protected int entityId;
-    private int purpurbedrockRemotePlayerMoveCounter;
-    @Accessors(fluent = true)""",
-        "Entity.remotePlayerMoveCounter",
-    )
-    replace_exact(
-        entity_cls,
-        """        if (isValid()) {
-            MoveEntityDeltaPacket moveEntityPacket = new MoveEntityDeltaPacket();
-            moveEntityPacket.setRuntimeEntityId(geyserId);""",
-        """        boolean throttleRemotePlayer = this instanceof PlayerEntity
-            && !(this instanceof SessionPlayerEntity)
-            && Boolean.parseBoolean(System.getProperty("purpurbedrock.throttleRemotePlayerMovement", "true"));
-        if (throttleRemotePlayer) {
-            purpurbedrockRemotePlayerMoveCounter++;
-            if ((purpurbedrockRemotePlayerMoveCounter & 1) != 0) {
-                return; // State above remains authoritative; the next packet sends the accumulated position.
-            }
-            if (isValid()) {
-                MoveEntityAbsolutePacket coalesced = new MoveEntityAbsolutePacket();
-                coalesced.setRuntimeEntityId(geyserId);
-                coalesced.setPosition(bedrockPosition());
-                coalesced.setRotation(bedrockRotation());
-                coalesced.setOnGround(isOnGround);
-                coalesced.setTeleported(false);
-                session.sendUpstreamPacket(coalesced);
-            }
-            return;
-        }
-
-        if (isValid()) {
-            MoveEntityDeltaPacket moveEntityPacket = new MoveEntityDeltaPacket();
-            moveEntityPacket.setRuntimeEntityId(geyserId);""",
-        "Entity.coalesceRemotePlayerMovement",
-    )
+    # Keep upstream entity delta movement unchanged. Player rendering is made lightweight
+    # at spawn/equipment level instead of rewriting movement packet cadence.
 
     # Reliable plugin-formatted chat: Bedrock social/XUID filtering can silently discard
     # CHAT packets when performance-safe player entries intentionally have no Xbox identity.

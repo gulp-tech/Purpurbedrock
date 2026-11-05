@@ -104,15 +104,17 @@ jobs:
             grep -Fq 'TimeUnit.MILLISECONDS.toNanos(750)' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/translator/protocol/bedrock/BedrockContainerCloseTranslator.java
             grep -Fq 'holder != null && holder.pending()' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/util/InventoryUtils.java
             grep -Fq 'FRESH_MENU_UNTIL' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/translator/protocol/bedrock/BedrockContainerCloseTranslator.java
-            grep -Fq 'purpurbedrock.throttleRemotePlayerMovement' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/entity/type/Entity.java
-            grep -Fq 'MoveEntityAbsolutePacket coalesced' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/entity/type/Entity.java
+            ! grep -Fq 'purpurbedrock.throttleRemotePlayerMovement' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/entity/type/Entity.java
+            ! grep -Fq 'purpurbedrockRemoteMoveCounter' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/entity/type/player/AvatarEntity.java
+            grep -Fq 'ItemData.AIR' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/entity/type/player/AvatarEntity.java
+            grep -Fq 'livingEntity != session.getPlayerEntity()' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/translator/protocol/java/entity/JavaSetEquipmentTranslator.java
             grep -Fq 'ensurePerformanceSafeEntryBeforeSpawn' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
             grep -Fq 'new UUID(0L, 15L)' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinProvider.java
             grep -Fq 'Never send' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
             ! grep -Fq 'commitPerformanceSafeSkinAfterSpawn' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
             grep -Fq 'safeSkinBeforeSpawn' "$GITHUB_WORKSPACE/scripts/patch-bedrock-engine.py"
-            grep -Fq 'purpurbedrockRemoteMoveCounter' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/entity/type/player/AvatarEntity.java
-            grep -Fq 'AvatarEntity has its own movement implementation' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/entity/type/player/AvatarEntity.java
+            ! grep -Fq 'BedrockChunkHelper.onTeleportOrWorldChange(this.player)' "$GITHUB_WORKSPACE/purpur-server/minecraft-patches/features/0023-Purpurbedrock-engine.patch"
+            grep -Fq 'suppressRemotePlayerVisualEquipment' "$GITHUB_WORKSPACE/scripts/patch-bedrock-engine.py"
             test -s /tmp/geyser-26.2/core/src/main/resources/bedrock/block_palette.26_60.nbt
             test -s /tmp/geyser-26.2/core/src/main/resources/bedrock/runtime_item_states.26_60.json
             test -s /tmp/geyser-26.2/core/src/main/resources/bedrock/creative_items.26_60.json
