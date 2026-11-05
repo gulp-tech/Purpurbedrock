@@ -9,9 +9,9 @@ on:
   workflow_dispatch:
     inputs:
       run_id:
-        description: "Successful build run containing the current release core"
+        description: "Build run containing the approved release core"
         required: true
-        default: "42034050538"
+        default: "42039734207"
 
 permissions:
   actions: read
@@ -27,7 +27,7 @@ jobs:
           name: purpurbedrock-smoke-diagnostics
           path: artifacts
           repository: gulp-tech/Purpurbedrock
-          run-id: ${{ inputs.run_id || '42034050538' }}
+          run-id: ${{ inputs.run_id || '42039734207' }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create ready ZIP archive
