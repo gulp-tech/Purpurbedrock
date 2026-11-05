@@ -5125,6 +5125,9 @@ import java.util.concurrent.ConcurrentHashMap;""",
         "CodecProcessor.nullSafeUpdateCodec",
     )
 
+    steve_asset = root / "core/src/main/resources/bedrock/steve-wide.png"
+    steve_asset.parent.mkdir(parents=True, exist_ok=True)
+    steve_asset.write_bytes((Path(__file__).resolve().parent / "assets/steve-wide.png").read_bytes())
     skin_provider = root / "core/src/main/java/org/geysermc/geyser/skin/SkinProvider.java"
     replace_exact(
         skin_provider,
@@ -5142,16 +5145,28 @@ import java.util.concurrent.ConcurrentHashMap;""",
      * It deliberately excludes Bedrock persona geometry and capes, which can stall mobile rendering.
      */
     static SkinData determinePerformanceSafeSkinData(UUID uuid) {
-        // Every constrained viewer receives the exact same pre-bundled skin and skin ID.
-        // This lets Bedrock reuse one GPU texture when many players appear at once instead
-        // of compiling a separate texture/geometry pair per remote UUID.
-        // UUID hash 15 selects the bundled wide Steve entry (not slim Alex).
-        ProvidedSkins.ProvidedSkin providedSkin = ProvidedSkins.getDefaultPlayerSkin(new UUID(0L, 15L));
-        return new SkinData(
-            providedSkin.getData(),
-            EMPTY_CAPE,
-            providedSkin.isSlim() ? SkinGeometry.SLIM : SkinGeometry.WIDE
-        );
+        return BasicSteve.DATA;
+    }
+
+    // Loaded once from the engine JAR, never from the asynchronous client-asset cache.
+    private static final class BasicSteve {
+        private static final SkinData DATA = load();
+
+        private static SkinData load() {
+            try (var stream = SkinProvider.class.getResourceAsStream("/bedrock/steve-wide.png")) {
+                if (stream == null) throw new IllegalStateException("Missing bundled Steve texture");
+                BufferedImage image = ImageIO.read(stream);
+                if (image == null || image.getWidth() != 64 || image.getHeight() != 64) {
+                    throw new IllegalStateException("Invalid bundled Steve texture");
+                }
+                byte[] pixels = bufferedImageToImageData(image);
+                image.flush();
+                return new SkinData(new Skin("purpurbedrock:steve_wide_v1", pixels, true),
+                        EMPTY_CAPE, SkinGeometry.WIDE);
+            } catch (IOException e) {
+                throw new IllegalStateException("Cannot read bundled Steve texture", e);
+            }
+        }
     }
 
     /**
@@ -5375,15 +5390,22 @@ import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataTypes;""",
             return;
         }
 
-        // Match the immutable Steve policy: a remote player never receives armor, head/profile,
-        // main-hand or off-hand visual packets. This removes the remaining appearance burst while
-        // preserving the viewer's own inventory and every non-player entity's equipment.
-        if (livingEntity instanceof PlayerEntity && livingEntity != session.getPlayerEntity()) {
-            return;
-        }
+        // Restore vanilla equipment visuals, but never translate remote custom components.
+        boolean basicRemoteEquipment = livingEntity instanceof PlayerEntity
+                && livingEntity != session.getPlayerEntity();
 
         boolean armorUpdated = false;""",
         "JavaSetEquipmentTranslator.suppressRemotePlayerVisualEquipment",
+    )
+
+    replace_exact(
+        equipment_translator,
+        "            GeyserItemStack stack = GeyserItemStack.from(session, equipment.getItem());",
+        """            var item = equipment.getItem();
+            GeyserItemStack stack = basicRemoteEquipment && item != null
+                    ? GeyserItemStack.of(session, item.getId(), item.getAmount())
+                    : GeyserItemStack.from(session, item);""",
+        "JavaSetEquipmentTranslator.basicRemoteEquipment",
     )
 
     sign_translator = root / "core/src/main/java/org/geysermc/geyser/translator/level/block/entity/SignBlockEntityTranslator.java"

@@ -109,7 +109,7 @@ jobs:
             grep -Fq 'ItemData.AIR' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/entity/type/player/AvatarEntity.java
             grep -Fq 'livingEntity != session.getPlayerEntity()' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/translator/protocol/java/entity/JavaSetEquipmentTranslator.java
             grep -Fq 'ensurePerformanceSafeEntryBeforeSpawn' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
-            grep -Fq 'new UUID(0L, 15L)' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinProvider.java
+            grep -Fq 'purpurbedrock:steve_wide_v1' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinProvider.java
             grep -Fq 'Never send' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
             ! grep -Fq 'commitPerformanceSafeSkinAfterSpawn' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
             grep -Fq 'safeSkinBeforeSpawn' "$GITHUB_WORKSPACE/scripts/patch-bedrock-engine.py"
