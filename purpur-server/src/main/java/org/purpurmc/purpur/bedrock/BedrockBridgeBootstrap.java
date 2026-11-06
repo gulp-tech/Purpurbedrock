@@ -964,9 +964,12 @@ public final class BedrockBridgeBootstrap {
                     throw new IllegalStateException("UpstreamSession missing immutable-safe setAttributes (<26.30 SingletonList fix)!");
                 }
             }
-            try (InputStream smIn = cl.getResourceAsStream("org/geysermc/geyser/skin/SkinManager.class")) {
-                if (smIn == null || !new String(smIn.readAllBytes(), StandardCharsets.ISO_8859_1).contains("purpurbedrock.safeRemotePlayerSkins")) {
-                    throw new IllegalStateException("SkinManager missing mobile-safe remote player skin guard!");
+            Class<?> skinManagerClass = Class.forName("org.geysermc.geyser.skin.SkinManager", true, cl);
+            skinManagerClass.getMethod("usePerformanceSafeRemoteSkin", geyserSessionClass, java.util.UUID.class);
+            skinManagerClass.getDeclaredField("PERFORMANCE_SAFE_SKINS_SENT");
+            try (InputStream steve = cl.getResourceAsStream("bedrock/steve-wide.png")) {
+                if (steve == null || steve.read() != 0x89) {
+                    throw new IllegalStateException("Bundled Steve texture missing or invalid!");
                 }
             }
             Class<?> azimuthClass = Class.forName("org.geysermc.geyser.session.cache.waypoint.AzimuthWaypoint", true, cl);
