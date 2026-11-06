@@ -5206,6 +5206,21 @@ import java.util.concurrent.ConcurrentHashMap;""",
         }
     }
 
+    // This tracks actual Bedrock list membership, not an irreversible "ever sent" flag.
+    public static boolean forgetPerformanceSafeEntry(GeyserSession session, UUID playerUuid) {
+        synchronized (PERFORMANCE_SAFE_SKINS_SENT) {
+            java.util.Set<UUID> entries = PERFORMANCE_SAFE_SKINS_SENT.get(session);
+            return entries != null && entries.remove(playerUuid);
+        }
+    }
+
+    public static boolean hasPerformanceSafeEntry(GeyserSession session, UUID playerUuid) {
+        synchronized (PERFORMANCE_SAFE_SKINS_SENT) {
+            java.util.Set<UUID> entries = PERFORMANCE_SAFE_SKINS_SENT.get(session);
+            return entries != null && entries.contains(playerUuid);
+        }
+    }
+
     private static PlayerListPacket.Entry buildPerformanceSafeEntry(GeyserSession session, AvatarEntity entity, SkinData safe) {
         PlayerListPacket.Entry entry = PlayerListUtils.buildEntryManually(
             session,
@@ -5321,12 +5336,99 @@ import java.util.concurrent.ConcurrentHashMap;""",
         """                if (entry.isListed()) {
                     // Some servers repeat UPDATE_LISTED=true around respawns and teleports.
                     // Re-adding an already listed player forces weak clients to rebuild appearance data.
-                    if (entity.isListed() && SkinManager.usePerformanceSafeRemoteSkin(session, entity.uuid())) {
+                    if (SkinManager.usePerformanceSafeRemoteSkin(session, entity.uuid())
+                            && SkinManager.hasPerformanceSafeEntry(session, entity.uuid())) {
+                        entity.setListed(true);
                         continue;
                     }
                     if (!PlayerListUtils.shouldLimitPlayerListEntries(session)) {""",
         "JavaPlayerInfoUpdateTranslator.deduplicateConstrainedPlayerListAdds",
     )
+
+    replace_exact(
+        player_info_update,
+        """                        PlayerListPacket.Entry playerListEntry = new PlayerListPacket.Entry(entity.getTabListUuid());
+                        playerListEntry.setAction(PlayerListPacket.Action.REMOVE);""",
+        """                        SkinManager.forgetPerformanceSafeEntry(session, entity.uuid());
+                        PlayerListPacket.Entry playerListEntry = new PlayerListPacket.Entry(entity.getTabListUuid());
+                        playerListEntry.setAction(PlayerListPacket.Action.REMOVE);""",
+        "JavaPlayerInfoUpdateTranslator.forgetRemovedSafeEntry",
+    )
+
+    player_info_remove = root / "core/src/main/java/org/geysermc/geyser/translator/protocol/java/entity/player/JavaPlayerInfoRemoveTranslator.java"
+    replace_exact(
+        player_info_remove,
+        "import org.geysermc.geyser.session.GeyserSession;",
+        "import org.geysermc.geyser.session.GeyserSession;\nimport org.geysermc.geyser.skin.SkinManager;",
+        "JavaPlayerInfoRemoveTranslator.importSafeSkinTracker",
+    )
+    replace_exact(
+        player_info_remove,
+        """                // Only unlist entities that are actually listed
+                if (!entity.isListed()) {
+                    continue;
+                }""",
+        """                // A hidden Java entry may still have been installed for actor spawning.
+                boolean safeEntry = SkinManager.forgetPerformanceSafeEntry(session, id);
+                if (!entity.isListed() && !safeEntry) {
+                    continue;
+                }""",
+        "JavaPlayerInfoRemoveTranslator.forgetSafeEntry",
+    )
+
+    player_entity = root / "core/src/main/java/org/geysermc/geyser/entity/type/player/PlayerEntity.java"
+    replace_exact(
+        player_entity,
+        "import org.geysermc.geyser.util.PlayerListUtils;",
+        "import org.geysermc.geyser.util.PlayerListUtils;\nimport org.geysermc.geyser.skin.SkinManager;",
+        "PlayerEntity.importSafeSkinTracker",
+    )
+    replace_exact(
+        player_entity,
+        """    private boolean listed = false;
+
+    public PlayerEntity""",
+        """    private boolean listed = false;
+
+    private final RemoteEquipmentBatch remoteEquipmentBatch = new RemoteEquipmentBatch(
+        task -> session.scheduleInEventLoop(task, 75, TimeUnit.MILLISECONDS),
+        flags -> {
+            if (!isValid()) return;
+            if ((flags & RemoteEquipmentBatch.ARMOR) != 0) updateArmor();
+            if ((flags & RemoteEquipmentBatch.MAIN_HAND) != 0) updateMainHand();
+            if ((flags & RemoteEquipmentBatch.OFF_HAND) != 0) updateOffHand();
+        });
+
+    public void queueRemoteEquipment(boolean armor, boolean mainHand, boolean offHand) {
+        int flags = (armor ? RemoteEquipmentBatch.ARMOR : 0)
+            | (mainHand ? RemoteEquipmentBatch.MAIN_HAND : 0)
+            | (offHand ? RemoteEquipmentBatch.OFF_HAND : 0);
+        remoteEquipmentBatch.update(flags);
+    }
+
+    public PlayerEntity""",
+        "PlayerEntity.coalesceRemoteEquipment",
+    )
+    replace_exact(
+        player_entity,
+        """    public void despawnEntity() {
+        super.despawnEntity();""",
+        """    public void despawnEntity() {
+        remoteEquipmentBatch.invalidate();
+        super.despawnEntity();""",
+        "PlayerEntity.invalidateRemoteEquipmentOnDespawn",
+    )
+    replace_exact(
+        player_entity,
+        """        if (PlayerListUtils.shouldLimitPlayerListEntries(session)) {
+            PlayerListPacket packet = new PlayerListPacket();""",
+        """        if (PlayerListUtils.shouldLimitPlayerListEntries(session)) {
+            SkinManager.forgetPerformanceSafeEntry(session, uuid());
+            PlayerListPacket packet = new PlayerListPacket();""",
+        "PlayerEntity.forgetLimitedPlayerListEntry",
+    )
+    remote_batch = root / "core/src/main/java/org/geysermc/geyser/entity/type/player/RemoteEquipmentBatch.java"
+    remote_batch.write_text((Path(__file__).resolve().parent / "assets/java/RemoteEquipmentBatch.java").read_text())
 
     add_entity_translator = root / "core/src/main/java/org/geysermc/geyser/translator/protocol/java/entity/JavaAddEntityTranslator.java"
     replace_exact(
@@ -5406,6 +5508,22 @@ import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataTypes;""",
                     ? GeyserItemStack.of(session, item.getId(), item.getAmount())
                     : GeyserItemStack.from(session, item);""",
         "JavaSetEquipmentTranslator.basicRemoteEquipment",
+    )
+
+    replace_exact(
+        equipment_translator,
+        """        if (armorUpdated) {
+            livingEntity.updateArmor();
+        }""",
+        """        if (basicRemoteEquipment) {
+            // Merge bursts on the viewer's event loop; never discard the final slot values.
+            ((PlayerEntity) livingEntity).queueRemoteEquipment(armorUpdated, mainHandUpdated, offHandUpdated);
+            return;
+        }
+        if (armorUpdated) {
+            livingEntity.updateArmor();
+        }""",
+        "JavaSetEquipmentTranslator.coalesceRemoteVisualUpdates",
     )
 
     sign_translator = root / "core/src/main/java/org/geysermc/geyser/translator/level/block/entity/SignBlockEntityTranslator.java"

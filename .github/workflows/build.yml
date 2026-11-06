@@ -44,6 +44,12 @@ jobs:
           git config --global user.email "no-reply@github.com"
           git config --global user.name "GitHub Actions"
 
+      - name: Test remote equipment update batching
+        run: |
+          mkdir -p /tmp/remote-equipment-test
+          javac -d /tmp/remote-equipment-test scripts/assets/java/RemoteEquipmentBatch.java scripts/tests/RemoteEquipmentBatchTest.java
+          java -cp /tmp/remote-equipment-test RemoteEquipmentBatchTest
+
       - name: Build Self-Contained Bedrock 26.2 Protocol Engine (Zero External Dependencies)
         id: build_bedrock_engine
         run: |
@@ -108,6 +114,9 @@ jobs:
             ! grep -Fq 'purpurbedrockRemoteMoveCounter' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/entity/type/player/AvatarEntity.java
             grep -Fq 'ItemData.AIR' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/entity/type/player/AvatarEntity.java
             grep -Fq 'livingEntity != session.getPlayerEntity()' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/translator/protocol/java/entity/JavaSetEquipmentTranslator.java
+            grep -Fq 'forgetPerformanceSafeEntry' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/translator/protocol/java/entity/player/JavaPlayerInfoRemoveTranslator.java
+            grep -Fq 'queueRemoteEquipment' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/translator/protocol/java/entity/JavaSetEquipmentTranslator.java
+            grep -Fq 'remoteEquipmentBatch.invalidate()' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/entity/type/player/PlayerEntity.java
             grep -Fq 'ensurePerformanceSafeEntryBeforeSpawn' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
             test -s /tmp/geyser-26.2/core/src/main/resources/bedrock/steve-wide.png
             grep -Fq 'basicRemoteEquipment && item != null' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/translator/protocol/java/entity/JavaSetEquipmentTranslator.java
@@ -516,7 +525,9 @@ jobs:
             PurpurBedrockNPC-26.2.jar.sha256
             unlock-windows-lan.bat
 
+      # Branch builds are candidates. Promotion to the public core is deliberate, not automatic.
       - name: Publish Purpurbedrock 26.2 Ready Core to GitHub Releases
+        if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v26.2.0-bedrock
