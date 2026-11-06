@@ -5125,6 +5125,45 @@ import java.util.concurrent.ConcurrentHashMap;""",
         "CodecProcessor.nullSafeUpdateCodec",
     )
 
+    # Explicit opt-in diagnosis; no payloads or addresses, and only a volatile check while idle.
+    diagnostic = root / "core/src/main/java/org/geysermc/geyser/session/RemoteSpawnDiagnostics.java"
+    diagnostic.write_text((Path(__file__).resolve().parent / "assets/java/RemoteSpawnDiagnostics.java").read_text())
+    session_source = root / "core/src/main/java/org/geysermc/geyser/session/GeyserSession.java"
+    replace_exact(
+        session_source,
+        """    public void sendUpstreamPacket(BedrockPacket packet) {
+        upstream.sendPacket(packet);
+    }""",
+        """    public void sendUpstreamPacket(BedrockPacket packet) {
+        RemoteSpawnDiagnostics.recordBedrock(this, packet);
+        upstream.sendPacket(packet);
+    }""",
+        "GeyserSession.observeNormalUpstream",
+    )
+    replace_exact(
+        session_source,
+        """    public void sendUpstreamPacketImmediately(BedrockPacket packet) {
+        upstream.sendPacketImmediately(packet);
+    }""",
+        """    public void sendUpstreamPacketImmediately(BedrockPacket packet) {
+        RemoteSpawnDiagnostics.recordBedrock(this, packet);
+        upstream.sendPacketImmediately(packet);
+    }""",
+        "GeyserSession.observeImmediateUpstream",
+    )
+    adapter = root / "core/src/main/java/org/geysermc/geyser/session/GeyserSessionAdapter.java"
+    replace_exact(
+        adapter,
+        """    public void packetReceived(Session session, Packet packet) {
+        Registries.JAVA_PACKET_TRANSLATORS.translate(packet.getClass(), packet, this.session, true);
+    }""",
+        """    public void packetReceived(Session session, Packet packet) {
+        RemoteSpawnDiagnostics.recordJava(this.session, packet);
+        Registries.JAVA_PACKET_TRANSLATORS.translate(packet.getClass(), packet, this.session, true);
+    }""",
+        "GeyserSessionAdapter.observeJavaPackets",
+    )
+
     steve_asset = root / "core/src/main/resources/bedrock/steve-wide.png"
     steve_asset.parent.mkdir(parents=True, exist_ok=True)
     steve_asset.write_bytes((Path(__file__).resolve().parent / "assets/steve-wide.png").read_bytes())

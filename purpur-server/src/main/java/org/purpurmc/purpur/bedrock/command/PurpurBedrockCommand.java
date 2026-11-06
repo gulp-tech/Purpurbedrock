@@ -29,7 +29,7 @@ public final class PurpurBedrockCommand extends Command {
     public PurpurBedrockCommand(String name) {
         super(name);
         this.description = "Purpurbedrock 26.2 — управление ядром Bedrock-only, чанками, головами, PAPI, Anti-Xray, LAN и Java-меню";
-        this.usageMessage = "/purpurbedrock [status | menu | skulls | chunks | papi | antixray | reload]";
+        this.usageMessage = "/purpurbedrock [status | menu | skulls | chunks | papi | antixray | diagnose | reload]";
         this.setAliases(List.of("pb", "bedrockcore"));
         this.setPermission("purpurbedrock.admin");
     }
@@ -38,7 +38,7 @@ public final class PurpurBedrockCommand extends Command {
     public List<String> tabComplete(CommandSender sender, String alias, String[] args, Location location) {
         if (args.length == 1) {
             String prefix = args[0].toLowerCase(Locale.ROOT);
-            return Stream.of("status", "menu", "skulls", "chunks", "papi", "antixray", "reload")
+            return Stream.of("status", "menu", "skulls", "chunks", "papi", "antixray", "diagnose", "reload")
                 .filter(opt -> opt.startsWith(prefix))
                 .toList();
         }
@@ -48,7 +48,7 @@ public final class PurpurBedrockCommand extends Command {
                 .filter(opt -> opt.startsWith(prefix))
                 .toList();
         }
-        if (args.length == 2 && ("chunks".equalsIgnoreCase(args[0]) || "papi".equalsIgnoreCase(args[0]))) {
+        if (args.length == 2 && ("chunks".equalsIgnoreCase(args[0]) || "papi".equalsIgnoreCase(args[0]) || "diagnose".equalsIgnoreCase(args[0]))) {
             String prefix = args[1].toLowerCase(Locale.ROOT);
             return Bukkit.getOnlinePlayers().stream()
                 .map(Player::getName)
@@ -115,6 +115,17 @@ public final class PurpurBedrockCommand extends Command {
                 enabled ? NamedTextColor.GREEN : NamedTextColor.YELLOW
             ));
             sender.sendMessage(Component.text(" • Переключение на лету: /pb skulls off | /pb skulls on", NamedTextColor.AQUA));
+            return true;
+        }
+
+        if ("diagnose".equals(sub)) {
+            Player target = args.length >= 2 ? Bukkit.getPlayerExact(args[1]) : (sender instanceof Player p ? p : null);
+            if (target == null) {
+                sender.sendMessage(Component.text("Использование: /pb diagnose <ник игрока онлайн>", NamedTextColor.YELLOW));
+                return true;
+            }
+            sender.sendMessage(Component.text("[Purpurbedrock] "
+                + BedrockBridgeBootstrap.startPlayerDiagnostics(target.getUniqueId()), NamedTextColor.AQUA));
             return true;
         }
 

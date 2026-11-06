@@ -49,6 +49,9 @@ jobs:
           mkdir -p /tmp/remote-equipment-test
           javac -d /tmp/remote-equipment-test scripts/assets/java/RemoteEquipmentBatch.java scripts/tests/RemoteEquipmentBatchTest.java
           java -cp /tmp/remote-equipment-test RemoteEquipmentBatchTest
+          mkdir -p /tmp/remote-diagnostics-test
+          javac -d /tmp/remote-diagnostics-test scripts/assets/java/RemoteSpawnDiagnostics.java $(find scripts/tests/diagnostics -name '*.java')
+          java -cp /tmp/remote-diagnostics-test RemoteSpawnDiagnosticsTest
 
       - name: Build Self-Contained Bedrock 26.2 Protocol Engine (Zero External Dependencies)
         id: build_bedrock_engine
@@ -116,6 +119,8 @@ jobs:
             grep -Fq 'livingEntity != session.getPlayerEntity()' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/translator/protocol/java/entity/JavaSetEquipmentTranslator.java
             grep -Fq 'forgetPerformanceSafeEntry' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/translator/protocol/java/entity/player/JavaPlayerInfoRemoveTranslator.java
             grep -Fq 'queueRemoteEquipment' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/translator/protocol/java/entity/JavaSetEquipmentTranslator.java
+            grep -Fq 'RemoteSpawnDiagnostics.recordJava' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/session/GeyserSessionAdapter.java
+            grep -Fq 'RemoteSpawnDiagnostics.recordBedrock' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/session/GeyserSession.java
             grep -Fq 'remoteEquipmentBatch.invalidate()' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/entity/type/player/PlayerEntity.java
             grep -Fq 'ensurePerformanceSafeEntryBeforeSpawn' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
             test -s /tmp/geyser-26.2/core/src/main/resources/bedrock/steve-wide.png
@@ -300,7 +305,7 @@ jobs:
           EOF
 
           python3 -u - << 'PY'
-          import os, pathlib, shutil, signal, socket, struct, subprocess, time
+          import os, pathlib, shutil, signal, socket, struct, subprocess, sys, time
 
           def pack_varint(val):
               out = bytearray()
@@ -419,6 +424,11 @@ jobs:
               except ProcessLookupError:
                   pass
               out_f.close()
+              if sys.exc_info()[0] is not None:
+                  tail = "\n".join(log_path.read_text(encoding="utf-8", errors="replace").splitlines()[-20:])
+                  # CI uses a synthetic server; annotate the captured failure so it remains inspectable.
+                  escaped = tail.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+                  print("::error title=Smoke server log::" + escaped[-6000:], flush=True)
 
           server_log = log_path.read_text(encoding="utf-8", errors="replace")
           print("=== SERVER LOG TAIL ===")

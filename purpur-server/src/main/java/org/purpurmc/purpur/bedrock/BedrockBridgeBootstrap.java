@@ -769,6 +769,22 @@ public final class BedrockBridgeBootstrap {
         Files.writeString(engineDir.resolve("config.yml"), internalYaml, StandardCharsets.UTF_8);
     }
 
+    /** Start a short opt-in aggregate protocol trace without changing live traffic. */
+    public static String startPlayerDiagnostics(java.util.UUID playerUuid) {
+        Plugin plugin = Bukkit.getPluginManager().getPlugin("Geyser-Spigot");
+        if (plugin == null || !plugin.isEnabled()) {
+            return "Встроенный протокол не запущен.";
+        }
+        try {
+            Class<?> diagnostics = Class.forName(
+                "org.geysermc.geyser.session.RemoteSpawnDiagnostics", true, plugin.getClass().getClassLoader());
+            return (String) diagnostics.getMethod("begin", String.class).invoke(null, playerUuid.toString());
+        } catch (ReflectiveOperationException ex) {
+            Bukkit.getLogger().log(Level.WARNING, "[Purpurbedrock] Не удалось запустить диагностику", ex);
+            return "Не удалось запустить диагностику; подробности в консоли.";
+        }
+    }
+
     public static String runProtocolSelfTest() {
         int[] expectedProtocols = {
             685, 686, 712, 729, 748, 766, 776, 786, 800, 818, 819,
