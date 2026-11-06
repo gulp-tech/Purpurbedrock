@@ -1,0 +1,39 @@
+name: Inspect synthetic smoke-test diagnostics
+on:
+  push:
+    branches: ["arena/**"]
+    paths: [".github/workflows/inspect-smoke-diagnostics.yml"]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Build run with synthetic smoke diagnostics
+        required: true
+        default: "42242405838"
+permissions:
+  actions: read
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: purpurbedrock-smoke-diagnostics
+          path: artifacts
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.run_id || '42242405838' }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Expose synthetic server log excerpts
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          files = list(Path('artifacts').rglob('server_out.log'))
+          if not files:
+              raise SystemExit('No synthetic server log found')
+          lines = files[0].read_text(encoding='utf-8', errors='replace').splitlines()
+          interesting = [line for line in lines if any(word.lower() in line.lower() for word in
+              ('selftest', 'exception', 'error', 'command', 'done (', 'warn', 'stopping'))]
+          for start in range(0, min(len(interesting), 120), 10):
+              text = '\n'.join(interesting[start:start+10]).replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+              print(f'::notice title=Synthetic smoke log {start // 10 + 1}::{text[-6000:]}')
+          PY
