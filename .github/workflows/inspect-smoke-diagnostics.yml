@@ -32,7 +32,7 @@ jobs:
               raise SystemExit('No synthetic server log found')
           lines = files[0].read_text(encoding='utf-8', errors='replace').splitlines()
           interesting = [line for line in lines if any(word.lower() in line.lower() for word in
-              ('selftest', 'exception', 'error', 'command', 'done (', 'warn', 'stopping'))]
+              ('selftest', 'exception', 'error', 'command', 'done (', 'stopping', 'unknown')) and 'WARN]: \tat ' not in line and 'NoSuchFileException' not in line]
           for start in range(0, min(len(interesting), 120), 10):
               text = '\n'.join(interesting[start:start+10]).replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
               print(f'::notice title=Synthetic smoke log {start // 10 + 1}::{text[-6000:]}')
