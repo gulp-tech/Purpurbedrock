@@ -307,6 +307,12 @@ jobs:
           python3 -u - << 'PY'
           import os, pathlib, shutil, signal, socket, struct, subprocess, sys, time
 
+          def annotate_exception(kind, error, traceback):
+              text = f"{kind.__name__}: {error}".replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+              print("::error title=Smoke test failure::" + text, flush=True)
+              sys.__excepthook__(kind, error, traceback)
+          sys.excepthook = annotate_exception
+
           def pack_varint(val):
               out = bytearray()
               while True:
