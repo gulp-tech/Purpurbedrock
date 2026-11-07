@@ -166,10 +166,18 @@ jobs:
             ls -lh "$GITHUB_WORKSPACE/purpur-server/src/main/resources/META-INF/bedrock/purpurbedrock-protocol.jar"
 
             echo "=== Build and test bundled per-player command completion ==="
-            gradle -p purpurbedrock-completions clean test jar --no-daemon --stacktrace
+            gradle -p purpurbedrock-completions clean test jar fixtureJar --no-daemon --stacktrace
             cp purpurbedrock-completions/build/libs/PurpurBedrockCompletions-0.1.0.jar \
               "$GITHUB_WORKSPACE/purpur-server/src/main/resources/META-INF/bedrock/purpurbedrock-completions.jar"
           } 2>&1 | tee /tmp/build.log
+
+      - name: Set up synthetic Bedrock clients
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install synthetic client dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: purpurbedrock-completions/tests/bedrock
 
       - name: Apply Purpurbedrock 26.2 Patches & Build Paperclip Server Core JAR
         id: gradle_build
@@ -251,6 +259,7 @@ jobs:
           cp purpurbedrock-26.2.jar /tmp/smoke-server/purpurbedrock-26.2.jar
           cp PurpurBedrockAC-26.2.jar /tmp/smoke-server/plugins/PurpurBedrockAC-26.2.jar
           cp PurpurBedrockNPC-26.2.jar /tmp/smoke-server/plugins/PurpurBedrockNPC-26.2.jar
+          cp purpurbedrock-completions/build/libs/NativeCompletionFixture-0.1.0.jar /tmp/smoke-server/plugins/NativeCompletionFixture.jar
           python3 - "$TEST_PLUGIN_JAR" << 'PY2'
           import os, struct, sys, zipfile, zlib
           src = sys.argv[1]
@@ -304,6 +313,7 @@ jobs:
           server-port=25565
           level-type=minecraft\:flat
           generate-structures=false
+          difficulty=peaceful
           spawn-protection=0
           max-players=20
           enforce-secure-profile=false
@@ -420,6 +430,10 @@ jobs:
               # 3. Test NetherNet HTTP/WebSocket Signaling TCP listener on 127.0.0.1:19132
               with socket.create_connection(("127.0.0.1", 19132), timeout=5.0):
                   print("NETHERNET_TCP_SIGNALING_OK: connected to 127.0.0.1:19132")
+
+              print("=== Two synthetic clients: per-player command completions ===", flush=True)
+              test_dir = pathlib.Path(os.environ["GITHUB_WORKSPACE"]) / "purpurbedrock-completions/tests/bedrock"
+              subprocess.run(["node", "integration.cjs"], cwd=test_dir, check=True, timeout=240)
 
               proc.stdin.write("stop\n")
               proc.stdin.flush()
