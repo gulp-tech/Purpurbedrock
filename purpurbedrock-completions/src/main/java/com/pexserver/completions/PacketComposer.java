@@ -24,6 +24,31 @@ public final class PacketComposer {
         return args.length == 0 || (args.length == 1 && args[0].getEnumData() == null &&
                 (args[0].getType() == CommandParam.STRING || args[0].getType() == CommandParam.MESSAGE));
     }
+    /**
+     * The protocol translator groups roots with identical syntax as aliases, even
+     * when they belong to different Bukkit commands. Querying only the arbitrary
+     * representative would send /home suggestions for /sethome (or vice versa).
+     * Split generic roots before scanning; only already-advertised names are used.
+     */
+    public static AvailableCommandsPacket splitGenericCommands(AvailableCommandsPacket packet) {
+        AvailableCommandsPacket result = new AvailableCommandsPacket();
+        for (CommandData command : packet.getCommands()) {
+            CommandEnumData aliases = command.getAliases();
+            if (!generic(command) || aliases == null || aliases.getValues().size() <= 1
+                    || !aliases.getValues().containsKey(command.getName())) {
+                result.getCommands().add(command);
+                continue;
+            }
+            for (var alias : aliases.getValues().entrySet()) {
+                String name = alias.getKey();
+                CommandEnumData ownAlias = new CommandEnumData(name + "Aliases",
+                        Map.of(name, alias.getValue()), aliases.isSoft());
+                result.getCommands().add(new CommandData(name, command.getDescription(), command.getFlags(),
+                        command.getPermission(), ownAlias, command.getSubcommands(), command.getOverloads()));
+            }
+        }
+        return result;
+    }
     public static AvailableCommandsPacket copy(AvailableCommandsPacket packet) {
         AvailableCommandsPacket result = new AvailableCommandsPacket();
         result.getCommands().addAll(packet.getCommands());

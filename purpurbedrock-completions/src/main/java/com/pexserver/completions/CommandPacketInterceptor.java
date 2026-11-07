@@ -29,8 +29,9 @@ public final class CommandPacketInterceptor extends ChannelOutboundHandlerAdapte
                 wrapper.getPacket() instanceof AvailableCommandsPacket available && isPrimarySubClient(wrapper)) {
             boolean owned = generated.remove(available);
             try {
-                if (!owned) baselineReceived.accept(PacketComposer.copy(available));
-                AvailableCommandsPacket patched = PacketComposer.patch(available, models.get());
+                AvailableCommandsPacket split = PacketComposer.splitGenericCommands(available);
+                if (!owned) baselineReceived.accept(PacketComposer.copy(split));
+                AvailableCommandsPacket patched = PacketComposer.patch(split, models.get());
                 wrapper.setPacket(PacketComposer.uniqueHardEnums(patched));
             } catch (RuntimeException | LinkageError e) {
                 failure.accept(e); // Leave the original packet intact and continue transmission.

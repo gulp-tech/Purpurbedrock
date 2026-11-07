@@ -13,6 +13,23 @@ import static org.junit.jupiter.api.Assertions.*;
 import static com.pexserver.completions.CompletionModel.*;
 
 class PacketComposerTest {
+    @Test void separatesIdenticalPluginRootsBeforeApplyingTheirOwnSuggestions() {
+        CommandData original = original("home", CommandParam.STRING);
+        CommandData grouped = new CommandData("home", original.getDescription(), original.getFlags(), original.getPermission(),
+                PacketComposer.enumData("homeAliases", List.of("home", "sethome"), false),
+                original.getSubcommands(), original.getOverloads());
+        AvailableCommandsPacket packet = new AvailableCommandsPacket(); packet.getCommands().add(grouped);
+        var split = PacketComposer.splitGenericCommands(packet);
+        assertEquals(Set.of("home", "sethome"), split.getCommands().stream().map(CommandData::getName).collect(java.util.stream.Collectors.toSet()));
+        var patched = PacketComposer.patch(split, Map.of("home", model("private_home")));
+        CommandData home = patched.getCommands().stream().filter(d -> d.getName().equals("home")).findFirst().orElseThrow();
+        CommandData sethome = patched.getCommands().stream().filter(d -> d.getName().equals("sethome")).findFirst().orElseThrow();
+        assertTrue(home.getOverloads().length > grouped.getOverloads().length);
+        assertEquals(grouped.getOverloads().length, sethome.getOverloads().length);
+        assertEquals(Set.of("home"), home.getAliases().getValues().keySet());
+        assertEquals(Set.of("sethome"), sethome.getAliases().getValues().keySet());
+        assertEquals(List.of(grouped), packet.getCommands());
+    }
     @Test void keepsLiteralEnumsOutOfTheBuiltinParserNamespaceEvenWithoutDuplicateEnums() {
         AvailableCommandsPacket packet = new AvailableCommandsPacket();
         for (String name : List.of("string", "int", "name", "block_state")) {
