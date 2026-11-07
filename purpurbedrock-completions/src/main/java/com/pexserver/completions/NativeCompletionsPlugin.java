@@ -96,7 +96,7 @@ public final class NativeCompletionsPlugin extends JavaPlugin implements Listene
     public void onBedrockCommand(PlayerCommandPreprocessEvent event) {
         State state = states.get(event.getPlayer().getUniqueId());
         if (state != null) {
-            state.round = null;
+            discardRound(state);
             state.nextRefresh = Math.min(state.nextRefresh, tick + 40);
         }
     }
@@ -142,7 +142,7 @@ public final class NativeCompletionsPlugin extends JavaPlugin implements Listene
         return state;
     }
     private void detach(State state) {
-        state.live.set(false); state.models = Map.of(); state.round = null;
+        state.live.set(false); state.models = Map.of(); discardRound(state);
         sessions.remove(state.session, state);
         if (state.channel.eventLoop().isShuttingDown()) return;
         state.channel.eventLoop().execute(() -> {
@@ -171,7 +171,7 @@ public final class NativeCompletionsPlugin extends JavaPlugin implements Listene
             AvailableCommandsPacket baseline = state.baseline.get();
             if (baseline == null) continue;
             long revision = state.revision.get();
-            if (state.round != null && state.round.revision != revision) state.round = null;
+            if (state.round != null && state.round.revision != revision) discardRound(state);
             if (state.round == null && (state.seenRevision != revision || tick >= state.nextRefresh)) {
                 state.round = begin(state, player, baseline, revision);
                 state.seenRevision = revision;
@@ -242,8 +242,8 @@ public final class NativeCompletionsPlugin extends JavaPlugin implements Listene
                         return event.isHandled() ? event.getCompletions().stream().limit(maxCandidates).toList() : null;
                     }, asyncCompletions);
                 } catch (RejectedExecutionException saturated) {
-                    // Unknown listener outcome: do not fall back and expose potentially denied values.
-                    return CompletableFuture.completedFuture(List.of());
+                    // Preserve this context and retry when the bounded queue has room.
+                    return null;
                 }
             };
             CompletionScan.Resolver resolver = (prefix, partial, asyncValues) -> {
@@ -265,6 +265,11 @@ public final class NativeCompletionsPlugin extends JavaPlugin implements Listene
             round.pending.add(new ScanTask(label, scan));
         }
         return round;
+    }
+    private static void discardRound(State state) {
+        Round round = state.round;
+        state.round = null;
+        if (round != null) for (ScanTask task : round.pending) task.scan().cancel();
     }
     private static String completionBuffer(String label, List<String> prefix, String partial) {
         return "/" + label + " " + (prefix.isEmpty() ? "" : String.join(" ", prefix) + " ") + partial;
@@ -328,8 +333,8 @@ public final class NativeCompletionsPlugin extends JavaPlugin implements Listene
     private boolean admin(CommandSender sender, org.bukkit.command.Command command, String label, String[] args) {
         String sub = args.length == 0 ? "status" : args[0].toLowerCase(Locale.ROOT);
         switch (sub) {
-            case "reload" -> { reloadConfig(); settings = readSettings(); states.values().forEach(s -> s.round = null); dirtyAll(); sender.sendMessage("Настройки подсказок Bedrock перезагружены."); }
-            case "refresh" -> { states.values().forEach(s -> s.round = null); dirtyAll(); sender.sendMessage("Подсказки Bedrock будут обновлены."); }
+            case "reload" -> { reloadConfig(); settings = readSettings(); states.values().forEach(NativeCompletionsPlugin::discardRound); dirtyAll(); sender.sendMessage("Настройки подсказок Bedrock перезагружены."); }
+            case "refresh" -> { states.values().forEach(NativeCompletionsPlugin::discardRound); dirtyAll(); sender.sendMessage("Подсказки Bedrock будут обновлены."); }
             case "inspect" -> {
                 if (args.length != 3) { sender.sendMessage("Использование: /pbtabs inspect <игрок> <команда>"); return true; }
                 Player player = Bukkit.getPlayerExact(args[1]);

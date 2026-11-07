@@ -70,6 +70,20 @@ class CompletionScanTest {
         assertTrue(finish(blocked).nodes().isEmpty());
         assertEquals(0, forbiddenFallback.get());
     }
+    @Test void fullAsyncQueueYieldsAndRetriesWithoutSkippingPrefix() {
+        AtomicInteger attempts = new AtomicInteger();
+        List<String> observed = new ArrayList<>();
+        var scan = new CompletionScan("warp", new Limits(1, 8, 10, 8, 96),
+                (prefix, partial) -> {
+                    observed.add(partial);
+                    if (attempts.getAndIncrement() == 1) return null; // saturated on probe a
+                    return java.util.concurrent.CompletableFuture.completedFuture(partial.equals("a") ? List.of("alpha") : List.of());
+                }, (prefix, partial, values) -> values,
+                List.of("a", "b"), List.of());
+        var result = finish(scan);
+        assertEquals(List.of("", "a", "a", "b"), observed);
+        assertEquals(List.of("alpha"), result.contexts().get(List.of()));
+    }
     @Test void skipsInvalidCandidatesAndDoesNotExecuteAnything() {
         Command result = finish(new CompletionScan("cmd", new Limits(1, 8, 10, 8, 10),
                 (p, s) -> Arrays.asList(null, "", "two words", "bad\n", "\"quote", "a\\b", "toolong_name", "ok", "ok"),

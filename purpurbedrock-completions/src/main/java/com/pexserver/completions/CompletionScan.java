@@ -55,6 +55,7 @@ public final class CompletionScan implements CompletionTask {
         if (visited.add(prefix)) pending.add(prefix);
     }
     public boolean done() { return current == null && pending.isEmpty(); }
+    @Override public void cancel() { if (waiting != null) waiting.cancel(false); }
     public int calls() { return calls; }
     public void step() {
         if (done()) return;
@@ -67,8 +68,14 @@ public final class CompletionScan implements CompletionTask {
             returned = provider.complete(current, partial);
             calls++;
         } else if (waiting == null) {
-            waitingPartial = probing ? probes.get(probeIndex++) : "";
-            waiting = Objects.requireNonNull(asyncProvider.complete(current, waitingPartial));
+            String partial = probing ? probes.get(probeIndex) : "";
+            CompletableFuture<List<String>> submitted = asyncProvider.complete(current, partial);
+            // A full bounded executor is temporary, not an empty completion result.
+            // Yield to other work and retry this exact context later.
+            if (submitted == null) return;
+            if (probing) probeIndex++;
+            waitingPartial = partial;
+            waiting = submitted;
             expires = System.nanoTime() + 2_000_000_000L;
             calls++;
             return;
