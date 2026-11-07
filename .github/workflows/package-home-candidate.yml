@@ -1,5 +1,8 @@
 name: Package home completion candidate
 on:
+  push:
+    branches: ['arena/**']
+    paths: ['.github/workflows/package-home-candidate.yml']
   workflow_dispatch:
     inputs:
       run_id:
@@ -21,9 +24,9 @@ jobs:
       - name: Verify candidate and coverage
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RUN_ID: ${{ inputs.run_id }}
-          SHA: ${{ inputs.head_sha }}
-          COVERAGE: ${{ inputs.coverage_run_id }}
+          RUN_ID: ${{ inputs.run_id || '42377212084' }}
+          SHA: ${{ inputs.head_sha || '58174b20e9eca7908db7c7059fd38bce8f1617be' }}
+          COVERAGE: ${{ inputs.coverage_run_id || '42378429623' }}
         run: |
           set -euo pipefail
           [[ "$RUN_ID" =~ ^[0-9]+$ && "$COVERAGE" =~ ^[0-9]+$ && "$SHA" =~ ^[0-9a-f]{40}$ ]]
@@ -38,12 +41,12 @@ jobs:
           name: completion-tested-core
           path: coverage
           repository: ${{ github.repository }}
-          run-id: ${{ inputs.coverage_run_id }}
+          run-id: ${{ inputs.coverage_run_id || '42378429623' }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Match coverage to candidate
         env:
-          RUN_ID: ${{ inputs.run_id }}
-          SHA: ${{ inputs.head_sha }}
+          RUN_ID: ${{ inputs.run_id || '42377212084' }}
+          SHA: ${{ inputs.head_sha || '58174b20e9eca7908db7c7059fd38bce8f1617be' }}
         run: |
           set -euo pipefail
           printf '%s\n%s\n' "$RUN_ID" "$SHA" > expected-core.txt
@@ -54,7 +57,7 @@ jobs:
           name: purpurbedrock-26.2
           path: artifacts
           repository: ${{ github.repository }}
-          run-id: ${{ inputs.run_id }}
+          run-id: ${{ inputs.run_id || '42377212084' }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Prepare separate candidate
         run: |
