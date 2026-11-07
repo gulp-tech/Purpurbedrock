@@ -1,0 +1,89 @@
+name: Package home completion candidate
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful tested core build run ID
+        required: true
+      head_sha:
+        description: Expected core build commit SHA
+        required: true
+      coverage_run_id:
+        description: Successful completion coverage run ID
+        required: true
+permissions:
+  actions: read
+  contents: write
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify candidate and coverage
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ inputs.run_id }}
+          SHA: ${{ inputs.head_sha }}
+          COVERAGE: ${{ inputs.coverage_run_id }}
+        run: |
+          set -euo pipefail
+          [[ "$RUN_ID" =~ ^[0-9]+$ && "$COVERAGE" =~ ^[0-9]+$ && "$SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)" = success
+          test "$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha)" = "$SHA"
+          test "$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json workflowDatabaseId --jq .workflowDatabaseId)" = "$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/build.yml" --jq .id)"
+          test "$(gh run view "$COVERAGE" --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)" = success
+          test "$(gh run view "$COVERAGE" --repo "$GITHUB_REPOSITORY" --json workflowDatabaseId --jq .workflowDatabaseId)" = "$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/test-completion-coverage.yml" --jq .id)"
+      - name: Download coverage provenance
+        uses: actions/download-artifact@v4
+        with:
+          name: completion-tested-core
+          path: coverage
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.coverage_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Match coverage to candidate
+        env:
+          RUN_ID: ${{ inputs.run_id }}
+          SHA: ${{ inputs.head_sha }}
+        run: |
+          set -euo pipefail
+          printf '%s\n%s\n' "$RUN_ID" "$SHA" > expected-core.txt
+          cmp expected-core.txt coverage/tested-core.txt
+      - name: Download verified core
+        uses: actions/download-artifact@v4
+        with:
+          name: purpurbedrock-26.2
+          path: artifacts
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Prepare separate candidate
+        run: |
+          set -euo pipefail
+          (cd artifacts && sha256sum -c purpurbedrock-26.2.jar.sha256)
+          cp artifacts/purpurbedrock-26.2.jar purpurbedrock-26.2-home-test.jar
+          sha256sum purpurbedrock-26.2-home-test.jar > purpurbedrock-26.2-home-test.jar.sha256
+          mkdir package
+          cp purpurbedrock-26.2-home-test.jar* package/
+          cat > package/INSTALL.txt <<'TEXT'
+          Purpurbedrock 26.2 - experimental home completion candidate.
+          Stop the server and make a backup. Replace only the core JAR in the server
+          root, using the existing launch filename. Keep transport: both.
+          This is not a fix for player freeze. Test home suggestions in a real
+          Bedrock client and roll back to your prior JAR if needed.
+          No standalone anti-cheat is included. To remove an already-installed
+          PurpurBedrockAC plugin, back it up and remove its JAR from plugins/.
+          Its separate Anti-ESP will no longer function; core Anti-Xray is separate.
+          TEXT
+          (cd package && zip -9 ../Purpurbedrock-26.2-home-test.zip *)
+          sha256sum Purpurbedrock-26.2-home-test.zip > Purpurbedrock-26.2-home-test.zip.sha256
+      - name: Publish candidate without replacing main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload v26.2.0-bedrock \
+            purpurbedrock-26.2-home-test.jar \
+            purpurbedrock-26.2-home-test.jar.sha256 \
+            Purpurbedrock-26.2-home-test.zip \
+            Purpurbedrock-26.2-home-test.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" --clobber

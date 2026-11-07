@@ -1,11 +1,13 @@
 name: Investigate Bedrock completion coverage
 on:
-  push:
-    branches: ['arena/**']
-    paths:
-      - '.github/workflows/test-completion-coverage.yml'
-      - 'scripts/tests/completion-coverage/**'
   workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Successful core build run ID to test"
+        required: true
+      head_sha:
+        description: "Expected commit SHA of the core build"
+        required: true
 permissions:
   actions: read
   contents: read
@@ -30,13 +32,26 @@ jobs:
       - name: Install test client
         run: npm ci --no-audit --no-fund
         working-directory: scripts/tests/completion-coverage
-      - name: Download previously published candidate
+      - name: Verify selected build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ inputs.run_id }}
+          EXPECTED_SHA: ${{ inputs.head_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)" = success
+          test "$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha)" = "$EXPECTED_SHA"
+          test "$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json workflowDatabaseId --jq .workflowDatabaseId)" = "$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/build.yml" --jq .id)"
+          echo "Validated core build $RUN_ID at $EXPECTED_SHA"
+      - name: Download candidate
         uses: actions/download-artifact@v4
         with:
           name: purpurbedrock-26.2
           path: /tmp/coverage-artifacts
           repository: gulp-tech/Purpurbedrock
-          run-id: 42370191195
+          run-id: ${{ inputs.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Compare plugin, typed and vanilla command coverage
         run: |
@@ -85,3 +100,13 @@ jobs:
           name: completion-coverage-logs
           path: /tmp/coverage-server.log
           if-no-files-found: ignore
+      - name: Record tested build
+        env:
+          RUN_ID: ${{ inputs.run_id }}
+          SHA: ${{ inputs.head_sha }}
+        run: printf '%s\n%s\n' "$RUN_ID" "$SHA" > tested-core.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: completion-tested-core
+          path: tested-core.txt
+          if-no-files-found: error
