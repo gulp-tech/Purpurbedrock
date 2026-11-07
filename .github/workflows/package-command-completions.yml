@@ -1,0 +1,65 @@
+name: Package Bedrock command completion candidate
+on:
+  push:
+    branches:
+      - "arena/**"
+    paths:
+      - ".github/workflows/package-command-completions.yml"
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful build run to package
+        required: true
+        default: "42367679981"
+permissions:
+  actions: read
+  contents: write
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify successful candidate build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ inputs.run_id || '42367679981' }}
+        run: |
+          set -euo pipefail
+          test "$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)" = success
+          test "$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha)" = "2fe1123332aec7ce58b36c64554c508227ad1cae"
+      - name: Download candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: purpurbedrock-26.2
+          path: artifacts
+          repository: gulp-tech/Purpurbedrock
+          run-id: ${{ inputs.run_id || '42367679981' }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Prepare separate test downloads
+        run: |
+          set -euo pipefail
+          (cd artifacts && sha256sum -c purpurbedrock-26.2.jar.sha256)
+          cp artifacts/purpurbedrock-26.2.jar purpurbedrock-26.2-command-test.jar
+          sha256sum purpurbedrock-26.2-command-test.jar > purpurbedrock-26.2-command-test.jar.sha256
+          mkdir package
+          cp purpurbedrock-26.2-command-test.jar package/
+          cp purpurbedrock-26.2-command-test.jar.sha256 package/
+          cat > package/INSTALL.txt <<'TEXT'
+          Purpurbedrock 26.2 - command suggestion test candidate
+          Stop the server and make a full backup before testing. Replace the core JAR
+          in the server root (use the same launch filename). Keep transport: both.
+          No extra plugin is required. This candidate does not claim to fix player freezes.
+          Restore the previous JAR if there are regressions.
+          TEXT
+          (cd package && zip -9 ../Purpurbedrock-26.2-command-test.zip *)
+          sha256sum Purpurbedrock-26.2-command-test.zip > Purpurbedrock-26.2-command-test.zip.sha256
+      - name: Publish separate test candidate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload v26.2.0-bedrock \
+            purpurbedrock-26.2-command-test.jar \
+            purpurbedrock-26.2-command-test.jar.sha256 \
+            Purpurbedrock-26.2-command-test.zip \
+            Purpurbedrock-26.2-command-test.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" --clobber
