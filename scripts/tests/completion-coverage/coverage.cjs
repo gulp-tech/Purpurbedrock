@@ -31,6 +31,12 @@ async function main() {
   }
   await pause(30000)
   if (!a.spawned || !b.spawned) throw Error('Synthetic clients did not spawn')
+  for (const label of ['gamemode', 'warp', 'damage']) {
+    const definition = root(a, label)
+    const params = definition?.overloads.map(o => o.parameters.map(p => ({name:p.parameter_name, enum_type:p.enum_type, value_type:p.value_type})))
+    const nearbyEnums = a.latest?.dynamic_enums.filter(e => e.name.includes('mode') || e.name.startsWith('warp_')).map(e => ({name:e.name, values:e.values}))
+    console.log('::notice title=Completion packet detail::' + label + '=' + JSON.stringify({name:definition?.name, alias:definition?.alias, params, nearbyEnums, packetCount:a.packets.length}))
+  }
   const checks = {
     home: Boolean(a.enums.get(enumName('home'))?.includes('TabTestA_home')),
     async_plugin: Boolean(a.enums.get(enumName('warp'))?.includes('TabTestA_async')),
