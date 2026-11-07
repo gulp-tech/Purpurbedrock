@@ -1,0 +1,59 @@
+name: Package expanded command completion candidate
+on:
+  push:
+    branches: ['arena/**']
+    paths: ['.github/workflows/package-command-events.yml']
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: write
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify build and independent coverage
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          test "$(gh run view 42370191195 --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)" = success
+          test "$(gh run view 42370191195 --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha)" = "2b13329d5dcf7964a97c9aa4b9edbed1069094d1"
+          test "$(gh run view 42371999319 --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)" = success
+          test "$(gh run view 42371999319 --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha)" = "fb2acf45555ce07fe24f1ebcdba886cc1e70ad70"
+      - name: Download candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: purpurbedrock-26.2
+          path: artifacts
+          repository: gulp-tech/Purpurbedrock
+          run-id: 42370191195
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Prepare separate test downloads
+        run: |
+          set -euo pipefail
+          (cd artifacts && sha256sum -c purpurbedrock-26.2.jar.sha256)
+          cp artifacts/purpurbedrock-26.2.jar purpurbedrock-26.2-command-events-test.jar
+          sha256sum purpurbedrock-26.2-command-events-test.jar > purpurbedrock-26.2-command-events-test.jar.sha256
+          mkdir package
+          cp purpurbedrock-26.2-command-events-test.jar package/
+          cp purpurbedrock-26.2-command-events-test.jar.sha256 package/
+          cat > package/INSTALL.txt <<'TEXT'
+          Purpurbedrock 26.2 - expanded command suggestion test candidate
+          Stop the server and make a full backup before testing. Replace the core JAR
+          in the server root (use the same launch filename). Keep transport: both.
+          No extra plugin is required. Player freeze is not claimed fixed.
+          Restore the previous JAR if there are regressions.
+          TEXT
+          (cd package && zip -9 ../Purpurbedrock-26.2-command-events-test.zip *)
+          sha256sum Purpurbedrock-26.2-command-events-test.zip > Purpurbedrock-26.2-command-events-test.zip.sha256
+      - name: Publish separate test candidate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload v26.2.0-bedrock \
+            purpurbedrock-26.2-command-events-test.jar \
+            purpurbedrock-26.2-command-events-test.jar.sha256 \
+            Purpurbedrock-26.2-command-events-test.zip \
+            Purpurbedrock-26.2-command-events-test.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" --clobber
