@@ -14,11 +14,19 @@ function connect(username, xuid) {
   return s
 }
 function root(s, label) { return s.latest?.command_data.find(d => d.name === label || (s.latest.enums[d.alias]?.values || []).some(i => s.latest.enum_values[i] === label)) }
+// bedrock-protocol decodes the same 16-bit field as a named native parser even
+// when enum_type says it is an enum index (for example index 58 -> raw_text).
+// Reverse the protocol 2193 parser table before using the value as an index.
+const parserIds = { int: 1, float: 3, value: 4, wildcard_int: 5, operator: 6,
+  command_operator: 7, target: 8, wildcard_target: 10, file_path: 17,
+  integer_range: 23, equipment_slots: 43, string: 44, block_position: 52,
+  position: 53, message: 55, raw_text: 58, json: 62, block_states: 71, command: 75 }
+function enumIndex(value) { return typeof value === 'string' ? parserIds[value] : value }
 function allChoices(s, label) {
   const definition = root(s, label); if (!definition) return []
   return definition.overloads.flatMap(o => o.parameters).flatMap(p => {
-    if (p.enum_type === 'soft_enum') return s.enums.get(s.latest.dynamic_enums[p.value_type]?.name) || []
-    if (p.enum_type === 'enum') return (s.latest.enums[p.value_type]?.values || []).map(i => s.latest.enum_values[i])
+    if (p.enum_type === 'soft_enum') return s.enums.get(s.latest.dynamic_enums[enumIndex(p.value_type)]?.name) || []
+    if (p.enum_type === 'enum') return (s.latest.enums[enumIndex(p.value_type)]?.values || []).map(i => s.latest.enum_values[i])
     return []
   })
 }
