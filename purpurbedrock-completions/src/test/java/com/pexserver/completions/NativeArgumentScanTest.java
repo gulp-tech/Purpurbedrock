@@ -62,6 +62,25 @@ class NativeArgumentScanTest {
         assertTrue(replace.getSoftEnum().getValues().containsKey("new_value"));
         assertEquals(patched.getCommands().getFirst().getOverloads()[0].getOverloads()[1].getEnumData().getName(), replace.getSoftEnum().getName());
     }
+    @Test void suggestsFilePathWithoutReplacingTheOriginalParser() {
+        var dispatcher = new CommandDispatcher<Boolean>();
+        dispatcher.register(LiteralArgumentBuilder.<Boolean>literal("functions")
+                .then(RequiredArgumentBuilder.<Boolean, String>argument("name", StringArgumentType.word())
+                        .suggests((context, builder) -> builder.suggest("demo:welcome").buildFuture())));
+        var path = arg("name", CommandParam.FILE_PATH);
+        var input = new AvailableCommandsPacket();
+        input.getCommands().add(new CommandData("functions", "", Set.of(), CommandPermission.ANY, null, List.of(),
+                new CommandOverloadData[]{new CommandOverloadData(false, new CommandParamData[]{path})}));
+        var scan = new NativeArgumentScan(input.getCommands().getFirst(), limits, new JavaSuggestions<>(dispatcher, true));
+        var model = finish(scan);
+        assertEquals(List.of("demo:welcome"), model.arguments().getFirst().candidates());
+        var result = PacketComposer.patch(input, Map.of("functions", model)).getCommands().getFirst();
+        assertEquals(2, result.getOverloads().length);
+        assertEquals(CommandParam.FILE_PATH, result.getOverloads()[0].getOverloads()[0].getType());
+        assertNull(result.getOverloads()[0].getOverloads()[0].getEnumData());
+        assertTrue(result.getOverloads()[1].getOverloads()[0].getEnumData().isSoft());
+        assertTrue(result.getOverloads()[1].getOverloads()[0].getEnumData().getValues().containsKey("demo:welcome"));
+    }
     @Test void invalidEarlierArgumentAndDeniedRootCannotSupplyChoices() {
         var dispatcher = new CommandDispatcher<Boolean>();
         dispatcher.register(LiteralArgumentBuilder.<Boolean>literal("native").requires(Boolean::booleanValue)

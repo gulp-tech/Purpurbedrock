@@ -213,6 +213,10 @@ public final class BedrockBridgeBootstrap {
             System.setProperty("purpurbedrock.engineDir", engineDir.toAbsolutePath().toString());
             System.setProperty("purpurbedrock.offlineAssets",
                 bedrockCfg.getBoolean("advanced.download-mojang-assets", false) ? "false" : "true");
+            if (System.getProperty("purpurbedrock.maxClientCommands") == null) {
+                int maxCommands = Math.max(32, Math.min(256, bedrockCfg.getInt("gameplay.max-client-commands", 96)));
+                System.setProperty("purpurbedrock.maxClientCommands", Integer.toString(maxCommands));
+            }
 
             boolean lanEnabled = bedrockCfg.getBoolean("lan-discovery.enabled", true);
             int lanPort = bedrockCfg.getInt("lan-discovery.port", 7551);
@@ -500,6 +504,7 @@ public final class BedrockBridgeBootstrap {
         cfg.addDefault("max-players", Math.max(20, server.getMaxPlayers()));
         cfg.addDefault("gameplay.command-suggestions", true);
         cfg.addDefault("gameplay.dynamic-command-completions", true);
+        cfg.addDefault("gameplay.max-client-commands", 96);
         cfg.addDefault("gameplay.show-cooldown", "false");
         cfg.addDefault("gameplay.disable-bedrock-scaffolding", false);
         cfg.addDefault("gameplay.allow-vibrant-visuals", false);

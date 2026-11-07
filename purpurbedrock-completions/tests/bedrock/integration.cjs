@@ -50,6 +50,10 @@ async function main() {
   assert(!values(b, 'home').includes('TabTestA_base'))
   await until('nested delete options', () => values(a, 'delhome', ['delete']).includes('TabTestA_base') && values(b, 'delhome', ['delete']).includes('TabTestB_base'))
   assert(!values(b, 'delhome', ['delete']).includes('TabTestA_base'))
+  await until('async plugin event results', () => values(a, 'warp').includes('TabTestA_async') && values(b, 'warp').includes('TabTestB_async'))
+  assert(!values(a, 'warp').includes('TabTestB_async'))
+  await until('sync plugin event results', () => values(a, 'tpa').includes('TabTestA_sync') && values(b, 'tpa').includes('TabTestB_sync'))
+  assert(!values(b, 'tpa').includes('TabTestA_sync'))
   command(a, '/delhome set new_home')
   await until('new home refreshed', () => values(a, 'home').includes('new_home') && values(a, 'delhome', ['delete']).includes('new_home'))
   assert(!values(b, 'home').includes('new_home'))
@@ -64,7 +68,7 @@ async function main() {
       })
       assert(!names.includes('privatetest'), 'Unauthorized command exposed')
     }
-    assert(![...state.enums.values()].some(list => list.includes('secret_value')), 'Unauthorized completion exposed')
+    assert(![...state.enums.values()].some(list => list.includes('secret_value') || list.includes('blocked_secret')), 'Unauthorized or cancelled completion exposed')
   }
   console.log('PASS player isolation, permissions and dynamic updates')
 }

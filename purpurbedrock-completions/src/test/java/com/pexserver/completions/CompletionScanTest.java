@@ -48,6 +48,28 @@ class CompletionScanTest {
                 List.of(), List.of(List.of("hidden", "delete")));
         assertEquals(List.of("record"), finish(scan).contexts().get(List.of("hidden", "delete")));
     }
+    @Test void asynchronousHandlingFallsBackOnlyWhenUnhandledAndDoesNotBlock() {
+        var pending = new java.util.concurrent.CompletableFuture<List<String>>();
+        AtomicInteger resolveCalls = new AtomicInteger();
+        CompletionScan scan = new CompletionScan("warp", new Limits(1, 8, 10, 8, 96),
+                (prefix, partial) -> pending,
+                (prefix, partial, values) -> { resolveCalls.incrementAndGet(); return values == null ? List.of("fallback") : values; },
+                List.of(), List.of());
+        scan.step(); scan.step(); assertFalse(scan.done()); assertEquals(0, resolveCalls.get());
+        pending.complete(List.of("async"));
+        assertEquals(List.of("async"), finish(scan).contexts().get(List.of()));
+        assertEquals(1, resolveCalls.get());
+        var unhandled = new CompletionScan("warp", new Limits(1, 8, 10, 8, 96),
+                (prefix, partial) -> java.util.concurrent.CompletableFuture.completedFuture(null),
+                (prefix, partial, values) -> values == null ? List.of("fallback") : values, List.of(), List.of());
+        assertEquals(List.of("fallback"), finish(unhandled).contexts().get(List.of()));
+        AtomicInteger forbiddenFallback = new AtomicInteger();
+        var blocked = new CompletionScan("warp", new Limits(1, 8, 10, 8, 96),
+                (prefix, partial) -> java.util.concurrent.CompletableFuture.completedFuture(List.of()),
+                (prefix, partial, values) -> { forbiddenFallback.incrementAndGet(); return List.of("secret"); }, List.of(), List.of());
+        assertTrue(finish(blocked).nodes().isEmpty());
+        assertEquals(0, forbiddenFallback.get());
+    }
     @Test void skipsInvalidCandidatesAndDoesNotExecuteAnything() {
         Command result = finish(new CompletionScan("cmd", new Limits(1, 8, 10, 8, 10),
                 (p, s) -> Arrays.asList(null, "", "two words", "bad\n", "\"quote", "a\\b", "toolong_name", "ok", "ok"),

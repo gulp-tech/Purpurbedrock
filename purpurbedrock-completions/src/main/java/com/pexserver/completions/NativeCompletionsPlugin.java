@@ -1,6 +1,9 @@
 package com.pexserver.completions;
 
 import io.netty.channel.Channel;
+import com.destroystokyo.paper.event.server.AsyncTabCompleteEvent;
+import org.bukkit.event.server.TabCompleteEvent;
+import java.util.concurrent.*;
 import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
@@ -40,13 +43,20 @@ public final class NativeCompletionsPlugin extends JavaPlugin implements Listene
     private int rotation;
     private boolean stopping;
     private PaperSuggestions javaSuggestions;
+    // Strictly bounded: a slow third-party listener cannot create unlimited workers or queued tasks.
+    private final ThreadPoolExecutor asyncCompletions = new ThreadPoolExecutor(2, 2, 0L, TimeUnit.MILLISECONDS,
+            new ArrayBlockingQueue<>(32), runnable -> {
+                Thread thread = new Thread(runnable, "PurpurBedrock-TabComplete");
+                thread.setDaemon(true);
+                return thread;
+            }, new ThreadPoolExecutor.AbortPolicy());
 
     @Override public void onEnable() {
         saveDefaultConfig(); settings = readSettings();
         getServer().getPluginManager().registerEvents(this, this);
         Objects.requireNonNull(getCommand("pbtabs")).setExecutor(this::admin);
         Objects.requireNonNull(getCommand("pbtabs")).setTabCompleter((sender, cmd, alias, args) ->
-                args.length == 1 ? List.of("refresh", "reload", "status").stream()
+                args.length == 1 ? List.of("refresh", "reload", "status", "inspect").stream()
                         .filter(s -> s.startsWith(args[0].toLowerCase(Locale.ROOT))).toList() : List.of());
         ticker = Bukkit.getScheduler().runTaskTimer(this, this::tick, 1L, 1L);
         // Geyser starts its event bus during ServerLoadEvent, after plugin enable callbacks.
@@ -65,6 +75,7 @@ public final class NativeCompletionsPlugin extends JavaPlugin implements Listene
         stopping = true;
         GeyserApi.api().eventBus().unregisterAll(registrar);
         if (ticker != null) ticker.cancel();
+        asyncCompletions.shutdownNow();
         for (State state : List.copyOf(sessions.values())) detach(state);
         states.clear(); sessions.clear();
     }
@@ -215,22 +226,48 @@ public final class NativeCompletionsPlugin extends JavaPlugin implements Listene
                 round.pending.add(new ScanTask(label, new NativeArgumentScan(nativeData, settings.limits, bounded)));
                 continue;
             }
-            Provider provider = (prefix, partial) -> {
-                if (!player.isOnline() || !command.testPermissionSilent(player)) return List.of();
+            CompletionScan.AsyncProvider async = (prefix, partial) -> {
+                if (!player.isOnline() || !state.live.get() || !command.testPermissionSilent(player))
+                    return CompletableFuture.completedFuture(List.of());
+                if (AsyncTabCompleteEvent.getHandlerList().getRegisteredListeners().length == 0)
+                    return CompletableFuture.completedFuture(null);
+                String buffer = completionBuffer(label, prefix, partial);
+                int maxCandidates = settings.limits.candidates();
+                try {
+                    return CompletableFuture.supplyAsync(() -> {
+                        if (!state.live.get()) return List.of();
+                        AsyncTabCompleteEvent event = new AsyncTabCompleteEvent(player, buffer, true, null);
+                        event.callEvent();
+                        if (event.isCancelled()) return List.of();
+                        return event.isHandled() ? event.getCompletions().stream().limit(maxCandidates).toList() : null;
+                    }, asyncCompletions);
+                } catch (RejectedExecutionException saturated) {
+                    // Unknown listener outcome: do not fall back and expose potentially denied values.
+                    return CompletableFuture.completedFuture(List.of());
+                }
+            };
+            CompletionScan.Resolver resolver = (prefix, partial, asyncValues) -> {
+                // Permission may have changed while an asynchronous listener was running.
+                if (!player.isOnline() || !state.live.get() || !command.testPermissionSilent(player)) return List.of();
                 String[] args = new String[prefix.size() + 1];
                 for (int i = 0; i < prefix.size(); i++) args[i] = prefix.get(i);
                 args[prefix.size()] = partial;
                 long start = System.nanoTime();
-                List<String> values = command.tabComplete(player, label, args);
-                if (System.nanoTime() - start > settings.slowNanos)
-                    throw new SlowCompleterException(label);
-                return values;
+                List<String> values = asyncValues != null ? asyncValues : command.tabComplete(player, label, args);
+                if (values == null) values = List.of();
+                TabCompleteEvent event = new TabCompleteEvent(player, completionBuffer(label, prefix, partial), values, true, null);
+                event.callEvent();
+                if (System.nanoTime() - start > settings.slowNanos) throw new SlowCompleterException(label);
+                return event.isCancelled() ? List.of() : event.getCompletions();
             };
-            CompletionScan scan = new CompletionScan(label, settings.limits, provider,
+            CompletionScan scan = new CompletionScan(label, settings.limits, async, resolver,
                     settings.prefixProbes, settings.extra.getOrDefault(label, List.of()));
             round.pending.add(new ScanTask(label, scan));
         }
         return round;
+    }
+    private static String completionBuffer(String label, List<String> prefix, String partial) {
+        return "/" + label + " " + (prefix.isEmpty() ? "" : String.join(" ", prefix) + " ") + partial;
     }
     private void advance(State state) {
         Round round = state.round;
@@ -293,6 +330,30 @@ public final class NativeCompletionsPlugin extends JavaPlugin implements Listene
         switch (sub) {
             case "reload" -> { reloadConfig(); settings = readSettings(); states.values().forEach(s -> s.round = null); dirtyAll(); sender.sendMessage("Настройки подсказок Bedrock перезагружены."); }
             case "refresh" -> { states.values().forEach(s -> s.round = null); dirtyAll(); sender.sendMessage("Подсказки Bedrock будут обновлены."); }
+            case "inspect" -> {
+                if (args.length != 3) { sender.sendMessage("Использование: /pbtabs inspect <игрок> <команда>"); return true; }
+                Player player = Bukkit.getPlayerExact(args[1]);
+                State state = player == null ? null : states.get(player.getUniqueId());
+                if (state == null) { sender.sendMessage("Нет активного подключения Bedrock для этого игрока."); return true; }
+                String root = args[2].toLowerCase(Locale.ROOT).replaceFirst("^/", "");
+                AvailableCommandsPacket baseline = state.baseline.get();
+                CommandData data = baseline == null ? null : baseline.getCommands().stream()
+                        .filter(d -> d.getName().equalsIgnoreCase(root) || d.getAliases() != null && d.getAliases().getValues().containsKey(root))
+                        .findFirst().orElse(null);
+                if (data == null) { sender.sendMessage("Подсказки /" + root + ": команда не отправлена клиенту (возможны права или лимит списка)."); return true; }
+                String labelForModel = data.getName().toLowerCase(Locale.ROOT);
+                var commandForModel = Bukkit.getCommandMap().getCommand(labelForModel);
+                var model = state.models.get(labelForModel);
+                boolean permitted = commandForModel != null && commandForModel.testPermissionSilent(player);
+                boolean pending = state.round != null && state.round.pending.stream().anyMatch(task -> task.label().equals(labelForModel));
+                int contexts = model == null ? 0 : model.nodes().size() + model.arguments().size();
+                int candidates = model == null ? 0 : model.nodes().stream().mapToInt(n -> n.candidates().size()).sum()
+                        + model.arguments().stream().mapToInt(a -> a.candidates().size()).sum();
+                sender.sendMessage("Подсказки /" + root + ": отправлена=true, тип=" + (PacketComposer.generic(data) ? "plugin" : "typed")
+                        + ", зарегистрирована=" + (commandForModel != null) + ", разрешена=" + permitted
+                        + ", поиск=" + pending + ", списков=" + contexts + ", значений=" + candidates
+                        + ", пауза=" + (state.cooldowns.getOrDefault(labelForModel, 0L) > tick));
+            }
             case "status" -> {
                 int commands = states.values().stream().mapToInt(s -> s.models.size()).sum();
                 int nodes = states.values().stream().flatMap(s -> s.models.values().stream()).mapToInt(m -> m.nodes().size() + m.arguments().size()).sum();

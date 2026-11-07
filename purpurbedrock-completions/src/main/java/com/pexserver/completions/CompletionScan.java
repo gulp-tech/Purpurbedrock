@@ -1,6 +1,7 @@
 package com.pexserver.completions;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import static com.pexserver.completions.CompletionModel.*;
 
 /** One step makes at most one provider call. No unbounded recursive probing. */
@@ -8,6 +9,17 @@ public final class CompletionScan implements CompletionTask {
     private final String label;
     private final Limits limits;
     private final Provider provider;
+    @FunctionalInterface interface AsyncProvider {
+        CompletableFuture<List<String>> complete(List<String> prefix, String partial);
+    }
+    @FunctionalInterface interface Resolver {
+        List<String> resolve(List<String> prefix, String partial, List<String> asyncValues);
+    }
+    private final AsyncProvider asyncProvider;
+    private final Resolver resolver;
+    private CompletableFuture<List<String>> waiting;
+    private long expires;
+    private String waitingPartial;
     private final List<String> probes;
     private final Queue<List<String>> pending = new ArrayDeque<>();
     private final Set<List<String>> visited = new HashSet<>();
@@ -21,6 +33,17 @@ public final class CompletionScan implements CompletionTask {
     public CompletionScan(String label, Limits limits, Provider provider,
                           List<String> probes, List<List<String>> extraContexts) {
         this.label = label; this.limits = limits; this.provider = provider;
+        this.asyncProvider = null; this.resolver = null;
+        this.probes = List.copyOf(probes);
+        enqueue(List.of());
+        for (List<String> p : extraContexts) {
+            if (p.stream().allMatch(this::validWord)) enqueue(List.copyOf(p));
+        }
+    }
+    CompletionScan(String label, Limits limits, AsyncProvider asyncProvider, Resolver resolver,
+                   List<String> probes, List<List<String>> extraContexts) {
+        this.label = label; this.limits = limits; this.provider = null;
+        this.asyncProvider = asyncProvider; this.resolver = resolver;
         this.probes = List.copyOf(probes);
         enqueue(List.of());
         for (List<String> p : extraContexts) {
@@ -38,9 +61,32 @@ public final class CompletionScan implements CompletionTask {
         if (current == null) {
             current = pending.remove(); currentValues.clear(); probeIndex = 0; probing = false;
         }
-        String partial = probing ? probes.get(probeIndex++) : "";
-        List<String> returned = provider.complete(current, partial);
-        calls++;
+        List<String> returned;
+        if (asyncProvider == null) {
+            String partial = probing ? probes.get(probeIndex++) : "";
+            returned = provider.complete(current, partial);
+            calls++;
+        } else if (waiting == null) {
+            waitingPartial = probing ? probes.get(probeIndex++) : "";
+            waiting = Objects.requireNonNull(asyncProvider.complete(current, waitingPartial));
+            expires = System.nanoTime() + 2_000_000_000L;
+            calls++;
+            return;
+        } else {
+            if (!waiting.isDone() && System.nanoTime() < expires) return;
+            if (!waiting.isDone()) {
+                waiting.cancel(false);
+                // A timed-out listener may have cancelled the completion: fail closed.
+                returned = List.of();
+            } else {
+                List<String> asyncValues = waiting.join(); // null means not handled
+                // Cancellation, a handled empty result, and queue rejection must not fall
+                // through to other callbacks that could reveal denied suggestions.
+                returned = asyncValues != null && asyncValues.isEmpty()
+                        ? List.of() : resolver.resolve(current, waitingPartial, asyncValues);
+            }
+            waiting = null;
+        }
         if (returned != null) for (String s : returned) {
             if (currentValues.size() >= limits.candidates()) break;
             if (validWord(s)) currentValues.add(s);

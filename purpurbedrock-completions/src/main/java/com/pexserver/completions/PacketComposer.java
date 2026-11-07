@@ -172,6 +172,7 @@ public final class PacketComposer {
         if (model.arguments().isEmpty()) return command;
         var overloads = command.getOverloads().clone();
         var enumNames = argumentEnumNames(model);
+        List<CommandOverloadData> additional = new ArrayList<>();
         record DisplayDomain(List<CommandParamData> prefix, String name, Set<String> candidates) {}
         Set<DisplayDomain> displayed = new HashSet<>();
         boolean changed = false;
@@ -181,7 +182,8 @@ public final class PacketComposer {
             var old = overloads[key.overload()];
             if (key.parameter() < 0 || key.parameter() >= old.getOverloads().length) continue;
             var p = old.getOverloads()[key.parameter()];
-            if (!p.getName().equals(key.name()) || p.getType() != CommandParam.STRING || p.getEnumData() != null || argument.candidates().isEmpty()) continue;
+            if (!p.getName().equals(key.name()) || (p.getType() != CommandParam.STRING && p.getType() != CommandParam.FILE_PATH)
+                    || p.getEnumData() != null || argument.candidates().isEmpty()) continue;
             var parameters = old.getOverloads().clone();
             var copy = new CommandParamData();
             copy.setName(p.getName()); copy.setOptional(p.isOptional()); copy.setPostfix(p.getPostfix());
@@ -191,11 +193,22 @@ public final class PacketComposer {
             if (!displayed.add(new DisplayDomain(prefix, key.name(), Set.copyOf(argument.candidates()))))
                 copy.getOptions().add(CommandParamOption.SUPPRESS_ENUM_AUTOCOMPLETION);
             parameters[key.parameter()] = copy;
-            overloads[key.overload()] = new CommandOverloadData(old.isChaining(), parameters);
+            CommandOverloadData completed = new CommandOverloadData(old.isChaining(), parameters);
+            if (p.getType() == CommandParam.FILE_PATH) {
+                // Keep the native parser and arbitrary input usable; add suggestions as
+                // a parallel overload rather than replacing the FILE_PATH grammar.
+                additional.add(completed);
+            } else overloads[key.overload()] = completed;
             changed = true;
         }
-        return changed ? new CommandData(command.getName(), command.getDescription(), command.getFlags(), command.getPermission(),
-                command.getAliases(), command.getSubcommands(), overloads) : command;
+        if (!changed) return command;
+        if (!additional.isEmpty()) {
+            List<CommandOverloadData> all = new ArrayList<>(Arrays.asList(overloads));
+            all.addAll(additional);
+            overloads = all.toArray(CommandOverloadData[]::new);
+        }
+        return new CommandData(command.getName(), command.getDescription(), command.getFlags(), command.getPermission(),
+                command.getAliases(), command.getSubcommands(), overloads);
     }
     static String argumentEnumName(String label, ArgumentKey key) {
         return enumName(label, List.of("java", Integer.toString(key.overload()), Integer.toString(key.parameter()), key.name()), true);

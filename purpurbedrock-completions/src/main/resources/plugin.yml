@@ -8,7 +8,7 @@ author: koukunn
 commands:
   pbtabs:
     description: Refresh and inspect native Bedrock completions
-    usage: /pbtabs <refresh|reload|status>
+    usage: /pbtabs <refresh|reload|status|inspect>
     permission: purpurbedrock.completions.admin
 permissions:
   purpurbedrock.completions.admin:

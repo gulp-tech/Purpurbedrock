@@ -7,6 +7,12 @@ commands:
     description: Fixture home suggestions
   delhome:
     description: Fixture dynamic nested suggestions
+  warp:
+    description: Async fixture
+  tpa:
+    description: Sync fixture
+  pay:
+    description: Cancelled asynchronous fixture
   privatetest:
     description: Hidden fixture
     permission: fixture.private
