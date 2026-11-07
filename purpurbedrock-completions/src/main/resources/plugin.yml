@@ -1,0 +1,15 @@
+name: PurpurBedrockCompletions
+version: '${version}'
+main: com.pexserver.completions.NativeCompletionsPlugin
+api-version: '1.21'
+depend: [Geyser-Spigot]
+description: Bedrock native argument completion bridge for Paper commands
+author: koukunn
+commands:
+  pbtabs:
+    description: Refresh and inspect native Bedrock completions
+    usage: /pbtabs <refresh|reload|status>
+    permission: purpurbedrock.completions.admin
+permissions:
+  purpurbedrock.completions.admin:
+    default: op

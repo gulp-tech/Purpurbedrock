@@ -1,0 +1,18 @@
+# Per-player prefetch: Bedrock does not send the text currently being typed.
+# Work is shared across players; a single third-party callback cannot be interrupted.
+refresh-ticks: 1200
+queries-per-tick: 2
+budget-millis-per-tick: 1.0
+slow-query-millis: 10.0
+max-depth: 3
+max-nodes-per-command: 16
+max-candidates-per-node: 32
+max-commands-per-player: 128
+max-total-nodes-per-player: 128
+max-total-candidates-per-player: 1024
+max-branches-per-command: 16
+max-candidate-length: 96
+include-commands: []
+exclude-commands: [geyser, pbtabs, help]
+prefix-probes: []
+extra-contexts: {}

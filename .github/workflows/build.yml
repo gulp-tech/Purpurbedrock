@@ -164,6 +164,11 @@ jobs:
             mkdir -p "$GITHUB_WORKSPACE/purpur-server/src/main/resources/META-INF/bedrock"
             cp "$PROTO_JAR" "$GITHUB_WORKSPACE/purpur-server/src/main/resources/META-INF/bedrock/purpurbedrock-protocol.jar"
             ls -lh "$GITHUB_WORKSPACE/purpur-server/src/main/resources/META-INF/bedrock/purpurbedrock-protocol.jar"
+
+            echo "=== Build and test bundled per-player command completion ==="
+            gradle -p purpurbedrock-completions clean test jar --no-daemon --stacktrace
+            cp purpurbedrock-completions/build/libs/PurpurBedrockCompletions-0.1.0.jar \
+              "$GITHUB_WORKSPACE/purpur-server/src/main/resources/META-INF/bedrock/purpurbedrock-completions.jar"
           } 2>&1 | tee /tmp/build.log
 
       - name: Apply Purpurbedrock 26.2 Patches & Build Paperclip Server Core JAR
@@ -437,6 +442,7 @@ jobs:
                   print("::error title=Smoke server log::" + escaped[-6000:], flush=True)
 
           server_log = log_path.read_text(encoding="utf-8", errors="replace")
+          assert "Bedrock command suggestions enabled." in server_log, "Bundled command completion failed to start"
           print("=== SERVER LOG TAIL ===")
           print("\n".join(server_log.splitlines()[-65:]))
 

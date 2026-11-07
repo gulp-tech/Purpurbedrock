@@ -305,6 +305,10 @@ public final class BedrockBridgeBootstrap {
                 Plugin loaded = Bukkit.getPluginManager().loadPlugin(extractedJar.toFile());
                 if (loaded != null) {
                     protocolActive = true;
+                    if (bedrockCfg.getBoolean("gameplay.command-suggestions", true)
+                            && bedrockCfg.getBoolean("gameplay.dynamic-command-completions", true)) {
+                        loadInternalCompletions(dataDir);
+                    }
                     Bukkit.getLogger().info(String.format(
                         "[Purpurbedrock] Встроенный протокол Bedrock 26.2 активен! Мульти-версия: 1.21.0–26.60 (v685–v2225, 24 кодека) | RakNet/Signaling: %s:%d | NetherNet WebRTC: UDP %d | LAN Discovery (Миры): %s | Auth: %s",
                         bedrockCfg.getString("address", "0.0.0.0"),
@@ -317,6 +321,24 @@ public final class BedrockBridgeBootstrap {
             }
         } catch (Throwable t) {
             Bukkit.getLogger().log(Level.SEVERE, "[Purpurbedrock] Ошибка инициализации встроенного протокола Bedrock", t);
+        }
+    }
+
+    private static void loadInternalCompletions(Path dataDir) {
+        try (InputStream in = BedrockBridgeBootstrap.class.getResourceAsStream(
+                "/META-INF/bedrock/purpurbedrock-completions.jar")) {
+            if (in == null) {
+                Bukkit.getLogger().warning("[Purpurbedrock] Встроенный модуль подсказок команд отсутствует.");
+                return;
+            }
+            Path internal = dataDir.resolve("internal");
+            Files.createDirectories(internal);
+            Path jar = internal.resolve("purpurbedrock-completions.jar");
+            Files.copy(in, jar, StandardCopyOption.REPLACE_EXISTING);
+            Bukkit.getPluginManager().loadPlugin(jar.toFile());
+        } catch (Exception | LinkageError ex) {
+            // Suggestions are optional; a failure must not prevent the protocol from starting.
+            Bukkit.getLogger().log(Level.WARNING, "[Purpurbedrock] Не удалось загрузить подсказки команд Bedrock", ex);
         }
     }
 
@@ -477,6 +499,7 @@ public final class BedrockBridgeBootstrap {
         cfg.addDefault("motd.line-2", "Bedrock Only • Java 26.2 Plugins & Menus");
         cfg.addDefault("max-players", Math.max(20, server.getMaxPlayers()));
         cfg.addDefault("gameplay.command-suggestions", true);
+        cfg.addDefault("gameplay.dynamic-command-completions", true);
         cfg.addDefault("gameplay.show-cooldown", "false");
         cfg.addDefault("gameplay.disable-bedrock-scaffolding", false);
         cfg.addDefault("gameplay.allow-vibrant-visuals", false);
