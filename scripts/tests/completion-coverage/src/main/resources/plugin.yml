@@ -1,0 +1,9 @@
+name: CompletionCoverageFixture
+version: '1.0'
+main: org.purpurmc.fixture.CompletionCoverageFixture
+api-version: '1.21'
+commands:
+  home:
+    description: Personal home fixture
+  warp:
+    description: Async completion fixture

@@ -1,0 +1,87 @@
+name: Investigate Bedrock completion coverage
+on:
+  push:
+    branches: ['arena/**']
+    paths:
+      - '.github/workflows/test-completion-coverage.yml'
+      - 'scripts/tests/completion-coverage/**'
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Build isolated test fixture
+        run: gradle -p scripts/tests/completion-coverage clean jar --no-daemon --stacktrace
+      - name: Install test client
+        run: npm ci --no-audit --no-fund
+        working-directory: scripts/tests/completion-coverage
+      - name: Download previously published candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: purpurbedrock-26.2
+          path: /tmp/coverage-artifacts
+          repository: gulp-tech/Purpurbedrock
+          run-id: 42367679981
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Compare plugin, typed and vanilla command coverage
+        run: |
+          set -euo pipefail
+          (cd /tmp/coverage-artifacts && sha256sum -c purpurbedrock-26.2.jar.sha256)
+          mkdir -p /tmp/coverage-server/plugins
+          cp /tmp/coverage-artifacts/purpurbedrock-26.2.jar /tmp/coverage-server/server.jar
+          cp scripts/tests/completion-coverage/build/libs/completion-coverage-fixture.jar /tmp/coverage-server/plugins/fixture.jar
+          echo 'eula=true' > /tmp/coverage-server/eula.txt
+          cat > /tmp/coverage-server/server.properties <<'PROPS'
+          online-mode=false
+          server-port=25565
+          level-type=minecraft\:flat
+          generate-structures=false
+          difficulty=peaceful
+          spawn-protection=0
+          enforce-secure-profile=false
+          PROPS
+          python3 -u - <<'PY'
+          import os, pathlib, signal, subprocess, time
+          directory = pathlib.Path('/tmp/coverage-server')
+          output = open('/tmp/coverage-server.log', 'w', encoding='utf-8')
+          server = subprocess.Popen(['java', '-Xms1G', '-Xmx3G', '-jar', 'server.jar', '--nogui'], cwd=directory, stdin=subprocess.PIPE, stdout=output, stderr=subprocess.STDOUT, text=True, start_new_session=True)
+          try:
+              for i in range(600):
+                  if server.poll() is not None: raise RuntimeError('Server stopped before startup')
+                  if 'Done (' in pathlib.Path('/tmp/coverage-server.log').read_text(errors='replace'): break
+                  time.sleep(1)
+              else: raise RuntimeError('Timed out waiting for server')
+              testdir = pathlib.Path(os.environ['GITHUB_WORKSPACE']) / 'scripts/tests/completion-coverage'
+              subprocess.run(['node', 'coverage.cjs'], cwd=testdir, check=True, timeout=180)
+              server.stdin.write('stop\n'); server.stdin.flush(); server.wait(timeout=30)
+          finally:
+              try: os.killpg(server.pid, signal.SIGKILL)
+              except ProcessLookupError: pass
+              output.close()
+              for line in pathlib.Path('/tmp/coverage-server.log').read_text(errors='replace').splitlines():
+                  if 'COVERAGE_COMMAND_MAP ' in line:
+                      print('::notice title=Command registry::' + line.split('COVERAGE_COMMAND_MAP ', 1)[1])
+              print('\n'.join(pathlib.Path('/tmp/coverage-server.log').read_text(errors='replace').splitlines()[-30:]))
+          PY
+      - name: Upload investigation logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: completion-coverage-logs
+          path: /tmp/coverage-server.log
+          if-no-files-found: ignore
