@@ -43,6 +43,6 @@ async function main() {
     const def = root(a, label)
     console.log(`::notice title=Advertised command::${label}=${Boolean(def)} args=${def?.overloads.length || 0} choices=${allChoices(a, label).length}`)
   }
-  if (!checks.home) throw Error('Control home completion missing')
+  for (const [key, value] of Object.entries(checks)) if (!value) throw Error('Missing expected completion: ' + key)
 }
 main().catch(e => { console.error(e); process.exitCode = 1 }).finally(async () => { for (const s of states) { s.closing = true; s.client.close() }; await pause(300); process.exit(process.exitCode || 0) })

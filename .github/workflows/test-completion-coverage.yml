@@ -36,7 +36,7 @@ jobs:
           name: purpurbedrock-26.2
           path: /tmp/coverage-artifacts
           repository: gulp-tech/Purpurbedrock
-          run-id: 42367679981
+          run-id: 42370191195
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Compare plugin, typed and vanilla command coverage
         run: |
