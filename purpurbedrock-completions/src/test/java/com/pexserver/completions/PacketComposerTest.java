@@ -13,6 +13,27 @@ import static org.junit.jupiter.api.Assertions.*;
 import static com.pexserver.completions.CompletionModel.*;
 
 class PacketComposerTest {
+    @Test void fivePersonalHomeNamesRoundTripUsingTheBedrock2660Codec() {
+        List<String> homes = List.of("home1", "home2", "mine", "farm", "village");
+        var model = new Command("home", List.of(new Node(List.of(), homes)));
+        var input = new AvailableCommandsPacket();
+        input.getCommands().add(original("home", CommandParam.STRING));
+        var packet = PacketComposer.patch(input, Map.of("home", model));
+        var codec = org.cloudburstmc.protocol.bedrock.codec.v2225.Bedrock_v2225.CODEC;
+        var serializer = codec.getPacketDefinition(AvailableCommandsPacket.class).getSerializer();
+        var buffer = Unpooled.buffer();
+        try {
+            serializer.serialize(buffer, codec.createHelper(), packet);
+            var decoded = new AvailableCommandsPacket();
+            serializer.deserialize(buffer, codec.createHelper(), decoded);
+            var params = Arrays.stream(decoded.getCommands().getFirst().getOverloads())
+                    .flatMap(overload -> Arrays.stream(overload.getOverloads())).toList();
+            assertTrue(params.stream().anyMatch(p -> p.getEnumData() != null && p.getEnumData().isSoft()
+                    && p.getEnumData().getValues().keySet().equals(Set.copyOf(homes))));
+            assertTrue(params.stream().anyMatch(p -> p.getEnumData() == null && p.getType() == CommandParam.TEXT));
+            assertEquals(0, buffer.readableBytes());
+        } finally { buffer.release(); }
+    }
     @Test void separatesIdenticalPluginRootsBeforeApplyingTheirOwnSuggestions() {
         CommandData original = original("home", CommandParam.STRING);
         CommandData grouped = new CommandData("home", original.getDescription(), original.getFlags(), original.getPermission(),

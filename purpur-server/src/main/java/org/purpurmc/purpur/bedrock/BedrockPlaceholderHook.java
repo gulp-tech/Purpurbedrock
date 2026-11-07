@@ -176,7 +176,7 @@ public final class BedrockPlaceholderHook {
     }
 
     /**
-     * Direct public API for Java plugins (VoidTab, PurpurBedrockAC, scoreboards, etc.).
+     * Direct bridge for Java plugins (VoidTab, scoreboards, etc.).
      * Returns one of: {@code Windows}, {@code Android}, {@code IOS}, {@code Xbox}, {@code PS 4-5}, {@code Клавиатура + мышь}.
      */
     public static String analyzeDevice(@Nullable Player player) {

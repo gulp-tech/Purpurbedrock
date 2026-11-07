@@ -202,27 +202,9 @@ jobs:
             fi
 
             PURPUR_VER=$(ls -1 ~/.m2/repository/org/purpurmc/purpur/purpur-api | grep -v maven-metadata | head -n 1)
-            echo "Building standalone PurpurBedrockAC against local maven purpur-api:${PURPUR_VER}..."
-            ac_built=false
-            for attempt in 1 2 3; do
-              if gradle -p purpurbedrock-anticheat build -PpurpurVersion="${PURPUR_VER}" --no-daemon --stacktrace; then
-                ac_built=true
-                break
-              fi
-              echo "Anti-cheat build attempt ${attempt}/3 failed; retrying dependency resolution..."
-              sleep 20
-            done
-            [ "$ac_built" = true ] || exit 1
-            cp purpurbedrock-anticheat/build/libs/PurpurBedrockAC-26.2.jar PurpurBedrockAC-26.2.jar
-            sha256sum PurpurBedrockAC-26.2.jar > PurpurBedrockAC-26.2.jar.sha256
-            jar tf PurpurBedrockAC-26.2.jar | grep -q 'org/purpurmc/purpur/anticheat/engine/AntiEspManager.class'
-            grep -Fq 'if (!(victim instanceof Player)) {' purpurbedrock-anticheat/src/main/java/org/purpurmc/purpur/anticheat/engine/CheckRunner.java
-            grep -Fq 'weaponName.endsWith("_SPEAR")' purpurbedrock-anticheat/src/main/java/org/purpurmc/purpur/anticheat/engine/CheckRunner.java
             grep -q 'xray.engineMode = EngineMode.HIDE;' purpur-server/src/main/java/org/purpurmc/purpur/bedrock/BedrockAntiXrayHelper.java
             grep -q 'bedrockAntiXrayMaxHeight = 320;' purpur-server/src/main/java/org/purpurmc/purpur/PurpurConfig.java
             grep -q 'Blocks.SHULKER_BOX' purpur-server/src/main/java/org/purpurmc/purpur/bedrock/BedrockAntiXrayHelper.java
-            grep -q 'entity instanceof InventoryHolder' purpurbedrock-anticheat/src/main/java/org/purpurmc/purpur/anticheat/engine/AntiEspManager.java
-            grep -q 'Never hide/show a real player through Bukkit visibility' purpurbedrock-anticheat/src/main/java/org/purpurmc/purpur/anticheat/engine/AntiEspManager.java
 
             echo "Building standalone PurpurBedrockNPC against local maven purpur-api:${PURPUR_VER}..."
             npc_built=false
@@ -246,7 +228,7 @@ jobs:
             fi
             cp "$PAPERCLIP_JAR" purpurbedrock-26.2.jar
             sha256sum purpurbedrock-26.2.jar > purpurbedrock-26.2.jar.sha256
-            ls -lh purpurbedrock-26.2.jar purpurbedrock-26.2.jar.sha256 PurpurBedrockAC-26.2.jar PurpurBedrockAC-26.2.jar.sha256 PurpurBedrockNPC-26.2.jar PurpurBedrockNPC-26.2.jar.sha256
+            ls -lh purpurbedrock-26.2.jar purpurbedrock-26.2.jar.sha256 PurpurBedrockNPC-26.2.jar PurpurBedrockNPC-26.2.jar.sha256
           } 2>&1 | tee -a /tmp/build.log
 
       - name: Live End-to-End 26.2 Smoke Test (Instant Boot + LAN Discovery 7551 + RakNet 19132 + Anti-Xray + Java Plugin & Menus)
@@ -257,7 +239,6 @@ jobs:
           echo "Using compiled Java 26.2 plugin: $TEST_PLUGIN_JAR"
           mkdir -p /tmp/smoke-server/plugins
           cp purpurbedrock-26.2.jar /tmp/smoke-server/purpurbedrock-26.2.jar
-          cp PurpurBedrockAC-26.2.jar /tmp/smoke-server/plugins/PurpurBedrockAC-26.2.jar
           cp PurpurBedrockNPC-26.2.jar /tmp/smoke-server/plugins/PurpurBedrockNPC-26.2.jar
           cp purpurbedrock-completions/build/libs/NativeCompletionFixture-0.1.0.jar /tmp/smoke-server/plugins/NativeCompletionFixture.jar
           python3 - "$TEST_PLUGIN_JAR" << 'PY2'
@@ -385,7 +366,7 @@ jobs:
               if not booted:
                   raise RuntimeError("Timed out waiting for Purpurbedrock 26.2 boot!")
 
-              proc.stdin.write("purpurbedrock status\npurpurbedrock skulls off\npurpurbedrock skulls status\npurpurbedrock skulls on\npurpurbedrock antixray\npurpurbedrock papi\npurpurbedrock selftest\npac status\npac checks\npac selftest\npbnpc selftest\n")
+              proc.stdin.write("purpurbedrock status\npurpurbedrock skulls off\npurpurbedrock skulls status\npurpurbedrock skulls on\npurpurbedrock antixray\npurpurbedrock papi\npurpurbedrock selftest\npbnpc selftest\n")
               proc.stdin.flush()
               time.sleep(3)
 
@@ -499,11 +480,8 @@ jobs:
               "NPC_OPTIMIZER_SELFTEST_OK profiles=SAFE|BALANCED|HIGH metadata=NPC citizens=REFLECTION",
               "PAPI_EXPANSION_LIVE_REGISTERED_OK id=purpurbedrock persist=true ver=26.2 isBedrock=true ping=0",
               "Встроенные плейсхолдеры %purpurbedrock_*% зарегистрированы в PlaceholderAPI",
-              "PurpurBedrockAC 26.2 запущен! Адаптивный спящий режим активен",
               "PurpurBedrockNPC 26.2.2 активен: mob-NPC AI=OFF, repeating scheduler tasks=0, одна TextDisplay на голограмму.",
               "PURPURBEDROCK_NPC_SELFTEST_OK engine=EVENT_DRIVEN ai=OFF repeatingTasks=0 hologram=ONE_DISPLAY actions=5 potionEffects=IMMUNE spawnFlag=BYPASS killall=RECOVER joinVisibility=DEFERRED",
-              "PURPURBEDROCK_AC_SELFTEST_OK checks=25/25 wifiLagSafe=true pvpFalseAlerts=HARDENED pveCrowd=EXEMPT spearReach=SAFE antiEsp=BASE_ENTITY_HIDE joinInit=SAFE antiXray=FULL_HEIGHT_HIDE drill3x3=SAFE adaptiveRender=OK gui=54 legend=GREEN_ORANGE_RED stage=AWAKE idleHolo=0 devices=6",
-              "Статус PurpurBedrockAC 26.2",
               "NetherNet LAN Discovery active on UDP",
               "Вход только с Bedrock (блок Java): ВКЛЮЧЁН",
               "Anti-Xray под Bedrock (Алмазы + Незерит): ВКЛЮЧЁН",
@@ -555,8 +533,6 @@ jobs:
             purpurbedrock-26.2.jar.sha256
             purpurbedrock-26.2-connectivity-backup.jar
             purpurbedrock-26.2-connectivity-backup.jar.sha256
-            PurpurBedrockAC-26.2.jar
-            PurpurBedrockAC-26.2.jar.sha256
             PurpurBedrockNPC-26.2.jar
             PurpurBedrockNPC-26.2.jar.sha256
             unlock-windows-lan.bat
@@ -567,11 +543,11 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v26.2.0-bedrock
-          name: "Purpurbedrock 26.2 FINAL (Mobile Player FPS Fix) + PurpurBedrockNPC 26.2 + PurpurBedrockAC 26.2.10"
+          name: "Purpurbedrock 26.2 + PurpurBedrockNPC 26.2"
           body: |
-            ## Purpurbedrock `26.2` FINAL (`purpurbedrock-26.2.jar`) + Отдельный античит `PurpurBedrockAC-26.2.jar` (`v26.2.10`)
-            Финальное автономное высокопроизводительное ядро на базе **Purpur `26.2` (`STABLE`)** и отдельный адаптивный античит, откалиброванный специально под него:
-            - **Исправлено 20-секундное зависание телефона при появлении другого игрока**: Android/iOS/консоли получают для других игроков лёгкий ванильный скин `64×64` без тяжёлой persona-геометрии и плащей. Собственный скин игрока не меняется, а Windows продолжает видеть полные скины.
+            ## Purpurbedrock `26.2` (`purpurbedrock-26.2.jar`)
+            Автономное ядро на базе **Purpur `26.2` (`STABLE`)**. Античит в эту сборку не входит:
+            - **Отображение игроков**: для других игроков используется встроенный классический скин. Сообщённые зависания при появлении игрока на основном сервере пока не подтверждены как исправленные.
             - **Исправлен повторный `ClientboundLoginPacket` с GeyserGlowing**: очередь `postStartGamePackets` теперь потокобезопасно и идемпотентно очищается; повторный login/reconfiguration больше не вызывает `NullPointerException` и не срывает вход Bedrock-игрока.
             - **Адаптивная оптимизация NPC для Bedrock (`SAFE / BALANCED / HIGH`)**:
               - Citizens (без жёсткой зависимости), FancyNPCs, ZNPCs и NPC с обычными metadata/scoreboard-тегами получают индивидуальный для каждого игрока лимит дальности и количества по устройству, RTT и TPS. Ядро скрывает только лишние сетевые обновления NPC и меняет видимость лишь при переходе состояния; AI, трейты, навигация, взаимодействия и логика Java-плагинов не отключаются.
@@ -583,14 +559,6 @@ jobs:
               - В `PaperMinecraftSessionService` отключены бесполезные запросы к `sessionserver.mojang.com` для оффлайн/Bedrock UUID и серверов с `online-mode: false` (`SkinsRestorer` и `HeadDatabase` продолжают работать штатно).
             - **Новый сверхлёгкий плагин NPC `PurpurBedrockNPC-26.2.jar`**:
               - Неподвижные обычные мобы без AI, awareness, гравитации, коллизии, звука, урона и лута; плагин создаёт `0` периодических задач. Многострочная редактируемая голограмма использует одну `TextDisplay`, а клики запускают редактируемые console/player-команды, сообщения, DeluxeMenus или телепорт.
-            - **Отдельный плагин-античит `PurpurBedrockAC-26.2.jar` (папка `purpurbedrock-anticheat/`, не мешает ядру)**:
-              - **Адаптивный спящий режим (`DORMANT → SLEEPING → WAKING → AWAKE`)**: в тишине спит (`0% CPU`), при первых аномалиях плавно и не спеша просыпается только для подозрительного игрока, не нагружая сервер.
-              - **Совместимость с кастомным буром 3×3 / 3×3×2**: синтетические соседние `BlockBreakEvent` без соответствующего клиентского `BlockDamageEvent` больше не считаются `Nuker` или `FastBreak`; реальная пакетная добыча читом продолжает проверяться.
-              - **Anti-False-Alert v2**: одиночные скачки Geyser, мобильного FPS и Wi-Fi больше не попадают в жалобы/историю/VL — требуется 2 разнесённых во времени подтверждения, 3 при высоком пинге; повтор одного модуля ограничен раз в 4 секунды. Невозможные `BadPackets` блокируются сразу.
-              - **25 проверок с защитой от ложных флагов на Bedrock** (учитывает Сенсор / ПК / Геймпад, спид-бриджинг и реальный RTT пинг): `Reach` (3D AABB + компенсация пинга), `HitBox`, `KillAura`, `Aim`, `AutoClicker`, `Criticals`, `Velocity`, `AutoTotem`, `FastBow`, `Fly`, `ElytraFly`, `AirJump`, `Speed/BHop`, `Step`, `HighJump`, `Spider`, `Jesus`, `NoSlow`, `NoFall`, `Phase`, `Timer`, `Scaffold`, `FastBreak`, `Inventory`, `BadPackets`.
-              - **Device-Adaptive Rendering (`SAFE / BALANCED / HIGH`)**: по ОС, типу ввода и реальному RTT автоматически ограничивает радиус чанков, темп chunk batch, повторные login-refresh и AVG-голограммы; при просадке TPS дополнительно снижает частоту обновлений без кика игрока.
-              - **Небольшая голограмма `AVG` (`/pac holo`)**: Android/iOS/телефон+КМ — до 8 целей, 16 блоков, 4 Гц; консоли — 12/24/≈7 Гц; Windows — 20/32/10 Гц. Видна только модераторам, а без зрителей создаёт 0 сущностей и 0 задач.
-              - **Меню истории игрока в стиле HolyWorld (`/pac menu`, `/pac history <ник>`, право `purpurac.menu`)**: `54` слота с **зелёными 🟢 / оранжевыми 🟠 / красными 🔴** блоками истории и **блоками-инструкциями внизу меню**.
             - **Исправлена погрузка чанков на Bedrock (Moonrise + `NetworkChunkPublisherUpdatePacket` Sync)**:
               - Гарантированная синхронизация `NetworkChunkPublisherUpdatePacket` при входе, стоянии на месте, полёте, любых телепортациях (`/tp`, `/spawn`, `/warp`, `/rtp`, `AuthMe`), смене измерений и изменении ползунка дальности прорисовки на клиенте (`ensureChunkPublished` никогда не даёт клиенту Bedrock отбросить пришедший `LevelChunkPacket`).
               - Убран баг начального радиуса `2` чанка на стадии `CONFIGURATION`, отключено занижение радиуса Moonrise (`auto-config-send-distance: false`), увеличены лимиты стриминга чанков (`120 send/s`, `200 load/s`, `8 concurrent`, `batch=32`) + добавлена команда принудительного ресинка `/pb chunks [игрок]`.
@@ -631,8 +599,6 @@ jobs:
             purpurbedrock-26.2.jar.sha256
             purpurbedrock-26.2-connectivity-backup.jar
             purpurbedrock-26.2-connectivity-backup.jar.sha256
-            PurpurBedrockAC-26.2.jar
-            PurpurBedrockAC-26.2.jar.sha256
             PurpurBedrockNPC-26.2.jar
             PurpurBedrockNPC-26.2.jar.sha256
             unlock-windows-lan.bat
@@ -649,8 +615,6 @@ jobs:
             /tmp/smoke-server/logs/latest.log
             purpurbedrock-26.2.jar
             purpurbedrock-26.2.jar.sha256
-            PurpurBedrockAC-26.2.jar
-            PurpurBedrockAC-26.2.jar.sha256
           if-no-files-found: warn
           retention-days: 3
 

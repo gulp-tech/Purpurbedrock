@@ -46,6 +46,8 @@ async function main() {
   const a = connect('TabTestA', '10001'), b = connect('TabTestB', '10002')
   await until('two clients spawned', () => a.spawned && b.spawned)
   await until('individual first-argument homes', () => values(a, 'home').includes('TabTestA_base') && values(b, 'home').includes('TabTestB_base'))
+  assert.equal(values(a, 'home').length, 5)
+  assert.equal(values(b, 'home').length, 5)
   assert(!values(a, 'home').includes('TabTestB_base'))
   assert(!values(b, 'home').includes('TabTestA_base'))
   await until('nested delete options', () => values(a, 'delhome', ['delete']).includes('TabTestA_base') && values(b, 'delhome', ['delete']).includes('TabTestB_base'))

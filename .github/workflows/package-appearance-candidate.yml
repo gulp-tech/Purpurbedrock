@@ -1,11 +1,6 @@
 name: Package appearance test candidate
 
 on:
-  push:
-    branches:
-      - "arena/**"
-    paths:
-      - ".github/workflows/package-appearance-candidate.yml"
   workflow_dispatch:
     inputs:
       run_id:
@@ -39,12 +34,6 @@ jobs:
           test -n "$SHA" && test -s "$SHA"
           cp "$JAR" purpurbedrock-26.2.jar
           cp "$SHA" purpurbedrock-26.2.jar.sha256
-          AC="$(find artifacts -type f -name 'PurpurBedrockAC-26.2.jar' -print -quit)"
-          ACSHA="$(find artifacts -type f -name 'PurpurBedrockAC-26.2.jar.sha256' -print -quit)"
-          test -n "$AC" && test -s "$AC"
-          test -n "$ACSHA" && test -s "$ACSHA"
-          cp "$AC" PurpurBedrockAC-26.2.jar
-          cp "$ACSHA" PurpurBedrockAC-26.2.jar.sha256
           mkdir package
           cp purpurbedrock-26.2.jar package/
           cp purpurbedrock-26.2.jar.sha256 package/

@@ -12,7 +12,8 @@ import org.bukkit.event.server.TabCompleteEvent;
 public final class FixturePlugin extends JavaPlugin implements Listener {
     private final Map<UUID, List<String>> homes = new HashMap<>();
     private List<String> homes(Player player) {
-        return homes.computeIfAbsent(player.getUniqueId(), id -> new ArrayList<>(List.of(player.getName() + "_base")));
+        return homes.computeIfAbsent(player.getUniqueId(), id -> new ArrayList<>(List.of(player.getName() + "_base", player.getName() + "_farm",
+                player.getName() + "_mine", player.getName() + "_village", player.getName() + "_other")));
     }
     @Override public void onEnable() {
         getServer().getPluginManager().registerEvents(this, this);

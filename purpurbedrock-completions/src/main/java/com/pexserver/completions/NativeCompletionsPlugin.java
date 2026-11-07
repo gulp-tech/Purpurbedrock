@@ -345,7 +345,7 @@ public final class NativeCompletionsPlugin extends JavaPlugin implements Listene
                 CommandData data = baseline == null ? null : baseline.getCommands().stream()
                         .filter(d -> d.getName().equalsIgnoreCase(root) || d.getAliases() != null && d.getAliases().getValues().containsKey(root))
                         .findFirst().orElse(null);
-                if (data == null) { sender.sendMessage("Подсказки /" + root + ": команда не отправлена клиенту (возможны права или лимит списка)."); return true; }
+                if (data == null) { sender.sendMessage("Подсказки /" + root + ": нет команды в исходном списке (возможны права или лимит списка)."); return true; }
                 String labelForModel = data.getName().toLowerCase(Locale.ROOT);
                 var commandForModel = Bukkit.getCommandMap().getCommand(labelForModel);
                 var model = state.models.get(labelForModel);
@@ -354,9 +354,9 @@ public final class NativeCompletionsPlugin extends JavaPlugin implements Listene
                 int contexts = model == null ? 0 : model.nodes().size() + model.arguments().size();
                 int candidates = model == null ? 0 : model.nodes().stream().mapToInt(n -> n.candidates().size()).sum()
                         + model.arguments().stream().mapToInt(a -> a.candidates().size()).sum();
-                sender.sendMessage("Подсказки /" + root + ": отправлена=true, тип=" + (PacketComposer.generic(data) ? "plugin" : "typed")
+                sender.sendMessage("Подсказки /" + root + ": в_исходном_списке=true, тип=" + (PacketComposer.generic(data) ? "plugin" : "typed")
                         + ", зарегистрирована=" + (commandForModel != null) + ", разрешена=" + permitted
-                        + ", поиск=" + pending + ", списков=" + contexts + ", значений=" + candidates
+                        + ", поиск=" + pending + ", списков_в_модели=" + contexts + ", значений_в_модели=" + candidates
                         + ", пауза=" + (state.cooldowns.getOrDefault(labelForModel, 0L) > tick));
             }
             case "status" -> {

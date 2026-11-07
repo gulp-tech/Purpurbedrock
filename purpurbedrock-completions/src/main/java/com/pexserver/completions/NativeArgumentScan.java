@@ -36,9 +36,7 @@ final class NativeArgumentScan implements CompletionTask {
             for (var argument : overload.getOverloads()) if (queryable(argument)) return true;
         return false;
     }
-    private static boolean queryable(CommandParamData p) {
-        return p.getEnumData() == null && (p.getType() == CommandParam.STRING || p.getType() == CommandParam.FILE_PATH);
-    }
+    private static boolean queryable(CommandParamData p) { return p.getEnumData() == null && p.getType() == CommandParam.STRING; }
     @Override public boolean done() { return waiting == null && paths.isEmpty(); }
     @Override public void step() {
         if (waiting != null) {
