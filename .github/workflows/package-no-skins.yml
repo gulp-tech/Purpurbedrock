@@ -1,0 +1,60 @@
+name: Package no-skins equipment candidate
+on:
+  push:
+    branches: ['arena/**']
+    paths: ['.github/workflows/package-no-skins.yml']
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: write
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify successful tested build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          test "$(gh run view 42496611138 --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)" = success
+          test "$(gh run view 42496611138 --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha)" = 'ac92233038307091818cf0b854b9dc7151f9eba2'
+          test "$(gh run view 42496611138 --repo "$GITHUB_REPOSITORY" --json workflowDatabaseId --jq .workflowDatabaseId)" = "$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/build.yml" --jq .id)"
+      - name: Download tested core
+        uses: actions/download-artifact@v4
+        with:
+          name: purpurbedrock-26.2
+          path: artifacts
+          repository: ${{ github.repository }}
+          run-id: 42496611138
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Prepare separate downloads
+        run: |
+          set -euo pipefail
+          (cd artifacts && sha256sum -c purpurbedrock-26.2.jar.sha256)
+          cp artifacts/purpurbedrock-26.2.jar purpurbedrock-26.2-no-skins-test.jar
+          sha256sum purpurbedrock-26.2-no-skins-test.jar > purpurbedrock-26.2-no-skins-test.jar.sha256
+          mkdir package
+          cp purpurbedrock-26.2-no-skins-test.jar* package/
+          cat > package/INSTALL.txt <<'TEXT'
+          Purpurbedrock 26.2 - no remote skins and visible equipment test candidate.
+          Stop the server and back up the old core. Replace only the core JAR in
+          the server root using the filename required by the hosting launch command.
+          Keep transport: both. Remote players use a black/purple placeholder.
+          Remote armor and held-item data are sent separately. Skin-based custom
+          player heads cannot render their custom texture on remote players.
+          Real Bedrock visual correctness and frame rate still require testing.
+          Revert to the previous JAR if there is a regression.
+          TEXT
+          (cd package && zip -9 ../Purpurbedrock-26.2-no-skins-test.zip *)
+          sha256sum Purpurbedrock-26.2-no-skins-test.zip > Purpurbedrock-26.2-no-skins-test.zip.sha256
+      - name: Publish separate candidate without replacing main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload v26.2.0-bedrock \
+            purpurbedrock-26.2-no-skins-test.jar \
+            purpurbedrock-26.2-no-skins-test.jar.sha256 \
+            Purpurbedrock-26.2-no-skins-test.zip \
+            Purpurbedrock-26.2-no-skins-test.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" --clobber
