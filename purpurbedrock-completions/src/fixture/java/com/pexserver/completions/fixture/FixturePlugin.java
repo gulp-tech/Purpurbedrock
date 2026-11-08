@@ -2,6 +2,8 @@ package com.pexserver.completions.fixture;
 
 import java.util.*;
 import org.bukkit.entity.Player;
+import org.bukkit.Material;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.event.Listener;
 import org.bukkit.event.EventHandler;
@@ -17,6 +19,19 @@ public final class FixturePlugin extends JavaPlugin implements Listener {
     }
     @Override public void onEnable() {
         getServer().getPluginManager().registerEvents(this, this);
+        Objects.requireNonNull(getCommand("gearfixture")).setExecutor((sender, command, alias, args) -> {
+            if (!(sender instanceof Player player) || args.length != 1) return true;
+            boolean on = args[0].equals("on");
+            var inventory = player.getInventory();
+            inventory.setHelmet(on ? new ItemStack(Material.DIAMOND_HELMET) : null);
+            inventory.setChestplate(on ? new ItemStack(Material.IRON_CHESTPLATE) : null);
+            inventory.setLeggings(on ? new ItemStack(Material.GOLDEN_LEGGINGS) : null);
+            inventory.setBoots(on ? new ItemStack(Material.CHAINMAIL_BOOTS) : null);
+            inventory.setItemInMainHand(on ? new ItemStack(Material.IRON_SWORD) : null);
+            inventory.setItemInOffHand(on ? new ItemStack(Material.SHIELD) : null);
+            player.sendMessage("fixture:equipment:" + (on ? "on" : "off"));
+            return true;
+        });
         Objects.requireNonNull(getCommand("privatetest")).setTabCompleter((s, c, a, v) -> List.of("secret_value"));
         Objects.requireNonNull(getCommand("home")).setTabCompleter((sender, command, alias, args) ->
                 sender instanceof Player player && args.length == 1

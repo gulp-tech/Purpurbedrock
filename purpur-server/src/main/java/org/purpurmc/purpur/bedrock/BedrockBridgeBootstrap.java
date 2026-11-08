@@ -995,10 +995,15 @@ public final class BedrockBridgeBootstrap {
             Class<?> skinManagerClass = Class.forName("org.geysermc.geyser.skin.SkinManager", true, cl);
             skinManagerClass.getMethod("usePerformanceSafeRemoteSkin", geyserSessionClass, java.util.UUID.class);
             skinManagerClass.getDeclaredField("PERFORMANCE_SAFE_SKINS_SENT");
-            try (InputStream steve = cl.getResourceAsStream("bedrock/steve-wide.png")) {
-                if (steve == null || steve.read() != 0x89) {
-                    throw new IllegalStateException("Bundled Steve texture missing or invalid!");
-                }
+            Class<?> skinProviderClass = Class.forName("org.geysermc.geyser.skin.SkinProvider", true, cl);
+            java.lang.reflect.Method noSkinMethod = skinProviderClass.getDeclaredMethod("determinePerformanceSafeSkinData", java.util.UUID.class);
+            noSkinMethod.setAccessible(true);
+            Object noSkin = noSkinMethod.invoke(null, new java.util.UUID(0L, 1L));
+            Object placeholder = noSkin.getClass().getMethod("skin").invoke(noSkin);
+            String textureId = (String) placeholder.getClass().getMethod("textureUrl").invoke(placeholder);
+            byte[] placeholderData = (byte[]) placeholder.getClass().getMethod("skinData").invoke(placeholder);
+            if (!"geysermc:empty".equals(textureId) || placeholderData.length != 64 * 64 * 4) {
+                throw new IllegalStateException("Invalid remote missing-texture placeholder");
             }
             Class<?> azimuthClass = Class.forName("org.geysermc.geyser.session.cache.waypoint.AzimuthWaypoint", true, cl);
             azimuthClass.getDeclaredField("tickCounter");
@@ -1038,7 +1043,7 @@ public final class BedrockBridgeBootstrap {
             return "MULTIVERSION_685_TO_2225_SELFTEST_OK codecs=" + protocols.size()
                 + " versions=1.21.0..26.60 dialogWaitPopup=DISABLED chunkPublisher=RELIABLE ruLocale=OK"
                 + " pre818StartGame=OK attrSingleton=OK waypointFix=OK configDialogSafe=OK chunkBoundsSafe=OK lanStatusV7=OK transportReason=OK"
-                + " safeRemoteSkins=" + (PurpurConfig.bedrockSafeRemotePlayerSkins ? "ON" : "OFF")
+                + " safeRemoteSkins=ON"
                 + " skullsToggle=" + (isCustomSkullsEnabled() ? "ON" : "OFF")
                 + " particleCap=" + activeParticleCap
                 + " mobileStaticSkulls=" + activeStaticSkullCap;

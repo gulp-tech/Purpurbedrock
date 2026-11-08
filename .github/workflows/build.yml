@@ -79,7 +79,7 @@ jobs:
             grep -Fq 'replaceSessionsByXuid' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/session/SessionManager.java
             grep -Fq 'sessions.remove(uuid, session)' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/session/SessionManager.java
             grep -Fq 'Atomically evict that stale XUID' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/network/bedrock/UpstreamPacketHandler.java
-            grep -Fq 'Every remote player is always rendered with one bundled wide Steve skin' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
+            grep -Fq 'Every remote player uses the same missing-texture placeholder.' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
             grep -Fq 'PERFORMANCE_SAFE_SKINS_SENT' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
             grep -Fq 'downloading or sending any skin update' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
             grep -Fq 'entry.setXuid("")' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
@@ -94,7 +94,7 @@ jobs:
             grep -Fq 'loading-tip text disappears' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/util/ChunkUtils.java
             grep -Fq 'low-memory kill threshold' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/translator/protocol/java/level/JavaChunkBatchFinishedTranslator.java
             grep -Fq 'maxCachedCustomSkulls", 8' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/registry/populator/CustomSkullRegistryPopulator.java
-            grep -Fq 'return BasicSteve.DATA;' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinProvider.java
+            grep -Fq 'return new SkinData(EMPTY_SKIN, EMPTY_CAPE, SkinGeometry.WIDE);' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinProvider.java
             grep -Fq 'determinePerformanceSafeSkinData' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinProvider.java
             grep -Fq 'register(Bedrock_v2225.CODEC, "26.60")' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/network/bedrock/GameProtocol.java
             grep -Fq 'ClientboundMatchmakingStatePacket.class' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/network/bedrock/CodecProcessor.java
@@ -123,9 +123,8 @@ jobs:
             grep -Fq 'RemoteSpawnDiagnostics.recordBedrock' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/session/GeyserSession.java
             grep -Fq 'remoteEquipmentBatch.invalidate()' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/entity/type/player/PlayerEntity.java
             grep -Fq 'ensurePerformanceSafeEntryBeforeSpawn' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
-            test -s /tmp/geyser-26.2/core/src/main/resources/bedrock/steve-wide.png
-            grep -Fq 'basicRemoteEquipment && item != null' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/translator/protocol/java/entity/JavaSetEquipmentTranslator.java
-            grep -Fq 'purpurbedrock:steve_wide_v1' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinProvider.java
+            grep -Fq 'if (!basicRemoteEquipment)'  /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/translator/protocol/java/entity/JavaSetEquipmentTranslator.java
+            grep -Fq 'GeyserItemStack.from(session, equipment.getItem())' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/translator/protocol/java/entity/JavaSetEquipmentTranslator.java
             grep -Fq 'Never send' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
             ! grep -Fq 'commitPerformanceSafeSkinAfterSpawn' /tmp/geyser-26.2/core/src/main/java/org/geysermc/geyser/skin/SkinManager.java
             grep -Fq 'safeSkinBeforeSpawn' "$GITHUB_WORKSPACE/scripts/patch-bedrock-engine.py"
@@ -490,7 +489,7 @@ jobs:
               "Защита от флагов движения и фантомных блоков: ВКЛЮЧЕНА",
               "Java-меню (DeluxeMenus / Chest GUI): ВКЛЮЧЕНЫ",
               "NPC-оптимизация (Citizens/FancyNPCs/ZNPCs): ВКЛЮЧЕНА",
-              "Облегчённые скины других игроков на телефонах/консолях: ВКЛЮЧЕНЫ",
+              "Скины других игроков: ОТКЛЮЧЕНЫ (общая отсутствующая текстура)",
               "Мульти-версия Bedrock: 1.21.0 — 26.60 (v685 — v2225, 24 протокола)",
               "Окно ожидания диалога (gui.waitingForResponse): УБРАНО",
               "chunkBoundsSafe=OK",
@@ -547,7 +546,7 @@ jobs:
           body: |
             ## Purpurbedrock `26.2` (`purpurbedrock-26.2.jar`)
             Автономное ядро на базе **Purpur `26.2` (`STABLE`)**. Античит в эту сборку не входит:
-            - **Отображение игроков**: для других игроков используется встроенный классический скин. Сообщённые зависания при появлении игрока на основном сервере пока не подтверждены как исправленные.
+            - **Отображение игроков**: для других игроков используется общая отсутствующая текстура вместо скинов. Сообщённые зависания при появлении игрока на основном сервере пока не подтверждены как исправленные.
             - **Исправлен повторный `ClientboundLoginPacket` с GeyserGlowing**: очередь `postStartGamePackets` теперь потокобезопасно и идемпотентно очищается; повторный login/reconfiguration больше не вызывает `NullPointerException` и не срывает вход Bedrock-игрока.
             - **Адаптивная оптимизация NPC для Bedrock (`SAFE / BALANCED / HIGH`)**:
               - Citizens (без жёсткой зависимости), FancyNPCs, ZNPCs и NPC с обычными metadata/scoreboard-тегами получают индивидуальный для каждого игрока лимит дальности и количества по устройству, RTT и TPS. Ядро скрывает только лишние сетевые обновления NPC и меняет видимость лишь при переходе состояния; AI, трейты, навигация, взаимодействия и логика Java-плагинов не отключаются.
@@ -572,7 +571,7 @@ jobs:
             - **Исправлено отключение Bedrock-сессии без предупреждений и stack trace**: добавлена совместимость `TransportDisconnectReason`, а консольный префикс встроенного протокола заменён на `Purpurbedrock`.
             - **NPC теперь гарантированно создаётся перед игроком**: повторный `/pbnpc create` с занятым ID пересоздаёт существующего NPC перед игроком вместо отказа; команда сообщает успех только после реального появления моба и голограммы, загружает нужный чанк и сразу восстанавливает их видимость ближайшим игрокам.
             - **NPC полностью невосприимчивы к эффектам**: зелья, стрелы с эффектами, маяки, команды и плагины не могут наложить или усилить эффект на NPC; старые эффекты очищаются при создании.
-            - **Убраны зависания слабых телефонов при прогрузке игроков**: Android/iOS/консоли используют одну общую встроенную текстуру 64×64 без удалённого XUID-поиска; ядро не скачивает полные скины и отбрасывает повторные обновления списка при телепортах/респавнах. Собственный скин и полные скины на Windows не изменены.
+            - **Отображение других игроков без скинов**: все устройства получают одну общую отсутствующую текстуру, без плащей и последующей загрузки скинов. Эффект на зависания требуется проверить на основном сервере.
             - **Убрано моргание чанков**: радиус публикации больше не скачет вслед за колебаниями пинга, центр не переносится к дальним устаревшим чанкам и не отправляется повторно через 500 мс после входа. Ограничение скорости чанков по RTT сохранено.
             - **Исправлен вылет части телефонов сразу после загрузочной подсказки «Выжить»**: начальная область уменьшена без пустых/мигающих чанков, поток чанков для телефонов и неизвестных Android-клиентов ограничен до безопасных 6/с, тяжёлый творческий каталог ограничен 512 записями, а статические кастомные головы — 8 текстурами. Windows не ограничен.
             - **Убраны кики «Превышено время ожидания» при входе**: сетевой сеанс терпит до 120 секунд временной потери связи вместо 10, Java keepalive подтверждается независимо от зависшего экрана загрузки, паки передаются устойчивыми блоками 64 КиБ вместо 256 КиБ, а окно авторизации увеличено до 300 секунд. Реальный RTT продолжает измеряться отдельно.

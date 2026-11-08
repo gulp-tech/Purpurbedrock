@@ -5164,9 +5164,6 @@ import java.util.concurrent.ConcurrentHashMap;""",
         "GeyserSessionAdapter.observeJavaPackets",
     )
 
-    steve_asset = root / "core/src/main/resources/bedrock/steve-wide.png"
-    steve_asset.parent.mkdir(parents=True, exist_ok=True)
-    steve_asset.write_bytes((Path(__file__).resolve().parent / "assets/steve-wide.png").read_bytes())
     skin_provider = root / "core/src/main/java/org/geysermc/geyser/skin/SkinProvider.java"
     replace_exact(
         skin_provider,
@@ -5180,32 +5177,11 @@ import java.util.concurrent.ConcurrentHashMap;""",
     }
 
     /**
-     * Lightweight 64x64 vanilla skin used for remote players on constrained Bedrock clients.
-     * It deliberately excludes Bedrock persona geometry and capes, which can stall mobile rendering.
+     * Bedrock player-list entries require a texture. Use the same explicit missing-texture
+     * placeholder for every remote player rather than fetching or showing any player skin.
      */
     static SkinData determinePerformanceSafeSkinData(UUID uuid) {
-        return BasicSteve.DATA;
-    }
-
-    // Loaded once from the engine JAR, never from the asynchronous client-asset cache.
-    private static final class BasicSteve {
-        private static final SkinData DATA = load();
-
-        private static SkinData load() {
-            try (var stream = SkinProvider.class.getResourceAsStream("/bedrock/steve-wide.png")) {
-                if (stream == null) throw new IllegalStateException("Missing bundled Steve texture");
-                BufferedImage image = ImageIO.read(stream);
-                if (image == null || image.getWidth() != 64 || image.getHeight() != 64) {
-                    throw new IllegalStateException("Invalid bundled Steve texture");
-                }
-                byte[] pixels = bufferedImageToImageData(image);
-                image.flush();
-                return new SkinData(new Skin("purpurbedrock:steve_wide_v1", pixels, true),
-                        EMPTY_CAPE, SkinGeometry.WIDE);
-            } catch (IOException e) {
-                throw new IllegalStateException("Cannot read bundled Steve texture", e);
-            }
-        }
+        return new SkinData(EMPTY_SKIN, EMPTY_CAPE, SkinGeometry.WIDE);
     }
 
     /**
@@ -5223,10 +5199,9 @@ import java.util.concurrent.ConcurrentHashMap;""",
         """public class SkinManager {
 
     public static boolean usePerformanceSafeRemoteSkin(GeyserSession session, UUID playerUuid) {
-        // Every remote player is always rendered with one bundled wide Steve skin. This is
-        // deliberately unconditional: no JVM flag, device detection, custom skin download,
-        // persona geometry, cape, or post-spawn skin replacement can re-enter this hot path.
-        // Only the viewer's own player keeps their real skin.
+        // Every remote player uses the same missing-texture placeholder. This is
+        // deliberately unconditional: no remote skin, persona, cape, or subsequent skin
+        // replacement. The viewer's own local skin is not changed by the server.
         return session.getPlayerEntity() != null
             && !playerUuid.equals(session.getPlayerEntity().uuid());
     }
@@ -5269,7 +5244,7 @@ import java.util.concurrent.ConcurrentHashMap;""",
             getSkin(session, safe.skin().textureUrl(), safe.skin(), safe.cape(), safe.geometry())
         );
         // Never expose a remote Xbox identity on constrained clients. A non-empty XUID makes
-        // Bedrock perform its own profile/appearance lookup and defeats the shared bundled skin.
+        // Bedrock perform its own profile/appearance lookup and defeats the placeholder.
         entry.setXuid("");
         entry.setPlatformChatId("");
         return entry;
@@ -5324,7 +5299,7 @@ import java.util.concurrent.ConcurrentHashMap;""",
         """    public static void requestAndHandleSkinAndCape(AvatarEntity entity, GeyserSession session, Consumer<SkinProvider.SkinAndCape> skinAndCapeConsumer) {
         if (usePerformanceSafeRemoteSkin(session, entity.uuid())) {
             SkinData safe = SkinProvider.determinePerformanceSafeSkinData(entity.uuid());
-            // The single Steve entry is installed before AddPlayer. Satisfy callbacks without
+            // The placeholder entry is installed before AddPlayer. Satisfy callbacks without
             // downloading or sending any skin update after the remote entity becomes visible.
             if (skinAndCapeConsumer != null) {
                 skinAndCapeConsumer.accept(new SkinProvider.SkinAndCape(safe.skin(), safe.cape()));
@@ -5478,7 +5453,7 @@ import java.util.concurrent.ConcurrentHashMap;""",
             if (!EnvironmentUtils.IS_UNIT_TESTING) {
                 SkinManager.requestAndHandleSkinAndCape(entity, session, null);
             }""",
-        """            // Install the shared 64x64 skin before AddPlayer. If AddPlayer arrives first,
+        """            // Install the missing-texture placeholder before AddPlayer. If AddPlayer arrives first,
             // Bedrock may synchronously resolve/compile the remote persona and freeze rendering.
             SkinManager.ensurePerformanceSafeEntryBeforeSpawn(session, entity);
             entity.sendPlayer();
@@ -5506,7 +5481,7 @@ import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataTypes;""",
     replace_exact(
         avatar_entity,
         """        addPlayerPacket.setHand(ItemTranslator.translateToBedrock(session, getMainHandItem()));""",
-        """        // Remote players are deliberately one immutable basic Steve. Do not put custom
+        """        // Remote players use one immutable placeholder. Do not put custom
         // item components into AddPlayer: decoding a large held item on the render thread can
         // freeze every class of client exactly when the actor enters tracking distance.
         addPlayerPacket.setHand(this instanceof SessionPlayerEntity
@@ -5531,7 +5506,7 @@ import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataTypes;""",
             return;
         }
 
-        // Restore vanilla equipment visuals, but never translate remote custom components.
+        // Preserve all armor and hand item data for remote players; only batch their updates.
         boolean basicRemoteEquipment = livingEntity instanceof PlayerEntity
                 && livingEntity != session.getPlayerEntity();
 
@@ -5541,12 +5516,19 @@ import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataTypes;""",
 
     replace_exact(
         equipment_translator,
-        "            GeyserItemStack stack = GeyserItemStack.from(session, equipment.getItem());",
-        """            var item = equipment.getItem();
-            GeyserItemStack stack = basicRemoteEquipment && item != null
-                    ? GeyserItemStack.of(session, item.getId(), item.getAmount())
-                    : GeyserItemStack.from(session, item);""",
-        "JavaSetEquipmentTranslator.basicRemoteEquipment",
+        """                    if (livingEntity instanceof PlayerEntity && stack.is(Items.PLAYER_HEAD) && profile != null) {
+                        FakeHeadProvider.setHead(session, (PlayerEntity) livingEntity, profile);
+                    } else {
+                        FakeHeadProvider.restoreOriginalSkin(session, livingEntity);
+                    }""",
+        """                    if (!basicRemoteEquipment) {
+                        if (livingEntity instanceof PlayerEntity && stack.is(Items.PLAYER_HEAD) && profile != null) {
+                            FakeHeadProvider.setHead(session, (PlayerEntity) livingEntity, profile);
+                        } else {
+                            FakeHeadProvider.restoreOriginalSkin(session, livingEntity);
+                        }
+                    }""",
+        "JavaSetEquipmentTranslator.noRemoteHeadSkinFetch",
     )
 
     replace_exact(

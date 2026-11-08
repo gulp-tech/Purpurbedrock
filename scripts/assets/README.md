@@ -1,18 +1,14 @@
-# Bundled remote-player texture
+# Remote player appearance and equipment
 
-`steve-wide.png`: vanilla 64×64 wide Steve texture, copied from
-https://github.com/PrismarineJS/minecraft-assets/blob/master/data/1.21.4/entity/player/wide/steve.png
+The optional `steve-wide.png` is retained in the source tree for future use; the current
+engine does not bundle or send it for remote players. Bedrock player-list entries require
+skin data, so the engine sends one shared built-in black/purple missing-texture placeholder,
+without remote capes, persona, profile downloads, or post-spawn skin replacements. The
+local viewer's own appearance is not changed. Head textures that require replacing a remote
+player's skin cannot be rendered in this mode.
 
-The engine loads this directly from its JAR once. It must not depend on the
-asynchronous default-player-skin download/cache: an immutable entry must never
-capture the missing-texture fallback before that cache is ready.
-
-Remote equipment is translated from item ID/count only. Per-stack custom
-components (including profile heads) are intentionally omitted from remote
-visuals; local inventory and non-player equipment are unchanged.
-
-Remote armor and both hand visuals are coalesced on the viewer event loop over
-75 ms, retaining the latest state for every changed slot. Pending work is
-invalidated on despawn; local inventory, movement, and non-player equipment
-are not delayed. Player-list skin tracking is cleared whenever an entry is
-actually removed, so a later spawn can install the bundled texture again.
+Remote armor and both hand visuals use the full item data and are coalesced on the viewer's
+event loop over 75 ms, retaining the latest state for every changed slot. Pending work is
+invalidated on despawn. Local inventory, movement, and non-player equipment are not delayed.
+Player-list tracking is cleared whenever an entry is removed so later spawns can be restored.
+Packet-level tests do not establish real client appearance or frame rate.

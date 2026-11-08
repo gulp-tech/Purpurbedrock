@@ -9,7 +9,8 @@ function name(label, prefix = []) {
   return `${label}_arg${prefix.length + 1}_${createHash('sha256').update(input).digest('hex').slice(0, 16)}`
 }
 function connect(username, xuid) {
-  const state = { username, enums: new Map(), packets: [], spawned: false }
+  const state = { username, enums: new Map(), packets: [], spawned: false,
+    playerEntries: new Map(), players: new Map(), items: new Map(), armor: new Map(), hands: new Map(), skinUpdates: [] }
   clients.push(state)
   const client = state.client = bedrock.createClient({ host: '127.0.0.1', port: 19132,
     version: '1.26.51', username, offline: true, transport: 'raknet', conLog: () => {} })
@@ -17,6 +18,18 @@ function connect(username, xuid) {
   client.on('error', e => { state.error = e })
   client.on('disconnect', packet => { if (!state.closing) state.error = new Error(JSON.stringify(packet)) })
   client.on('spawn', () => { state.spawned = true; client.queue('request_chunk_radius', { chunk_radius: 4, max_radius: 4 }) })
+  client.on('item_registry', packet => {
+    for (const item of packet.itemstates) state.items.set(item.name, item.runtime_id)
+  })
+  client.on('player_list', packet => {
+    for (const entry of packet.records || []) {
+      if (entry.type === 'add' && entry.username) state.playerEntries.set(entry.username, entry)
+    }
+  })
+  client.on('add_player', packet => state.players.set(packet.username, packet))
+  client.on('player_skin', packet => state.skinUpdates.push(packet))
+  client.on('mob_armor_equipment', packet => state.armor.set(String(packet.runtime_entity_id), packet))
+  client.on('mob_equipment', packet => state.hands.set(String(packet.runtime_entity_id) + ':' + packet.window_id, packet))
   client.on('available_commands', packet => {
     state.packets.push(packet)
     state.enums = new Map(packet.dynamic_enums.map(entry => [entry.name, entry.values]))
@@ -45,6 +58,33 @@ function command(state, text) {
 async function main() {
   const a = connect('TabTestA', '10001'), b = connect('TabTestB', '10002')
   await until('two clients spawned', () => a.spawned && b.spawned)
+  await until('remote player actor and placeholder entry', () => a.players.has('TabTestB') && a.playerEntries.has('TabTestB'))
+  const remote = a.players.get('TabTestB')
+  const remoteEntry = a.playerEntries.get('TabTestB')
+  assert.equal(remoteEntry.skin_data.skin_id, 'geysermc:empty', 'remote skin must be the fixed missing-texture placeholder')
+  assert.equal(remoteEntry.skin_data.skin_data.width, 64)
+  assert.equal(remoteEntry.skin_data.skin_data.height, 64)
+  assert.equal(remoteEntry.skin_data.cape_data.width, 0)
+  const runtimeId = String(remote.runtime_id)
+  const item = itemName => a.items.get('minecraft:' + itemName)
+  const armor = () => a.armor.get(runtimeId)
+  const mainHand = () => a.hands.get(runtimeId + ':inventory')
+  const offHand = () => a.hands.get(runtimeId + ':offhand')
+  await until('item registry', () => ['diamond_helmet', 'iron_chestplate', 'golden_leggings',
+    'chainmail_boots', 'iron_sword', 'shield'].every(x => item(x) !== undefined))
+  command(b, '/gearfixture on')
+  await until('remote armor and both hand items delivered', () =>
+    armor()?.helmet.network_id === item('diamond_helmet') &&
+    armor()?.chestplate.network_id === item('iron_chestplate') &&
+    armor()?.leggings.network_id === item('golden_leggings') &&
+    armor()?.boots.network_id === item('chainmail_boots') &&
+    mainHand()?.item.network_id === item('iron_sword') && offHand()?.item.network_id === item('shield'))
+  command(b, '/gearfixture off')
+  await until('removed armor and both hand items updated', () =>
+    armor()?.helmet.network_id === 0 && armor()?.chestplate.network_id === 0 &&
+    armor()?.leggings.network_id === 0 && armor()?.boots.network_id === 0 &&
+    mainHand()?.item.network_id === 0 && offHand()?.item.network_id === 0)
+  assert(!a.skinUpdates.some(p => p.uuid === remote.uuid), 'remote player must not receive later skin changes')
   await until('individual first-argument homes', () => values(a, 'home').includes('TabTestA_base') && values(b, 'home').includes('TabTestB_base'))
   assert.equal(values(a, 'home').length, 5)
   assert.equal(values(b, 'home').length, 5)
