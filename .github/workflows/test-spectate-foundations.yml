@@ -1,0 +1,25 @@
+name: Test spectator privacy foundations
+on:
+  push:
+    branches: ['arena/**']
+    paths:
+      - 'purpurbedrock-spectate/**'
+      - '.github/workflows/test-spectate-foundations.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  foundations:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Compile and test standalone foundations
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/spectate-test
+          javac --release 25 -encoding UTF-8 -d /tmp/spectate-test $(find purpurbedrock-spectate/src -name '*.java')
+          java -cp /tmp/spectate-test org.purpurmc.purpur.spectate.FoundationsTest
