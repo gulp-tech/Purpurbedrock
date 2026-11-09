@@ -27,7 +27,9 @@ public final class SpectatePolicy {
 
     /** Only the explicit exit command is allowed while observing; namespaces and arguments are not bypasses. */
     public static boolean isExitCommand(String raw) {
-        if (raw == null) return false;
+        if (raw == null || raw.isEmpty() || raw.charAt(0) != '/') return false;
+        if (raw.codePoints().anyMatch(c -> (Character.isISOControl(c) && c != '\t')
+                || Character.getType(c) == Character.LINE_SEPARATOR || Character.getType(c) == Character.PARAGRAPH_SEPARATOR)) return false;
         String input = raw.strip().toLowerCase(Locale.ROOT);
         return input.matches("/pbspec[ \t]+(off|выход)");
     }

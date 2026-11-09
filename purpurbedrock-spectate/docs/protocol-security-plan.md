@@ -74,3 +74,26 @@ security model, not just rendering details.
 Do not publish a security-ready plugin until the core gate, plugin adapters and the
 above tests actually exist. The current directory deliberately contains no plugin
 entry point and no enabled masking path.
+
+## Concrete findings from source review
+
+* A fixed additive shift is recoverable if a client knows one real and shifted
+  coordinate pair: subtract the two to obtain the offset, then recover all target
+  positions. A previously known world spawn, border or other anchor can expose it.
+  `OffsetThreatTest` intentionally reproduces this attack; its passing result means
+  the attack works, not that it has been prevented. Anchors must be suppressed or
+  independently handled, and even then environmental inference remains possible.
+* The chunk serializer builds block-entity tags with absolute X/Z and writes those
+  tags inside the chunk payload. Rewriting only the chunk's outer X/Z leaks real
+  coordinates in the payload. The chunk packet is reference-counted and its normal
+  clone operation is unsupported, so safe per-viewer ownership also needs testing.
+* Recovery and audit files may reveal private information to other operating-system
+  users if their directories or files are world/group-readable. The current helper
+  requires POSIX owner-only permissions and fails closed if it cannot verify them.
+  Windows ACL support has not been implemented. Other plugins in the same JVM/OS
+  account, administrators and filesystem backups remain trusted; these permissions
+  cannot isolate them. Recovery records necessarily include the observer's original
+  position; audit entries do not contain coordinates.
+* A saved recovery record cannot alone prove that no record was deleted or lost.
+  Detecting missing storage/ledger data after a crash or remount needs an independent
+  startup gate. A Bukkit join callback cannot implement that gate before login data.

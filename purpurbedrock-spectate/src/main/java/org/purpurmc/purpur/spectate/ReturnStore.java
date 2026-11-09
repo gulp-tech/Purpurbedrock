@@ -37,7 +37,7 @@ public final class ReturnStore {
     /** Caller must save before any change in location, game mode, or protocol visibility. */
     public synchronized void save(Snapshot s) throws IOException {
         Objects.requireNonNull(s);
-        Files.createDirectories(directory);
+        PrivateStorage.directory(directory);
         Properties p = new Properties();
         p.setProperty("session", s.session().toString()); p.setProperty("observer", s.observer().toString());
         p.setProperty("observerName", s.observerName()); p.setProperty("target", s.target().toString());
@@ -53,6 +53,7 @@ public final class ReturnStore {
                 while (buffer.hasRemaining()) channel.write(buffer);
                 channel.force(true);
             }
+            PrivateStorage.existingFile(temporary);
             // A no-overwrite atomic link avoids losing a pending return state on a duplicate start.
             // If hard links are unsupported, fail closed rather than doing a partial write.
             try { Files.createLink(file(s.observer()), temporary); }
@@ -64,8 +65,13 @@ public final class ReturnStore {
         Objects.requireNonNull(observer);
         Path path = file(observer);
         Properties p = new Properties();
+        try {
+            Files.readAttributes(path, java.nio.file.attribute.BasicFileAttributes.class, java.nio.file.LinkOption.NOFOLLOW_LINKS);
+        } catch (NoSuchFileException ex) { return Optional.empty(); }
+        PrivateStorage.directory(directory);
+        PrivateStorage.existingFile(path);
         try (InputStream in = Files.newInputStream(path)) { p.load(in); }
-        catch (NoSuchFileException ex) { return Optional.empty(); }
+        catch (NoSuchFileException ex) { throw new IOException("Return state disappeared during recovery", ex); }
         catch (IllegalArgumentException ex) { throw new IOException("Malformed saved return state for " + observer, ex); }
         try {
             UUID stored = UUID.fromString(p.getProperty("observer"));

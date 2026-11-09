@@ -27,3 +27,10 @@ validate protocol privacy. Audit records and recovery records now share a sessio
 and target identity, allowing recovery to identify who was being observed. An
 incomplete audit tail or failed durable write blocks admission rather than silently
 joining records or exposing the target.
+
+A fixed offset has a known-anchor attack: if a client learns the same point both
+before and after transformation, it can calculate the shift. The automated threat
+example intentionally demonstrates this vulnerability; it is not a mitigation.
+Current storage experiments require POSIX owner-only permissions and fail closed when
+that cannot be verified; Windows ACL support has not yet been implemented. Plugins
+or administrators sharing the server's operating-system account remain trusted.

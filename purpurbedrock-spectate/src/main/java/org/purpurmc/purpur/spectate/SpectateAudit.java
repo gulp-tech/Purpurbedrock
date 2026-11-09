@@ -6,7 +6,6 @@ import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.channels.OverlappingFileLockException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
@@ -33,8 +32,9 @@ public final class SpectateAudit {
         // A per-path JVM monitor plus an OS file lock coordinates separate instances and processes.
         // A torn final record is never silently joined to the next observation.
         synchronized (PATH_LOCKS.computeIfAbsent(path, ignored -> new Object())) {
-            Files.createDirectories(path.getParent());
-            try (FileChannel channel = FileChannel.open(path, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
+            PrivateStorage.directory(path.getParent());
+            PrivateStorage.auditFile(path);
+            try (FileChannel channel = FileChannel.open(path, StandardOpenOption.READ, StandardOpenOption.WRITE);
                  FileLock lock = channel.lock()) {
                 long size = channel.size();
                 if (size > 0) {
