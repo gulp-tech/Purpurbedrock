@@ -21,7 +21,49 @@ public final class FoundationsTest {
         try { new CoordinateOffset(Integer.MAX_VALUE, 0); throw new AssertionError("invalid offset accepted"); }
         catch (ArithmeticException expected) { }
 
+        UUID world = UUID.randomUUID();
+        var base = new SpectatePolicy.Position(world, 0, 64, 0);
+        check(SpectatePolicy.follow(base, new SpectatePolicy.Position(world, 6, 72, 0)) == SpectatePolicy.Follow.STAY, "distance exactly 10");
+        check(SpectatePolicy.follow(base, new SpectatePolicy.Position(world, 6, 72.001, 0)) == SpectatePolicy.Follow.FOLLOW, "distance over 10");
+        check(SpectatePolicy.follow(base, new SpectatePolicy.Position(UUID.randomUUID(), 0, 64, 0)) == SpectatePolicy.Follow.FOLLOW, "dimension change");
+        check(SpectatePolicy.follow(base, null) == SpectatePolicy.Follow.STOP, "offline target");
+        check(SpectatePolicy.follow(base, new SpectatePolicy.Position(world, Double.NaN, 64, 0)) == SpectatePolicy.Follow.STOP, "invalid position");
+        check(SpectatePolicy.isExitCommand("/pbspec off") && SpectatePolicy.isExitCommand(" /PBSpec   off "), "exit must be usable");
+        for (String command : new String[]{"/tp 1 2 3", "/pbspec", "/pbspec off extra", "/other:pbspec off", "/pbspec off;op", "/pbspec off\n/tp 1 2 3", "/pbspec \noff"})
+            check(!SpectatePolicy.isExitCommand(command), "unexpected command allowed: " + command);
+        var state = new SpectateState();
+        try { state.activate(); throw new AssertionError("activated without protection"); }
+        catch (IllegalStateException expected) { }
+        state.prepare();
+        try { state.activate(); throw new AssertionError("activated without audit"); }
+        catch (IllegalStateException expected) { }
+        state.armedAfterDurableSave(); state.auditCommitted(); state.activate();
+        check(state.mayMoveToTarget(), "active session cannot follow");
+        state.failedOrDisconnected();
+        check(!state.mayMoveToTarget() && state.phase() == SpectateState.Phase.RECOVERY_REQUIRED, "disconnect must stop observation");
+        try { state.restoredAndCleared(); throw new AssertionError("recovery skipped restoration"); }
+        catch (IllegalStateException expected) { }
+        state.beginRecovery(); state.restoredAndCleared();
+        check(state.phase() == SpectateState.Phase.CLOSED, "recovery not closed");
+
         var directory = Files.createTempDirectory("spectate-audit-test");
+        var returns = new ReturnStore(directory.resolve("returns"));
+        UUID recovering = UUID.randomUUID();
+        var original = new ReturnStore.Snapshot(recovering, world, -0.125, 70.5, -32.0, 175.0f, -42.0f, "SURVIVAL", false, false);
+        check(returns.load(recovering).isEmpty(), "unexpected saved return state");
+        returns.save(original);
+        check(returns.load(recovering).orElseThrow().equals(original), "return state did not survive reload");
+        try {
+            returns.save(new ReturnStore.Snapshot(recovering, world, 1, 2, 3, 0, 0, "CREATIVE", true, false));
+            throw new AssertionError("pending return state was overwritten");
+        } catch (java.nio.file.FileAlreadyExistsException expected) { }
+        check(returns.load(recovering).orElseThrow().equals(original), "duplicate start changed return state");
+        try {
+            new ReturnStore.Snapshot(recovering, world, Double.NaN, 0, 0, 0, 0, "SURVIVAL", false, false);
+            throw new AssertionError("invalid return position accepted");
+        } catch (IllegalArgumentException expected) { }
+        returns.clear(recovering);
+        check(returns.load(recovering).isEmpty(), "restored return state was not cleared");
         var file = directory.resolve("audit.jsonl");
         var audit = new SpectateAudit(file);
         UUID observer = UUID.randomUUID(), target = UUID.randomUUID();
