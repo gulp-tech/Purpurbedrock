@@ -34,3 +34,8 @@ example intentionally demonstrates this vulnerability; it is not a mitigation.
 Current storage experiments require POSIX owner-only permissions and fail closed when
 that cannot be verified; Windows ACL support has not yet been implemented. Plugins
 or administrators sharing the server's operating-system account remain trusted.
+
+`protocol-test` is an isolated security regression demonstration, not a protection:
+with the pinned 26.60 codec it shows that changing a chunk header alone leaves the
+real coordinates in a synthetic encoded block-entity NBT payload. It does not model
+a full renderable chunk or the real client. The working server code is untouched.

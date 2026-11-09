@@ -97,3 +97,8 @@ entry point and no enabled masking path.
 * A saved recovery record cannot alone prove that no record was deleted or lost.
   Detecting missing storage/ledger data after a crash or remount needs an independent
   startup gate. A Bukkit join callback cannot implement that gate before login data.
+* The current admission and audit examples perform filesystem I/O and `force()`
+  synchronously. Hooking them directly into the game tick would let slow storage or
+  repeated staff requests stall the server. The real adapter needs a bounded worker,
+  deadlines and per-observer rate limits; it must stay quarantined until durable
+  completion and avoid touching Bukkit objects from a worker thread.

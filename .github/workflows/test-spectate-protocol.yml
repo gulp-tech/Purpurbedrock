@@ -1,0 +1,25 @@
+name: Test spectator protocol leak examples
+on:
+  push:
+    branches: ['arena/**']
+    paths:
+      - 'purpurbedrock-spectate/protocol-test/**'
+      - '.github/workflows/test-spectate-protocol.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  protocol-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Verify known chunk privacy failure with the pinned 26.60 codec
+        run: gradle -p purpurbedrock-spectate/protocol-test clean test --no-daemon --stacktrace
