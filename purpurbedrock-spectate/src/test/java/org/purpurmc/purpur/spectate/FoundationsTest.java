@@ -64,6 +64,14 @@ public final class FoundationsTest {
         } catch (IllegalArgumentException expected) { }
         returns.clear(recovering);
         check(returns.load(recovering).isEmpty(), "restored return state was not cleared");
+        Files.writeString(directory.resolve("returns").resolve(recovering + ".properties"), "observer=broken\n");
+        try { returns.load(recovering); throw new AssertionError("corrupt recovery data accepted"); }
+        catch (java.io.IOException expected) { }
+        returns.clear(recovering);
+        Files.writeString(directory.resolve("returns").resolve(recovering + ".properties"), "x=\\u12XX\n");
+        try { returns.load(recovering); throw new AssertionError("malformed properties accepted"); }
+        catch (java.io.IOException expected) { }
+        returns.clear(recovering);
         var file = directory.resolve("audit.jsonl");
         var audit = new SpectateAudit(file);
         UUID observer = UUID.randomUUID(), target = UUID.randomUUID();

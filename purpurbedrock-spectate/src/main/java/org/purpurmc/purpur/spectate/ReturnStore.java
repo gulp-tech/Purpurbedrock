@@ -61,6 +61,7 @@ public final class ReturnStore {
         Properties p = new Properties();
         try (InputStream in = Files.newInputStream(path)) { p.load(in); }
         catch (NoSuchFileException ex) { return Optional.empty(); }
+        catch (IllegalArgumentException ex) { throw new IOException("Malformed saved return state for " + observer, ex); }
         try {
             UUID stored = UUID.fromString(p.getProperty("observer"));
             if (!observer.equals(stored)) throw new IllegalArgumentException("Observer mismatch");

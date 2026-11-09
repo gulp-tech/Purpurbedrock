@@ -15,3 +15,8 @@ files necessarily contain the original coordinates and must be private to the se
 only the audit avoids coordinates. None of these components are wired to Bukkit or the
 protocol. In particular, a plugin join listener is too late to protect the initial login/world
 packets after a disconnect: recovery needs a transport-level gate before those packets.
+
+See [docs/protocol-security-plan.md](docs/protocol-security-plan.md) for the blocking
+integration work and acceptance criteria. `ReturnStore.save` deliberately refuses to
+overwrite an existing recovery record and fails rather than silently writing without
+atomic no-overwrite support. It must not be used as a security claim by itself.
