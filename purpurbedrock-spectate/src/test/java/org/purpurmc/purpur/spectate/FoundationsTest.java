@@ -48,18 +48,18 @@ public final class FoundationsTest {
 
         var directory = Files.createTempDirectory("spectate-audit-test");
         var returns = new ReturnStore(directory.resolve("returns"));
-        UUID recovering = UUID.randomUUID();
-        var original = new ReturnStore.Snapshot(recovering, world, -0.125, 70.5, -32.0, 175.0f, -42.0f, "SURVIVAL", false, false);
+        UUID recovering = UUID.randomUUID(), watched = UUID.randomUUID(), session = UUID.randomUUID();
+        var original = new ReturnStore.Snapshot(session, recovering, "Moderator", watched, "Watched", world, -0.125, 70.5, -32.0, 175.0f, -42.0f, "SURVIVAL", false, false);
         check(returns.load(recovering).isEmpty(), "unexpected saved return state");
         returns.save(original);
         check(returns.load(recovering).orElseThrow().equals(original), "return state did not survive reload");
         try {
-            returns.save(new ReturnStore.Snapshot(recovering, world, 1, 2, 3, 0, 0, "CREATIVE", true, false));
+            returns.save(new ReturnStore.Snapshot(session, recovering, "Moderator", watched, "Watched", world, 1, 2, 3, 0, 0, "CREATIVE", true, false));
             throw new AssertionError("pending return state was overwritten");
         } catch (java.nio.file.FileAlreadyExistsException expected) { }
         check(returns.load(recovering).orElseThrow().equals(original), "duplicate start changed return state");
         try {
-            new ReturnStore.Snapshot(recovering, world, Double.NaN, 0, 0, 0, 0, "SURVIVAL", false, false);
+            new ReturnStore.Snapshot(session, recovering, "Moderator", watched, "Watched", world, Double.NaN, 0, 0, 0, 0, "SURVIVAL", false, false);
             throw new AssertionError("invalid return position accepted");
         } catch (IllegalArgumentException expected) { }
         returns.clear(recovering);
@@ -75,17 +75,17 @@ public final class FoundationsTest {
         var file = directory.resolve("audit.jsonl");
         var audit = new SpectateAudit(file);
         UUID observer = UUID.randomUUID(), target = UUID.randomUUID();
-        audit.record(SpectateAudit.Event.START, observer, "Mod\"\\\n", target, "Target");
+        audit.record(SpectateAudit.Event.START, session, observer, "Mod\"\\\n", target, "Target");
         String first = Files.readString(file);
         check(first.contains("\\\"\\\\\\n"), "JSON escaping");
-        check(first.contains(observer.toString()) && first.contains(target.toString()), "identities recorded");
+        check(first.contains(observer.toString()) && first.contains(target.toString()) && first.contains(session.toString()), "identities and session recorded");
         check(!first.contains("coordinates") && !first.contains("position"), "no coordinates in audit");
         int workers = 8, entries = 10;
         CountDownLatch ready = new CountDownLatch(workers), go = new CountDownLatch(1), done = new CountDownLatch(workers);
         AtomicReference<Throwable> failure = new AtomicReference<>();
         for (int i = 0; i < workers; i++) new Thread(() -> {
             ready.countDown();
-            try { go.await(); for (int j = 0; j < entries; j++) audit.record(SpectateAudit.Event.STOP, observer, "Mod", target, "Target"); }
+            try { go.await(); for (int j = 0; j < entries; j++) new SpectateAudit(file).record(SpectateAudit.Event.STOP, session, observer, "Mod", target, "Target"); }
             catch (Throwable ex) { failure.compareAndSet(null, ex); }
             finally { done.countDown(); }
         }).start();
@@ -94,8 +94,15 @@ public final class FoundationsTest {
         var lines = Files.readAllLines(file);
         check(lines.size() == 1 + workers * entries, "concurrent records lost or interleaved");
         check(lines.stream().allMatch(line -> line.startsWith("{") && line.endsWith("}")), "invalid record framing");
+        Files.writeString(file, "{\"event\":", java.nio.file.StandardOpenOption.APPEND);
+        String tornLog = Files.readString(file);
         try {
-            new SpectateAudit(file.resolve("invalid.jsonl")).record(SpectateAudit.Event.START, observer, "Mod", target, "Target");
+            new SpectateAudit(file).record(SpectateAudit.Event.START, session, observer, "Mod", target, "Target");
+            throw new AssertionError("accepted a torn audit record");
+        } catch (java.io.IOException expected) { }
+        check(Files.readString(file).equals(tornLog), "torn log was changed");
+        try {
+            new SpectateAudit(file.resolve("invalid.jsonl")).record(SpectateAudit.Event.START, session, observer, "Mod", target, "Target");
             throw new AssertionError("audit write failure not surfaced");
         } catch (java.io.IOException expected) { }
         System.out.println("Spectate foundations: arithmetic, overflow and audit tests passed");

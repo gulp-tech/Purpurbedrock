@@ -20,3 +20,10 @@ See [docs/protocol-security-plan.md](docs/protocol-security-plan.md) for the blo
 integration work and acceptance criteria. `ReturnStore.save` deliberately refuses to
 overwrite an existing recovery record and fails rather than silently writing without
 atomic no-overwrite support. It must not be used as a security claim by itself.
+
+The admission coordinator only exercises sequencing through interfaces. Its privacy
+bridge has no production implementation; the fake bridge used in tests does not
+validate protocol privacy. Audit records and recovery records now share a session ID
+and target identity, allowing recovery to identify who was being observed. An
+incomplete audit tail or failed durable write blocks admission rather than silently
+joining records or exposing the target.
