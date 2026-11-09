@@ -39,3 +39,9 @@ or administrators sharing the server's operating-system account remain trusted.
 with the pinned 26.60 codec it shows that changing a chunk header alone leaves the
 real coordinates in a synthetic encoded block-entity NBT payload. It does not model
 a full renderable chunk or the real client. The working server code is untouched.
+
+A standalone bounded asynchronous audit writer has been added to explore avoiding
+server-tick I/O stalls. It rejects duplicate pending events and queue overflow rather
+than silently losing entries. It is not connected to admission or Bukkit. A future
+adapter must return to the server thread for game operations and keep sessions
+quarantined until audit completion, including on timeout and shutdown.

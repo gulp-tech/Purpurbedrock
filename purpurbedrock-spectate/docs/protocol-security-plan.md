@@ -102,3 +102,8 @@ entry point and no enabled masking path.
   repeated staff requests stall the server. The real adapter needs a bounded worker,
   deadlines and per-observer rate limits; it must stay quarantined until durable
   completion and avoid touching Bukkit objects from a worker thread.
+* A mutable completion future could be completed or cancelled by its caller before the
+  audit is durable. The bounded writer exposes a minimal completion stage and tests
+  forged completion/cancellation. Its prototype is still not wired into admission;
+  callbacks must be scheduled on the game thread, and shutdown must retain quarantine
+  until pending work drains or recovery has been made safe.

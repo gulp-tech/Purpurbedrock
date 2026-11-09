@@ -24,4 +24,5 @@ jobs:
           javac --release 25 -encoding UTF-8 -d /tmp/spectate-test $(find purpurbedrock-spectate/src -name '*.java')
           java -cp /tmp/spectate-test org.purpurmc.purpur.spectate.FoundationsTest
           java -cp /tmp/spectate-test org.purpurmc.purpur.spectate.AdmissionTest
+          java -cp /tmp/spectate-test org.purpurmc.purpur.spectate.AsyncAuditTest
           java -cp /tmp/spectate-test org.purpurmc.purpur.spectate.OffsetThreatTest
