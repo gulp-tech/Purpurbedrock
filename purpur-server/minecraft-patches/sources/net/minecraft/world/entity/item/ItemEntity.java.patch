@@ -13,6 +13,28 @@
  
      public ItemEntity(final EntityType<? extends ItemEntity> type, final Level level) {
          super(type, level);
+@@ -220,9 +_,21 @@
+     private void mergeWithNeighbours() {
+         if (this.isMergable()) {
+             double radius = this.level().spigotConfig.itemMerge; // Spigot
++            // Purpurbedrock - consolidate nearby block drops via the normal merge path.
++            double normalRadius = radius;
++            radius = org.purpurmc.purpur.bedrock.BlockDropMergeRadius.resolve(radius,
++                this.level().purpurConfig.blockDropMergeRadius,
++                this.getItem().getItem() instanceof net.minecraft.world.item.BlockItem);
+             for (ItemEntity entity : this.level()
+                 .getEntitiesOfClass(ItemEntity.class, this.getBoundingBox().inflate(radius, this.level().paperConfig().entities.behavior.onlyMergeItemsHorizontally ? 0 : radius - 0.5D, radius), other -> other != this && other.isMergable())) { // Spigot // Paper - configuration to only merge items horizontally
+                 if (entity.isMergable()) {
++                    // The extended search must not pull drops through solid walls.
++                    // Paper performs the same check below when its option is enabled.
++                    if (radius > normalRadius && !this.level().paperConfig().fixes.fixItemsMergingThroughWalls
++                        && this.level().clipDirect(this.position(), entity.position(),
++                            net.minecraft.world.phys.shapes.CollisionContext.of(this)) == net.minecraft.world.phys.HitResult.Type.BLOCK) {
++                        continue;
++                    }
+                     // Paper start - Fix items merging through walls
+                     if (this.level().paperConfig().fixes.fixItemsMergingThroughWalls) {
+                         if (this.level().clipDirect(this.position(), entity.position(),
 @@ -341,7 +_,16 @@
  
      @Override

@@ -285,6 +285,7 @@ public class PurpurWorldConfig {
         infinityWorksWithoutArrows = getBoolean("gameplay-mechanics.infinity-bow.works-without-arrows", infinityWorksWithoutArrows);
     }
 
+    public double blockDropMergeRadius = 3.0D;
     public List<Item> itemImmuneToCactus = new ArrayList<>();
     public List<Item> itemImmuneToExplosion = new ArrayList<>();
     public List<Item> itemImmuneToFire = new ArrayList<>();
@@ -305,6 +306,7 @@ public class PurpurWorldConfig {
     public boolean snowballExtinguishesCandles = false;
     public boolean snowballExtinguishesCampfires = false;
     private void itemSettings() {
+        blockDropMergeRadius = getDouble("gameplay-mechanics.item.block-drop-merge-radius", 3.0D);
         itemImmuneToCactus.clear();
         getList("gameplay-mechanics.item.immune.cactus", new ArrayList<>()).forEach(key -> {
             if (key.toString().equals("*")) {

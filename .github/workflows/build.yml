@@ -53,6 +53,12 @@ jobs:
           javac -d /tmp/remote-diagnostics-test scripts/assets/java/RemoteSpawnDiagnostics.java $(find scripts/tests/diagnostics -name '*.java')
           java -cp /tmp/remote-diagnostics-test RemoteSpawnDiagnosticsTest
 
+      - name: Test block drop merge radius
+        run: |
+          mkdir -p /tmp/block-drop-merge-test
+          javac -d /tmp/block-drop-merge-test purpur-server/src/main/java/org/purpurmc/purpur/bedrock/BlockDropMergeRadius.java scripts/tests/BlockDropMergeRadiusTest.java
+          java -cp /tmp/block-drop-merge-test BlockDropMergeRadiusTest
+
       - name: Build Self-Contained Bedrock 26.2 Protocol Engine (Zero External Dependencies)
         id: build_bedrock_engine
         run: |
