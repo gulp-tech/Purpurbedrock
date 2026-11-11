@@ -84,6 +84,19 @@ async function main() {
     armor()?.helmet.network_id === 0 && armor()?.chestplate.network_id === 0 &&
     armor()?.leggings.network_id === 0 && armor()?.boots.network_id === 0 &&
     mainHand()?.item.network_id === 0 && offHand()?.item.network_id === 0)
+  await until('custom and vanilla paper registered', () =>
+    a.items.has('geyser_custom:sphere1') && a.items.has('minecraft:paper'))
+  const customSphere = a.items.get('geyser_custom:sphere1')
+  const vanillaPaper = a.items.get('minecraft:paper')
+  assert.notEqual(customSphere, vanillaPaper, 'custom and vanilla item registry IDs must be different')
+  command(b, '/modelfixture custom')
+  await until('matching item model uses the custom item', () => mainHand()?.item.network_id === customSphere)
+  command(b, '/modelfixture vanilla')
+  await until('ordinary paper remains vanilla', () => mainHand()?.item.network_id === vanillaPaper)
+  command(b, '/modelfixture custom')
+  await until('matching item model reapplied', () => mainHand()?.item.network_id === customSphere)
+  command(b, '/modelfixture other')
+  await until('unmatched item model remains vanilla', () => mainHand()?.item.network_id === vanillaPaper)
   assert(!a.skinUpdates.some(p => p.uuid === remote.uuid), 'remote player must not receive later skin changes')
   await until('individual first-argument homes', () => values(a, 'home').includes('TabTestA_base') && values(b, 'home').includes('TabTestB_base'))
   assert.equal(values(a, 'home').length, 5)

@@ -3,6 +3,8 @@ version: '1.0'
 main: com.pexserver.completions.fixture.FixturePlugin
 api-version: '1.21'
 commands:
+  modelfixture:
+    description: Test model-based item selection
   gearfixture:
     description: Equipment packet fixture
   home:

@@ -3,6 +3,7 @@ package com.pexserver.completions.fixture;
 import java.util.*;
 import org.bukkit.entity.Player;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.event.Listener;
@@ -30,6 +31,21 @@ public final class FixturePlugin extends JavaPlugin implements Listener {
             inventory.setItemInMainHand(on ? new ItemStack(Material.IRON_SWORD) : null);
             inventory.setItemInOffHand(on ? new ItemStack(Material.SHIELD) : null);
             player.sendMessage("fixture:equipment:" + (on ? "on" : "off"));
+            return true;
+        });
+        Objects.requireNonNull(getCommand("modelfixture")).setExecutor((sender, command, alias, args) -> {
+            if (!(sender instanceof Player player) || args.length != 1) return true;
+            ItemStack paper = new ItemStack(Material.PAPER);
+            var meta = paper.getItemMeta();
+            if (args[0].equals("custom")) {
+                meta.setItemModel(NamespacedKey.fromString("voidspheres:sphere1"));
+            } else if (args[0].equals("other")) {
+                meta.setItemModel(NamespacedKey.fromString("example:other"));
+            } else if (!args[0].equals("vanilla")) {
+                return true;
+            }
+            paper.setItemMeta(meta);
+            player.getInventory().setItemInMainHand(paper);
             return true;
         });
         Objects.requireNonNull(getCommand("privatetest")).setTabCompleter((s, c, a, v) -> List.of("secret_value"));

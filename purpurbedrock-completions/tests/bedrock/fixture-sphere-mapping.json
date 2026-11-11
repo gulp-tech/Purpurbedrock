@@ -1,0 +1,17 @@
+{
+  "format_version": 2,
+  "items": {
+    "minecraft:paper": [
+      {
+        "type": "definition",
+        "model": "voidspheres:sphere1",
+        "bedrock_identifier": "geyser_custom:sphere1",
+        "bedrock_options": {
+          "icon": "sphere1",
+          "allow_offhand": true,
+          "display_handheld": true
+        }
+      }
+    ]
+  }
+}
