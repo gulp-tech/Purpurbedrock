@@ -1,0 +1,47 @@
+name: Package player inventory close candidate
+on:
+  push:
+    branches: ['arena/**']
+    paths: ['.github/workflows/package-inventory-close-candidate.yml']
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: write
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify candidate and packet-test runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          test "$(gh run view 43060645445 --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)" = success
+          test "$(gh run view 43060645445 --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha)" = '432cab19cf8432a27206925717ddcdfddbcc4923'
+          test "$(gh run view 43060645445 --repo "$GITHUB_REPOSITORY" --json workflowDatabaseId --jq .workflowDatabaseId)" = "$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/build.yml" --jq .id)"
+          test "$(gh run view 43063485686 --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)" = success
+          test "$(gh run view 43063485686 --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha)" = 'ed510017e05489fd085163ce626545195fe6798b'
+          test "$(gh run view 43063485686 --repo "$GITHUB_REPOSITORY" --json workflowDatabaseId --jq .workflowDatabaseId)" = "$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/test-inventory-regression.yml" --jq .id)"
+      - name: Download exact build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: purpurbedrock-26.2
+          path: artifacts
+          repository: ${{ github.repository }}
+          run-id: 43060645445
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify and prepare separate candidate
+        run: |
+          set -euo pipefail
+          (cd artifacts && sha256sum -c purpurbedrock-26.2.jar.sha256)
+          cp artifacts/purpurbedrock-26.2.jar purpurbedrock-26.2-inventory-close-test.jar
+          sha256sum purpurbedrock-26.2-inventory-close-test.jar > purpurbedrock-26.2-inventory-close-test.jar.sha256
+      - name: Publish separate candidate without changing main core
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload v26.2.0-bedrock \
+            purpurbedrock-26.2-inventory-close-test.jar \
+            purpurbedrock-26.2-inventory-close-test.jar.sha256 \
+            --repo "$GITHUB_REPOSITORY" --clobber
