@@ -1,0 +1,51 @@
+name: Package guarded sphere mapping candidate
+on:
+  push:
+    branches: ['arena/**']
+    paths: ['.github/workflows/package-sphere-marker-candidate.yml']
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: write
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify tested candidate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          test "$(gh run view 43043148098 --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)" = success
+          test "$(gh run view 43043148098 --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha)" = '5dd569772762ff4e438f738506226a02d7f55556'
+          test "$(gh run view 43043148098 --repo "$GITHUB_REPOSITORY" --json workflowDatabaseId --jq .workflowDatabaseId)" = "$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/build.yml" --jq .id)"
+      - name: Download exact build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: purpurbedrock-26.2
+          path: artifacts
+          repository: ${{ github.repository }}
+          run-id: 43043148098
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify and prepare separate test files
+        run: |
+          set -euo pipefail
+          (cd artifacts && sha256sum -c purpurbedrock-26.2.jar.sha256)
+          cp artifacts/purpurbedrock-26.2.jar purpurbedrock-26.2-spheres-marker-test.jar
+          git show 5dd569772762ff4e438f738506226a02d7f55556:docs/examples/spheres-pdc-mapping.json > spheres-pdc-mapping-test.json
+          sha256sum purpurbedrock-26.2-spheres-marker-test.jar > purpurbedrock-26.2-spheres-marker-test.jar.sha256
+          sha256sum spheres-pdc-mapping-test.json > spheres-pdc-mapping-test.json.sha256
+      - name: Publish separate test files without changing the main core
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload v26.2.0-bedrock \
+            purpurbedrock-26.2-spheres-marker-test.jar \
+            purpurbedrock-26.2-spheres-marker-test.jar.sha256 \
+            spheres-pdc-mapping-test.json \
+            spheres-pdc-mapping-test.json.sha256 \
+            --repo "$GITHUB_REPOSITORY" --clobber
