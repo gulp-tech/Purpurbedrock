@@ -10,6 +10,7 @@ const closes = []
 const contents = []
 const slots = []
 const replies = []
+const items = new Map()
 const client = bedrock.createClient({ host: '127.0.0.1', port: 19132,
   version: '1.26.51', username: 'InvTest', offline: true, transport: 'raknet', conLog: () => {} })
 client.prependOnceListener('session', profile => { profile.xuid = '30101' })
@@ -22,6 +23,7 @@ client.on('container_close', packet => {
   console.log('container_close', JSON.stringify(packet))
   if (packet.server) client.queue('container_close', { window_id: packet.window_id, window_type: packet.window_type, server: false })
 })
+client.on('item_registry', packet => { for (const item of packet.itemstates) items.set(item.name, item.runtime_id) })
 client.on('inventory_content', packet => contents.push(packet))
 client.on('inventory_slot', packet => slots.push(packet))
 client.on('item_stack_response', packet => replies.push(packet))
@@ -74,19 +76,20 @@ async function main() {
   client.queue('command_request', { command: '/purpurbedrock menu',
     origin: { type: 'player', uuid: randomUUID(), request_id: '', player_entity_id: 0n }, internal: false, version: '' })
   await until('built-in menu opened', () => opens.length >= 4)
+  await until('menu items registered', () => items.has('minecraft:diamond_ore') && items.has('minecraft:arrow'))
   const menu = opens[3]
   assert.equal(menu.window_type, 'container')
-  await until('menu contents received', () => contents.some(p => p.window_id === menu.window_id && p.input?.[14]?.network_id))
+  await until('menu contents received', () => contents.some(p => p.window_id === menu.window_id && p.input?.[14]?.network_id === items.get('minecraft:diamond_ore')))
   const countBeforeSubmenu = contents.length
   click(14, -11) // Built-in menu: open the anti-xray submenu.
   await until('submenu response', () => replies.length > 0, 15000)
   console.log('first click response', JSON.stringify(replies.at(-1)))
-  await until('submenu contents received', () => contents.slice(countBeforeSubmenu).some(p => p.input?.[22]?.network_id), 15000)
+  await until('submenu contents received', () => contents.slice(countBeforeSubmenu).some(p => p.window_id === opens.at(-1).window_id && p.input?.[22]?.network_id === items.get('minecraft:arrow')), 15000)
   const countBeforeBack = contents.length
   click(22, -13) // Return from submenu to the main menu.
   await until('second submenu click response', () => replies.length > 1, 15000)
   console.log('second click response', JSON.stringify(replies.at(-1)))
-  await until('main menu contents received after transition', () => contents.slice(countBeforeBack).some(p => p.input?.[14]?.network_id), 15000)
+  await until('main menu contents received after transition', () => contents.slice(countBeforeBack).some(p => p.window_id === opens.at(-1).window_id && p.input?.[14]?.network_id === items.get('minecraft:diamond_ore')), 15000)
   const active = opens.at(-1)
   const priorCloses = closes.length
   const priorOpens = opens.length
@@ -100,6 +103,38 @@ async function main() {
   await until('player inventory opens after menu', () => opens.length > previousOpens)
   assert.equal(opens.at(-1).window_type, 'inventory')
   console.log('PASS built-in menu opens and returns to player inventory')
+  const inventory = opens.at(-1)
+  const closeCount = closes.length
+  client.queue('container_close', { window_id: inventory.window_id, window_type: inventory.window_type, server: false })
+  await until('close player inventory before different-size menu chain', () => closes.length > closeCount)
+  await pause(1200)
+  client.queue('command_request', { command: '/inventoryfixture',
+    origin: { type: 'player', uuid: randomUUID(), request_id: '', player_entity_id: 0n }, internal: false, version: '' })
+  await until('fixture first menu', () => opens.length > previousOpens + 1)
+  for (const [index, itemName] of ['diamond', 'emerald', 'gold_ingot'].entries()) {
+    const itemId = items.get('minecraft:' + itemName)
+    assert.notEqual(itemId, undefined, 'missing item registry: ' + itemName)
+    await until('fixture page ' + index + ' contents', () => {
+      const open = opens.at(-1)
+      return contents.some(packet => packet.window_id === open.window_id && packet.input?.[0]?.network_id === itemId)
+    })
+    if (index < 2) {
+      const oldOpens = opens.length
+      click(0, -21 - index * 2)
+      await until('fixture next page opens ' + index, () => opens.length > oldOpens)
+    }
+  }
+  const final = opens.at(-1)
+  const prior = closes.length
+  const beforeFinalClose = opens.length
+  client.queue('container_close', { window_id: final.window_id, window_type: final.window_type, server: false })
+  await until('fixture final page closes', () => closes.length > prior || opens.length > beforeFinalClose)
+  assert.equal(opens.length, beforeFinalClose, 'closing fixture page reopened it')
+  const beforeFinalInventory = opens.length
+  openPlayerInventory()
+  await until('player inventory opens after different-size transitions', () => opens.length > beforeFinalInventory)
+  assert.equal(opens.at(-1).window_type, 'inventory')
+  console.log('PASS 27 -> 54 -> 9 slot transitions and player inventory recovery')
 }
 main().then(() => { process.exitCode = 0 }).catch(e => { console.error(e); process.exitCode = 1 })
   .finally(async () => { client.close(); await pause(300); process.exit(process.exitCode) })

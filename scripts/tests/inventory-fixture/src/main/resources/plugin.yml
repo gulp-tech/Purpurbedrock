@@ -1,0 +1,7 @@
+name: InventoryFixture
+version: '1.0'
+main: org.purpurmc.inventoryfixture.InventoryFixture
+api-version: '26.2'
+commands:
+  inventoryfixture:
+    description: Isolated test of multiple menu sizes
