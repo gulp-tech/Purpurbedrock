@@ -41,7 +41,12 @@ async function main() {
   assert.equal(closes.length, 1, 'player close must be acknowledged')
   openPlayerInventory()
   await until('player inventory reopens on next request', () => opens.length >= 2)
-  console.log('PASS player inventory open / quick close / reopen')
+  await pause(1000)
+  client.queue('container_close', { window_id: opens[1].window_id, window_type: opens[1].window_type, server: false })
+  await until('delayed close acknowledged', () => closes.length >= 2)
+  openPlayerInventory()
+  await until('player inventory opens after delayed close', () => opens.length >= 3)
+  console.log('PASS player inventory open / quick and delayed close / reopen')
 }
 main().then(() => { process.exitCode = 0 }).catch(e => { console.error(e); process.exitCode = 1 })
   .finally(async () => { client.close(); await pause(300); process.exit(process.exitCode) })
