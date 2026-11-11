@@ -53,6 +53,9 @@ jobs:
           javac -d /tmp/remote-diagnostics-test scripts/assets/java/RemoteSpawnDiagnostics.java $(find scripts/tests/diagnostics -name '*.java')
           java -cp /tmp/remote-diagnostics-test RemoteSpawnDiagnosticsTest
 
+      - name: Validate guarded sphere mapping fixture
+        run: python3 scripts/tests/test_sphere_mapping.py
+
       - name: Test block drop merge radius
         run: |
           mkdir -p /tmp/block-drop-merge-test

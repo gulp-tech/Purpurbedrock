@@ -1,0 +1,75 @@
+{
+  "format_version": 2,
+  "items": {
+    "minecraft:paper": [
+      {
+        "type": "definition",
+        "model": "voidspheres:sphere1",
+        "bedrock_identifier": "geyser_custom:sphere1",
+        "bedrock_options": {
+          "icon": "sphere1",
+          "allow_offhand": true,
+          "display_handheld": true,
+          "creative_category": "items"
+        },
+        "predicate": {
+          "type": "server_pdc_string",
+          "key": "voidtalismans:talisman_id",
+          "fallback_key": "faraltalismans:talisman_id",
+          "value": "sphere1"
+        }
+      },
+      {
+        "type": "definition",
+        "model": "voidspheres:sphere2",
+        "bedrock_identifier": "geyser_custom:sphere2",
+        "bedrock_options": {
+          "icon": "sphere2",
+          "allow_offhand": true,
+          "display_handheld": true,
+          "creative_category": "items"
+        },
+        "predicate": {
+          "type": "server_pdc_string",
+          "key": "voidtalismans:talisman_id",
+          "fallback_key": "faraltalismans:talisman_id",
+          "value": "sphere2"
+        }
+      },
+      {
+        "type": "definition",
+        "model": "voidspheres:sphere4",
+        "bedrock_identifier": "geyser_custom:sphere4",
+        "bedrock_options": {
+          "icon": "sphere4",
+          "allow_offhand": true,
+          "display_handheld": true,
+          "creative_category": "items"
+        },
+        "predicate": {
+          "type": "server_pdc_string",
+          "key": "voidtalismans:talisman_id",
+          "fallback_key": "faraltalismans:talisman_id",
+          "value": "sphere4"
+        }
+      },
+      {
+        "type": "definition",
+        "model": "voidspheres:sphere3",
+        "bedrock_identifier": "geyser_custom:sphere3",
+        "bedrock_options": {
+          "icon": "sphere3",
+          "allow_offhand": true,
+          "display_handheld": true,
+          "creative_category": "items"
+        },
+        "predicate": {
+          "type": "server_pdc_string",
+          "key": "voidtalismans:talisman_id",
+          "fallback_key": "faraltalismans:talisman_id",
+          "value": "sphere3"
+        }
+      }
+    ]
+  }
+}

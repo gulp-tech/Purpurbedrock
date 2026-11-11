@@ -38,8 +38,22 @@ public final class FixturePlugin extends JavaPlugin implements Listener {
             if (!(sender instanceof Player player) || args.length != 1) return true;
             ItemStack paper = new ItemStack(Material.PAPER);
             var meta = paper.getItemMeta();
-            if (args[0].equals("custom")) {
+            if (args[0].equals("sphere2") || args[0].equals("sphere3") || args[0].equals("sphere4")) {
+                meta.setItemModel(NamespacedKey.fromString("voidspheres:" + args[0]));
+                meta.getPersistentDataContainer().set(
+                    Objects.requireNonNull(NamespacedKey.fromString("voidtalismans:talisman_id")),
+                    PersistentDataType.STRING, args[0]);
+            } else if (Set.of("custom", "custom-off", "legacy", "forged", "conflict", "wrong-sphere").contains(args[0])) {
                 meta.setItemModel(NamespacedKey.fromString("voidspheres:sphere1"));
+                var pdc = meta.getPersistentDataContainer();
+                var current = Objects.requireNonNull(NamespacedKey.fromString("voidtalismans:talisman_id"));
+                var legacy = Objects.requireNonNull(NamespacedKey.fromString("faraltalismans:talisman_id"));
+                if (args[0].equals("custom") || args[0].equals("custom-off"))
+                    pdc.set(current, PersistentDataType.STRING, "sphere1");
+                if (args[0].equals("legacy")) pdc.set(legacy, PersistentDataType.STRING, "sphere1");
+                if (args[0].equals("wrong-sphere") || args[0].equals("conflict"))
+                    pdc.set(current, PersistentDataType.STRING, "sphere2");
+                if (args[0].equals("conflict")) pdc.set(legacy, PersistentDataType.STRING, "sphere1");
             } else if (args[0].equals("other")) {
                 meta.setItemModel(NamespacedKey.fromString("example:other"));
             } else if (args[0].equals("marked") || args[0].equals("wrongmarker")) {
@@ -50,7 +64,8 @@ public final class FixturePlugin extends JavaPlugin implements Listener {
                 return true;
             }
             paper.setItemMeta(meta);
-            player.getInventory().setItemInMainHand(paper);
+            if (args[0].equals("custom-off")) player.getInventory().setItemInOffHand(paper);
+            else player.getInventory().setItemInMainHand(paper);
             return true;
         });
         Objects.requireNonNull(getCommand("privatetest")).setTabCompleter((s, c, a, v) -> List.of("secret_value"));

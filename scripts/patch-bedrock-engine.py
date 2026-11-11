@@ -6842,11 +6842,14 @@ import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataTypes;""",
         """        switch (type) {
             case "server_pdc_string" -> {
                 String key = MappingsUtil.readOrThrow(element, "key", NodeReader.NON_EMPTY_STRING, context);
+                String fallback = MappingsUtil.readOrDefault(element, "fallback_key", NodeReader.NON_EMPTY_STRING, null, context);
                 String value = MappingsUtil.readOrThrow(element, "value", NodeReader.NON_EMPTY_STRING, context);
-                if (!key.matches("[a-z0-9._-]+:[a-z0-9/._-]+") || key.length() > 256 || value.length() > 256) {
+                String pattern = "[a-z0-9._-]+:[a-z0-9/._-]+";
+                if (!key.matches(pattern) || key.length() > 256 || value.length() > 256
+                    || (fallback != null && (!fallback.matches(pattern) || fallback.length() > 256 || fallback.equals(key)))) {
                     throw new InvalidCustomMappingsFileException("reading server PDC predicate", "invalid key or value", context);
                 }
-                builder.predicate(new org.geysermc.geyser.item.custom.ServerMarkerPredicate(key, value));
+                builder.predicate(new org.geysermc.geyser.item.custom.ServerMarkerPredicate(key, fallback, value));
             }
             case "condition" -> {""",
         "SingleDefinitionReader.serverPdcStringPredicate",
