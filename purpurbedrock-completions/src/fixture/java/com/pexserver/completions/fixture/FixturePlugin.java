@@ -5,6 +5,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.event.Listener;
 import org.bukkit.event.EventHandler;
@@ -41,6 +42,10 @@ public final class FixturePlugin extends JavaPlugin implements Listener {
                 meta.setItemModel(NamespacedKey.fromString("voidspheres:sphere1"));
             } else if (args[0].equals("other")) {
                 meta.setItemModel(NamespacedKey.fromString("example:other"));
+            } else if (args[0].equals("marked") || args[0].equals("wrongmarker")) {
+                meta.getPersistentDataContainer().set(
+                    Objects.requireNonNull(NamespacedKey.fromString("fixture:custom_id")),
+                    PersistentDataType.STRING, args[0].equals("marked") ? "sphere1" : "other");
             } else if (!args[0].equals("vanilla")) {
                 return true;
             }

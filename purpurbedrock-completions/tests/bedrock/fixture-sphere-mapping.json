@@ -11,6 +11,19 @@
           "allow_offhand": true,
           "display_handheld": true
         }
+      },
+      {
+        "type": "definition",
+        "model": "minecraft:paper",
+        "bedrock_identifier": "purpurbedrock_test:guarded_paper",
+        "predicate": {
+          "type": "server_pdc_string",
+          "key": "fixture:custom_id",
+          "value": "sphere1"
+        },
+        "bedrock_options": {
+          "icon": "guarded_paper"
+        }
       }
     ]
   }

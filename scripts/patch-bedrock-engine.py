@@ -6816,6 +6816,43 @@ import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataTypes;""",
     )
 
 
+    # Opt-in mapping predicate: match a string PDC marker on the server-sent item.
+    # Existing mappings are deliberately left unchanged; this is not gameplay authorization.
+    item_context = root / "core/src/main/java/org/geysermc/geyser/item/custom/GeyserItemPredicateContext.java"
+    replace_exact(
+        item_context,
+        """                                         Supplier<List<Float>> customModelDataFloatsSupplier) implements ItemPredicateContext {""",
+        """                                         Supplier<List<Float>> customModelDataFloatsSupplier,
+                                         DataComponents serverComponents) implements ItemPredicateContext {""",
+        "GeyserItemPredicateContext.serverComponents",
+    )
+    replace_exact(
+        item_context,
+        """            bundleFullness, trimMaterial, chargedProjectiles, componentList, flags, strings, floats);""",
+        """            bundleFullness, trimMaterial, chargedProjectiles, componentList, flags, strings, floats, components);""",
+        "GeyserItemPredicateContext.retainServerComponents",
+    )
+    marker_predicate = root / "core/src/main/java/org/geysermc/geyser/item/custom/ServerMarkerPredicate.java"
+    marker_predicate.write_text((Path(__file__).resolve().parent / "assets/java/ServerMarkerPredicate.java").read_text())
+    item_reader = root / "core/src/main/java/org/geysermc/geyser/registry/mappings/definition/SingleDefinitionReader.java"
+    replace_exact(
+        item_reader,
+        """        switch (type) {
+            case "condition" -> {""",
+        """        switch (type) {
+            case "server_pdc_string" -> {
+                String key = MappingsUtil.readOrThrow(element, "key", NodeReader.NON_EMPTY_STRING, context);
+                String value = MappingsUtil.readOrThrow(element, "value", NodeReader.NON_EMPTY_STRING, context);
+                if (!key.matches("[a-z0-9._-]+:[a-z0-9/._-]+") || key.length() > 256 || value.length() > 256) {
+                    throw new InvalidCustomMappingsFileException("reading server PDC predicate", "invalid key or value", context);
+                }
+                builder.predicate(new org.geysermc.geyser.item.custom.ServerMarkerPredicate(key, value));
+            }
+            case "condition" -> {""",
+        "SingleDefinitionReader.serverPdcStringPredicate",
+    )
+
+
 
 if __name__ == "__main__":
     main()
