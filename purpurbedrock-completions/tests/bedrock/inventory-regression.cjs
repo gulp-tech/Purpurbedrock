@@ -1,5 +1,6 @@
 // Test a real server with a synthetic Bedrock client. This is not a UI test.
 const assert = require('node:assert/strict')
+const { randomUUID } = require('node:crypto')
 const bedrock = require('bedrock-protocol')
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms))
 let error
@@ -46,7 +47,27 @@ async function main() {
   await until('delayed close acknowledged', () => closes.length >= 2)
   openPlayerInventory()
   await until('player inventory opens after delayed close', () => opens.length >= 3)
+  client.queue('container_close', { window_id: opens[2].window_id, window_type: opens[2].window_type, server: false })
+  await until('second quick close acknowledged', () => closes.length >= 3)
   console.log('PASS player inventory open / quick and delayed close / reopen')
+
+  // The isolated server grants only this test user operator access to its built-in menu.
+  // This checks packets, not actual rendering or DeluxeMenus behaviour.
+  await pause(1200)
+  client.queue('command_request', { command: '/purpurbedrock menu',
+    origin: { type: 'player', uuid: randomUUID(), request_id: '', player_entity_id: 0n }, internal: false, version: '' })
+  await until('built-in menu opened', () => opens.length >= 4)
+  const menu = opens[3]
+  assert.equal(menu.window_type, 'container')
+  await pause(1000) // Test normal close separately from the existing submenu guard.
+  const priorCloses = closes.length
+  client.queue('container_close', { window_id: menu.window_id, window_type: menu.window_type, server: false })
+  await until('built-in menu close acknowledged', () => closes.length > priorCloses)
+  const previousOpens = opens.length
+  openPlayerInventory()
+  await until('player inventory opens after menu', () => opens.length > previousOpens)
+  assert.equal(opens.at(-1).window_type, 'inventory')
+  console.log('PASS built-in menu opens and returns to player inventory')
 }
 main().then(() => { process.exitCode = 0 }).catch(e => { console.error(e); process.exitCode = 1 })
   .finally(async () => { client.close(); await pause(300); process.exit(process.exitCode) })
