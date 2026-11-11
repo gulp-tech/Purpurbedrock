@@ -87,11 +87,14 @@ async function main() {
   await until('second submenu click response', () => replies.length > 1, 15000)
   console.log('second click response', JSON.stringify(replies.at(-1)))
   await until('main menu contents received after transition', () => contents.slice(countBeforeBack).some(p => p.input?.[14]?.network_id), 15000)
-  await pause(1000)
   const active = opens.at(-1)
   const priorCloses = closes.length
+  const priorOpens = opens.length
   client.queue('container_close', { window_id: active.window_id, window_type: active.window_type, server: false })
-  await until('built-in menu close acknowledged', () => closes.length > priorCloses)
+  await until('built-in menu close acknowledged or unwanted reopen', () => closes.length > priorCloses || opens.length > priorOpens)
+  await pause(200)
+  assert.equal(opens.length, priorOpens, 'quick menu close unexpectedly reopens menu')
+  assert(closes.length > priorCloses, 'quick menu close must be acknowledged')
   const previousOpens = opens.length
   openPlayerInventory()
   await until('player inventory opens after menu', () => opens.length > previousOpens)
