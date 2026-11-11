@@ -7,6 +7,9 @@ let error
 let spawned = false
 const opens = []
 const closes = []
+const contents = []
+const slots = []
+const replies = []
 const client = bedrock.createClient({ host: '127.0.0.1', port: 19132,
   version: '1.26.51', username: 'InvTest', offline: true, transport: 'raknet', conLog: () => {} })
 client.prependOnceListener('session', profile => { profile.xuid = '30101' })
@@ -14,7 +17,14 @@ client.on('error', e => { error = e })
 client.on('disconnect', p => { error = new Error('disconnected: ' + JSON.stringify(p)) })
 client.on('spawn', () => { spawned = true; client.queue('request_chunk_radius', { chunk_radius: 4, max_radius: 4 }) })
 client.on('container_open', packet => { opens.push(packet); console.log('container_open', JSON.stringify(packet, (_, v) => typeof v === 'bigint' ? v.toString() : v)) })
-client.on('container_close', packet => { closes.push(packet); console.log('container_close', JSON.stringify(packet)) })
+client.on('container_close', packet => {
+  closes.push(packet)
+  console.log('container_close', JSON.stringify(packet))
+  if (packet.server) client.queue('container_close', { window_id: packet.window_id, window_type: packet.window_type, server: false })
+})
+client.on('inventory_content', packet => contents.push(packet))
+client.on('inventory_slot', packet => slots.push(packet))
+client.on('item_stack_response', packet => replies.push(packet))
 async function until(label, f, timeout = 15000) {
   const deadline = Date.now() + timeout
   while (Date.now() < deadline) {
@@ -23,6 +33,13 @@ async function until(label, f, timeout = 15000) {
     await pause(25)
   }
   throw new Error('timeout: ' + label)
+}
+function click(slot, requestId) {
+  client.queue('item_stack_request', { requests: [{ request_id: requestId, actions: [{
+    type_id: 'take', legacy_type_id: 0, count: 1,
+    source: { slot_type: { container_id: 'container', dynamic_container_id: undefined }, slot, stack_id: -1 },
+    destination: { slot_type: { container_id: 'cursor', dynamic_container_id: undefined }, slot: 0, stack_id: 0 }
+  }], custom_names: [], cause: 'chat_public' }] })
 }
 function openPlayerInventory() {
   client.queue('interact', { action_id: 'open_inventory', target_entity_id: client.entityId, has_position: false })
@@ -59,9 +76,21 @@ async function main() {
   await until('built-in menu opened', () => opens.length >= 4)
   const menu = opens[3]
   assert.equal(menu.window_type, 'container')
-  await pause(1000) // Test normal close separately from the existing submenu guard.
+  await until('menu contents received', () => contents.some(p => p.window_id === menu.window_id && p.input?.[14]?.network_id))
+  const countBeforeSubmenu = contents.length
+  click(14, -11) // Built-in menu: open the anti-xray submenu.
+  await until('submenu response', () => replies.length > 0, 15000)
+  console.log('first click response', JSON.stringify(replies.at(-1)))
+  await until('submenu contents received', () => contents.slice(countBeforeSubmenu).some(p => p.input?.[22]?.network_id), 15000)
+  const countBeforeBack = contents.length
+  click(22, -13) // Return from submenu to the main menu.
+  await until('second submenu click response', () => replies.length > 1, 15000)
+  console.log('second click response', JSON.stringify(replies.at(-1)))
+  await until('main menu contents received after transition', () => contents.slice(countBeforeBack).some(p => p.input?.[14]?.network_id), 15000)
+  await pause(1000)
+  const active = opens.at(-1)
   const priorCloses = closes.length
-  client.queue('container_close', { window_id: menu.window_id, window_type: menu.window_type, server: false })
+  client.queue('container_close', { window_id: active.window_id, window_type: active.window_type, server: false })
   await until('built-in menu close acknowledged', () => closes.length > priorCloses)
   const previousOpens = opens.length
   openPlayerInventory()
