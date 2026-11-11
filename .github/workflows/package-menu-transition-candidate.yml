@@ -1,0 +1,47 @@
+name: Package menu transition test candidate
+on:
+  push:
+    branches: ['arena/**']
+    paths: ['.github/workflows/package-menu-transition-candidate.yml']
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: write
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify exact build and packet tests
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          test "$(gh run view 43067647804 --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)" = success
+          test "$(gh run view 43067647804 --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha)" = '1e6a6a207a65ab9ab83faaf693d8c8af64274422'
+          test "$(gh run view 43067647804 --repo "$GITHUB_REPOSITORY" --json workflowDatabaseId --jq .workflowDatabaseId)" = "$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/build.yml" --jq .id)"
+          test "$(gh run view 43070358393 --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)" = success
+          test "$(gh run view 43070358393 --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha)" = 'd6d1c74fce0dde4ecaf9e00c296e8f40decbd425'
+          test "$(gh run view 43070358393 --repo "$GITHUB_REPOSITORY" --json workflowDatabaseId --jq .workflowDatabaseId)" = "$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/test-inventory-regression.yml" --jq .id)"
+      - name: Download exact build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: purpurbedrock-26.2
+          path: artifacts
+          repository: ${{ github.repository }}
+          run-id: 43067647804
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify and prepare separate test candidate
+        run: |
+          set -euo pipefail
+          (cd artifacts && sha256sum -c purpurbedrock-26.2.jar.sha256)
+          cp artifacts/purpurbedrock-26.2.jar purpurbedrock-26.2-menu-transition-test.jar
+          sha256sum purpurbedrock-26.2-menu-transition-test.jar > purpurbedrock-26.2-menu-transition-test.jar.sha256
+      - name: Publish separate candidate without changing main core
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload v26.2.0-bedrock \
+            purpurbedrock-26.2-menu-transition-test.jar \
+            purpurbedrock-26.2-menu-transition-test.jar.sha256 \
+            --repo "$GITHUB_REPOSITORY" --clobber
