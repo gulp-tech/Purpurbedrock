@@ -79,7 +79,12 @@ jobs:
                   time.sleep(1)
               else: raise RuntimeError('Timed out waiting for server')
               testdir = pathlib.Path(os.environ['GITHUB_WORKSPACE']) / 'purpurbedrock-completions/tests/bedrock'
-              subprocess.run(['node', 'inventory-regression.cjs'], cwd=testdir, check=True, timeout=120)
+              result = subprocess.run(['node', 'inventory-regression.cjs'], cwd=testdir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=120)
+              print(result.stdout, flush=True)
+              # Also surface a concise result as an annotation when the runner's log storage is inaccessible.
+              report = result.stdout[-2500:].replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+              print('::notice title=Inventory packet test::' + report, flush=True)
+              result.check_returncode()
               server.stdin.write('stop\n'); server.stdin.flush(); server.wait(timeout=30)
           finally:
               try: os.killpg(server.pid, signal.SIGKILL)
