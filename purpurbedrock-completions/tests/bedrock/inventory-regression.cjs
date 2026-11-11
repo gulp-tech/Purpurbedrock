@@ -24,10 +24,11 @@ async function until(label, f, timeout = 15000) {
   throw new Error('timeout: ' + label)
 }
 function openPlayerInventory() {
-  client.queue('interact', { action_id: 'open_inventory', target_entity_id: 0n, has_position: false })
+  client.queue('interact', { action_id: 'open_inventory', target_entity_id: client.entityId, has_position: false })
 }
 async function main() {
-  await until('player spawned', () => spawned, 90000)
+  await until('player spawned', () => spawned && client.entityId, 90000)
+  await pause(2000) // Allow the initialization packet to be handled before interacting.
   openPlayerInventory()
   await until('player inventory open', () => opens.length >= 1)
   assert.equal(opens[0].window_id, 'inventory')
