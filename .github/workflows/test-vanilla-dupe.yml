@@ -1,0 +1,91 @@
+name: Test vanilla carpet duplication on isolated server
+on:
+  push:
+    branches: ['arena/**']
+    paths:
+      - '.github/workflows/test-vanilla-dupe.yml'
+      - 'scripts/tests/vanilla-dupe-fixture/**'
+permissions:
+  actions: read
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Build test-only plugin
+        run: gradle -p scripts/tests/vanilla-dupe-fixture clean jar --no-daemon
+      - name: Validate core build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          test "$(gh run view 43067647804 --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)" = success
+          test "$(gh run view 43067647804 --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha)" = '1e6a6a207a65ab9ab83faaf693d8c8af64274422'
+          test "$(gh run view 43067647804 --repo "$GITHUB_REPOSITORY" --json workflowDatabaseId --jq .workflowDatabaseId)" = "$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/build.yml" --jq .id)"
+      - uses: actions/download-artifact@v4
+        with:
+          name: purpurbedrock-26.2
+          path: /tmp/vanilla-dupe-artifact
+          repository: ${{ github.repository }}
+          run-id: 43067647804
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run safe setting and permissive positive control
+        run: |
+          set -euo pipefail
+          (cd /tmp/vanilla-dupe-artifact && sha256sum -c purpurbedrock-26.2.jar.sha256)
+          python3 -u - <<'PY'
+          import os, pathlib, re, shutil, signal, subprocess, time
+          workspace = pathlib.Path(os.environ['GITHUB_WORKSPACE'])
+          reports = []
+          for allow in (False, True):
+              folder = pathlib.Path('/tmp/dupe-test-' + str(allow).lower())
+              (folder / 'plugins').mkdir(parents=True)
+              (folder / 'config').mkdir()
+              shutil.copy('/tmp/vanilla-dupe-artifact/purpurbedrock-26.2.jar', folder / 'server.jar')
+              shutil.copy(workspace / 'scripts/tests/vanilla-dupe-fixture/build/libs/vanilla-dupe-fixture.jar', folder / 'plugins/fixture.jar')
+              (folder / 'eula.txt').write_text('eula=true\n')
+              (folder / 'server.properties').write_text('online-mode=false\nserver-port=25565\nlevel-type=minecraft\\:flat\ngenerate-structures=false\ndifficulty=peaceful\nspawn-protection=0\n')
+              (folder / 'config/paper-global.yml').write_text('unsupported-settings:\n  allow-piston-duplication: ' + str(allow).lower() + '\n')
+              log = open(folder / 'server.log', 'w', encoding='utf-8')
+              env = dict(os.environ, DUPE_TEST_ALLOW=str(allow).lower())
+              server = subprocess.Popen(['java', '-Xms1G', '-Xmx3G', '-jar', 'server.jar', '--nogui'], cwd=folder, stdin=subprocess.PIPE, stdout=log, stderr=subprocess.STDOUT, text=True, start_new_session=True, env=env)
+              try:
+                  for _ in range(420):
+                      if server.poll() is not None: raise RuntimeError('server exited early')
+                      text = (folder / 'server.log').read_text(errors='replace')
+                      if 'DUPE_TEST_ERROR' in text: raise RuntimeError('fixture error')
+                      match = re.search(r'DUPE_TEST_REPORT allow=(true|false) extensions=(\d+) blocks=(\d+) items=(\d+) total=(\d+)', text)
+                      if match: break
+                      time.sleep(1)
+                  else: raise RuntimeError('timed out waiting for fixture')
+                  print(match.group(), flush=True)
+                  reports.append((allow, *map(int, match.groups()[1:])))
+                  server.stdin.write('stop\n'); server.stdin.flush(); server.wait(timeout=30)
+              finally:
+                  try: os.killpg(server.pid, signal.SIGKILL)
+                  except ProcessLookupError: pass
+                  log.close()
+                  print('\n'.join((folder / 'server.log').read_text(errors='replace').splitlines()[-30:]))
+          print('::notice title=Carpet duplication test::' + str(reports))
+          for allow, extensions, blocks, items, total in reports:
+              assert extensions >= 1, f'piston never extended in {allow=}'
+              if allow: assert total > 1, f'positive control did not duplicate: {reports}'
+              else: assert total == 1, f'protected case did not conserve carpet: {reports}'
+          print('PASS real carpet mechanism, protected and permissive positive control')
+          PY
+      - name: Upload server logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vanilla-dupe-test-logs
+          path: /tmp/dupe-test-*/server.log
+          if-no-files-found: ignore

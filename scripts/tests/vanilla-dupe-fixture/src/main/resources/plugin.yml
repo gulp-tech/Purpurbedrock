@@ -1,0 +1,4 @@
+name: VanillaDupeFixture
+version: '1.0'
+main: org.purpurmc.dupefixture.VanillaDupeFixture
+api-version: '26.2'
