@@ -34,7 +34,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          for pair in '43067647804 1e6a6a207a65ab9ab83faaf693d8c8af64274422' '43244439277 7ba8f081aa9c97b9ec42d57ea51c49070113d7a4'; do
+          for pair in '43067647804 1e6a6a207a65ab9ab83faaf693d8c8af64274422' '43244753888 de1e2255e74dea8f80a315066f05b0fa61962440'; do
             read -r run sha <<< "$pair"
             test "$(gh run view "$run" --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)" = success
             test "$(gh run view "$run" --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha)" = "$sha"
@@ -52,7 +52,7 @@ jobs:
           name: purpurbedrock-26.2
           path: /tmp/new-core
           repository: ${{ github.repository }}
-          run-id: 43244439277
+          run-id: 43244753888
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Compare old and new protocols using real server entity
         run: |
