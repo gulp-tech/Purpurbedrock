@@ -1,0 +1,45 @@
+name: Package legacy compatibility candidate
+on:
+  push:
+    branches: ['arena/**']
+    paths: ['.github/workflows/package-legacy-compat-candidate.yml']
+permissions:
+  actions: read
+  contents: write
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify exact build and packet tests
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          for spec in \
+            '43244753888 de1e2255e74dea8f80a315066f05b0fa61962440 build.yml' \
+            '43250080583 c38feaf22a751b15457626956f69a716e1e7a83a test-legacy-compat.yml' \
+            '43250932971 5fc0281cab7a1c665f8d4f8c1f39a98be0e30875 test-inventory-regression.yml'; do
+            read -r run sha workflow <<< "$spec"
+            test "$(gh run view "$run" --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)" = success
+            test "$(gh run view "$run" --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha)" = "$sha"
+            test "$(gh run view "$run" --repo "$GITHUB_REPOSITORY" --json workflowDatabaseId --jq .workflowDatabaseId)" = "$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow" --jq .id)"
+          done
+      - uses: actions/download-artifact@v4
+        with:
+          name: purpurbedrock-26.2
+          path: artifacts
+          repository: ${{ github.repository }}
+          run-id: 43244753888
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Prepare isolated candidate
+        run: |
+          set -euo pipefail
+          (cd artifacts && sha256sum -c purpurbedrock-26.2.jar.sha256)
+          cp artifacts/purpurbedrock-26.2.jar purpurbedrock-26.2-legacy-compat-test.jar
+          sha256sum purpurbedrock-26.2-legacy-compat-test.jar | tee purpurbedrock-26.2-legacy-compat-test.jar.sha256
+          echo "::notice title=Candidate SHA256::$(cat purpurbedrock-26.2-legacy-compat-test.jar.sha256)"
+      - name: Publish candidate only
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload v26.2.0-bedrock purpurbedrock-26.2-legacy-compat-test.jar purpurbedrock-26.2-legacy-compat-test.jar.sha256 --repo "$GITHUB_REPOSITORY" --clobber
