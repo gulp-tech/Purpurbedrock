@@ -5,3 +5,5 @@ api-version: '26.2'
 commands:
   inventoryfixture:
     description: Isolated test of multiple menu sizes
+  integrityfixture:
+    description: Isolated item conservation fixture
