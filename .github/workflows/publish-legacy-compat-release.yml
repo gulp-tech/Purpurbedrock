@@ -1,0 +1,63 @@
+name: Publish legacy compatibility release
+on:
+  push:
+    branches: ['arena/**']
+    paths: ['.github/workflows/publish-legacy-compat-release.yml']
+permissions:
+  actions: read
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify reviewed build and exact tests
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          for spec in \
+            '43244753888 de1e2255e74dea8f80a315066f05b0fa61962440 build.yml' \
+            '43250080583 c38feaf22a751b15457626956f69a716e1e7a83a test-legacy-compat.yml' \
+            '43250932971 5fc0281cab7a1c665f8d4f8c1f39a98be0e30875 test-inventory-regression.yml' \
+            '43251454082 83784a71dab4ea046f07dcbe78199b53775941de package-legacy-compat-candidate.yml'; do
+            read -r run sha workflow <<< "$spec"
+            test "$(gh run view "$run" --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)" = success
+            test "$(gh run view "$run" --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha)" = "$sha"
+            test "$(gh run view "$run" --repo "$GITHUB_REPOSITORY" --json workflowDatabaseId --jq .workflowDatabaseId)" = "$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow" --jq .id)"
+          done
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/v26.2.0-bedrock" --jq '.assets[] | select(.name == "purpurbedrock-26.2.jar") | .digest')" = 'sha256:67ba171b3b17b5f4e6c770db21b20db1aa1066cb83aff29252ecd643c772e311'
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/v26.2.0-bedrock" --jq '.assets[] | select(.name == "purpurbedrock-26.2-legacy-compat-test.jar") | .digest')" = 'sha256:78b6f0e58298c1ef059b48608a82138e45848e56bdef3831b316266e133bafd6'
+      - uses: actions/download-artifact@v4
+        with:
+          name: purpurbedrock-26.2
+          path: artifacts
+          repository: ${{ github.repository }}
+          run-id: 43244753888
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Preserve currently published core
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir previous
+          gh release download v26.2.0-bedrock --repo "$GITHUB_REPOSITORY" --pattern 'purpurbedrock-26.2.jar' --dir previous
+          echo '67ba171b3b17b5f4e6c770db21b20db1aa1066cb83aff29252ecd643c772e311  previous/purpurbedrock-26.2.jar' | sha256sum -c
+          cp previous/purpurbedrock-26.2.jar purpurbedrock-26.2-before-legacy-compat.jar
+          sha256sum purpurbedrock-26.2-before-legacy-compat.jar > purpurbedrock-26.2-before-legacy-compat.jar.sha256
+          # Refuse to overwrite an earlier rollback with different content.
+          old=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/v26.2.0-bedrock" --jq '.assets[] | select(.name == "purpurbedrock-26.2-before-legacy-compat.jar") | .digest')
+          test -z "$old" || test "$old" = 'sha256:67ba171b3b17b5f4e6c770db21b20db1aa1066cb83aff29252ecd643c772e311'
+          gh release upload v26.2.0-bedrock purpurbedrock-26.2-before-legacy-compat.jar purpurbedrock-26.2-before-legacy-compat.jar.sha256 --repo "$GITHUB_REPOSITORY" --clobber
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/v26.2.0-bedrock" --jq '.assets[] | select(.name == "purpurbedrock-26.2-before-legacy-compat.jar") | .digest')" = 'sha256:67ba171b3b17b5f4e6c770db21b20db1aa1066cb83aff29252ecd643c772e311'
+      - name: Publish exact tested artifact
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          (cd artifacts && sha256sum -c purpurbedrock-26.2.jar.sha256)
+          echo '78b6f0e58298c1ef059b48608a82138e45848e56bdef3831b316266e133bafd6  artifacts/purpurbedrock-26.2.jar' | sha256sum -c
+          cp artifacts/purpurbedrock-26.2.jar ./purpurbedrock-26.2.jar
+          sha256sum purpurbedrock-26.2.jar > purpurbedrock-26.2.jar.sha256
+          gh release upload v26.2.0-bedrock purpurbedrock-26.2.jar purpurbedrock-26.2.jar.sha256 --repo "$GITHUB_REPOSITORY" --clobber
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/v26.2.0-bedrock" --jq '.assets[] | select(.name == "purpurbedrock-26.2.jar") | .digest')" = 'sha256:78b6f0e58298c1ef059b48608a82138e45848e56bdef3831b316266e133bafd6'
+          echo '::notice title=Release published::purpurbedrock-26.2.jar sha256 78b6f0e58298c1ef059b48608a82138e45848e56bdef3831b316266e133bafd6'
