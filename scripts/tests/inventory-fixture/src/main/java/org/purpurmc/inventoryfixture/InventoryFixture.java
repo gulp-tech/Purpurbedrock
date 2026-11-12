@@ -52,7 +52,8 @@ public final class InventoryFixture extends JavaPlugin implements Listener {
         Item item = world.dropItem(new Location(world, x + 0.25, y + 0.1, z + 0.25), dropStack(type, amount, value));
         item.setVelocity(new Vector(0, 0, 0));
         item.setGravity(false);
-        item.setPickupDelay(32767);
+        // 32767 makes item entities ineligible for merging; use a long finite delay.
+        item.setPickupDelay(6000);
     }
     private String dropResult(World world, String key, int expectedItems, int expectedSum) {
         var items = world.getEntitiesByClass(Item.class).stream().filter(i -> key.equals(marker(i.getItemStack()))).toList();
