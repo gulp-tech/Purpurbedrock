@@ -7,6 +7,7 @@ on:
       - 'purpurbedrock-completions/tests/bedrock/inventory-regression.cjs'
       - 'purpurbedrock-completions/tests/bedrock/item-integrity.cjs'
       - 'purpurbedrock-completions/tests/bedrock/drop-integrity.cjs'
+      - 'purpurbedrock-completions/tests/bedrock/shared-chest-integrity.cjs'
       - 'scripts/tests/inventory-fixture/**'
   workflow_dispatch:
     inputs:
@@ -105,6 +106,11 @@ jobs:
               print(result.stdout, flush=True)
               report = result.stdout[-2500:].replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
               print('::notice title=Drop conservation test::' + report, flush=True)
+              result.check_returncode()
+              result = subprocess.run(['node', 'shared-chest-integrity.cjs'], cwd=testdir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=120)
+              print(result.stdout, flush=True)
+              report = result.stdout[-2500:].replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+              print('::notice title=Shared chest conservation test::' + report, flush=True)
               result.check_returncode()
               server.stdin.write('stop\n'); server.stdin.flush(); server.wait(timeout=30)
           finally:

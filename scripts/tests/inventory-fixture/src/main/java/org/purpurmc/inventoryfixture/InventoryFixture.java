@@ -26,6 +26,8 @@ public final class InventoryFixture extends JavaPlugin implements Listener {
     private static final Material[] ITEMS = {Material.DIAMOND, Material.EMERALD, Material.GOLD_INGOT};
     private static final int[] SIZES = {27, 54, 9};
     private Inventory integrityChest;
+    private Player firstPlayer;
+    private Player secondPlayer;
     private NamespacedKey marker;
     private int cancelledMergeAttempts;
 
@@ -138,6 +140,8 @@ public final class InventoryFixture extends JavaPlugin implements Listener {
         Objects.requireNonNull(getCommand("integrityfixture")).setExecutor((sender, command, label, args) -> {
             if (!(sender instanceof Player player) || args.length != 1) return true;
             if (args[0].equals("start")) {
+                firstPlayer = player;
+                secondPlayer = null;
                 player.closeInventory();
                 player.getInventory().clear();
                 player.setItemOnCursor(null);
@@ -145,6 +149,18 @@ public final class InventoryFixture extends JavaPlugin implements Listener {
                 integrityChest = Bukkit.createInventory(null, 27, Component.text("Integrity fixture"));
                 integrityChest.setItem(0, marked(20));
                 player.openInventory(integrityChest);
+            } else if (args[0].equals("join") && integrityChest != null) {
+                secondPlayer = player;
+                player.closeInventory();
+                player.getInventory().clear();
+                player.setItemOnCursor(null);
+                player.openInventory(integrityChest);
+            } else if (args[0].equals("shared") && firstPlayer != null && secondPlayer != null) {
+                int chest = count(integrityChest.getContents());
+                int a = count(firstPlayer.getInventory().getContents()) + markedAmount(firstPlayer.getItemOnCursor());
+                int b = count(secondPlayer.getInventory().getContents()) + markedAmount(secondPlayer.getItemOnCursor());
+                int ground = player.getWorld().getEntitiesByClass(Item.class).stream().mapToInt(e -> markedAmount(e.getItemStack())).sum();
+                player.sendMessage("SHARED chest=" + chest + " a=" + a + " b=" + b + " ground=" + ground + " total=" + (chest + a + b + ground));
             } else if (args[0].equals("check")) report(player);
             else if (args[0].equals("drops")) runDropTest(player);
             else if (args[0].equals("menucheck")) reportMenuLeak(player);
