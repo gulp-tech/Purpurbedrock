@@ -6756,6 +6756,77 @@ import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataTypes;""",
     # heuristic; swallowing it can leave the menu holder selected and block E/containers.
     # Same-size submenu reuse and the normal protocol close acknowledgement remain active.
 
+    # Sulfur cubes and their absorb/eject sounds were added in Bedrock 26.30 (v1001).
+    # For older sessions only, represent this one Java entity as an ordinary slime.
+    # This is presentation-only: server entity, behavior, item state and drops stay intact.
+    entity = root / "core/src/main/java/org/geysermc/geyser/entity/type/Entity.java"
+    replace_exact(
+        entity,
+        """        this.bedrockDefinition = context.bedrockEntityDefinition();""",
+        """        this.bedrockDefinition = context.bedrockEntityDefinition();
+        if (session.protocolVersion() < 1001 && this.bedrockDefinition.identifier().toString().equals("minecraft:sulfur_cube")) {
+            this.bedrockDefinition = BedrockEntityDefinition.getVanilla(org.geysermc.geyser.api.util.Identifier.of("minecraft", "slime"));
+        }""",
+        "Entity.oldClientSulfurCubeDefinition",
+    )
+    sulfur_cube = root / "core/src/main/java/org/geysermc/geyser/entity/type/living/monster/cubemob/SulfurCubeEntity.java"
+    replace_exact(
+        sulfur_cube,
+        """        if (stack.isEmpty()) {
+            levelSoundEventPacket.setSound(SoundEvent.EJECT_BLOCK);
+        } else {
+            levelSoundEventPacket.setSound(SoundEvent.ABSORB_BLOCK);
+        }
+
+        levelSoundEventPacket.setPosition(bedrockPosition());
+        levelSoundEventPacket.setExtraData(-1);
+        levelSoundEventPacket.setIdentifier("minecraft:sulfur_cube");""",
+        """        if (session.protocolVersion() < 1001) {
+            // Old codecs have neither ABSORB_BLOCK nor EJECT_BLOCK. Use a real old
+            // slime sound rather than sending an invalid event ID and disconnecting.
+            levelSoundEventPacket.setSound(SoundEvent.SQUISH_SMALL);
+        } else if (stack.isEmpty()) {
+            levelSoundEventPacket.setSound(SoundEvent.EJECT_BLOCK);
+        } else {
+            levelSoundEventPacket.setSound(SoundEvent.ABSORB_BLOCK);
+        }
+
+        levelSoundEventPacket.setPosition(bedrockPosition());
+        levelSoundEventPacket.setExtraData(-1);
+        levelSoundEventPacket.setIdentifier(session.protocolVersion() < 1001 ? "minecraft:slime" : "minecraft:sulfur_cube");""",
+        "SulfurCubeEntity.oldClientSounds",
+    )
+    replace_exact(
+        sulfur_cube,
+        """        session.sendUpstreamPacket(levelSoundEventPacket);
+
+        if (stack.isEmpty()) {
+            this.updateProperty(SULFUR_CUBE_ARCHETYPE_PROPERTY, "none");""",
+        """        session.sendUpstreamPacket(levelSoundEventPacket);
+
+        // The old-client slime definition has no sulfur-cube properties.
+        if (session.protocolVersion() < 1001) return;
+        if (stack.isEmpty()) {
+            this.updateProperty(SULFUR_CUBE_ARCHETYPE_PROPERTY, "none");""",
+        "SulfurCubeEntity.oldClientPropertyGuard",
+    )
+    replace_exact(
+        sulfur_cube,
+        """        if (this.previousFuseTickTime != this.fuseTickTime) {
+            this.metadata.put(EntityDataTypes.FUSE_TIME, fuseTickTime);""",
+        """        if (session.protocolVersion() >= 1001 && this.previousFuseTickTime != this.fuseTickTime) {
+            this.metadata.put(EntityDataTypes.FUSE_TIME, fuseTickTime);""",
+        "SulfurCubeEntity.oldClientFuseTick",
+    )
+    replace_exact(
+        sulfur_cube,
+        """        this.fuseTickTime = entityMetadata.getPrimitiveValue();
+        this.metadata.put(EntityDataTypes.FUSE_TIME, fuseTickTime);""",
+        """        this.fuseTickTime = entityMetadata.getPrimitiveValue();
+        if (session.protocolVersion() >= 1001) this.metadata.put(EntityDataTypes.FUSE_TIME, fuseTickTime);""",
+        "SulfurCubeEntity.oldClientFuseMetadata",
+    )
+
     # Opt-in mapping predicate: match a string PDC marker on the server-sent item.
     # Existing mappings are deliberately left unchanged; this is not gameplay authorization.
     item_context = root / "core/src/main/java/org/geysermc/geyser/item/custom/GeyserItemPredicateContext.java"
