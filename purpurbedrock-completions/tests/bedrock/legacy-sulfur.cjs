@@ -13,8 +13,9 @@ const entities = [], sounds = []
 client.on('error', e => { error = e; console.error('CLIENT_ERROR', e.message) })
 client.on('disconnect', p => { disconnected = true; console.log('DISCONNECT', JSON.stringify(p)) })
 client.on('spawn', () => { spawned = true; client.queue('request_chunk_radius', { chunk_radius: 4, max_radius: 4 }) })
-client.on('add_entity', p => { entities.push(p.identifier); console.log('ENTITY', p.identifier) })
-client.on('level_sound_event', p => { sounds.push(p.sound); console.log('SOUND', p.sound, p.identifier) })
+const show = p => JSON.stringify(p, (_, v) => typeof v === 'bigint' ? v.toString() : v)
+client.on('add_entity', p => { entities.push(p.identifier || p.entity_type); if (entities.length <= 3) console.log('ENTITY', show(p)) })
+client.on('level_sound_event', p => { sounds.push(p.sound || p.sound_id); if (sounds.length <= 3) console.log('SOUND', show(p)) })
 async function main() {
   for (let i = 0; i < 900 && !spawned && !error && !disconnected; i++) await pause(100)
   assert(spawned, 'client never spawned: ' + (error?.message || ''))
