@@ -11,6 +11,7 @@ const contents = []
 const slots = []
 const replies = []
 const items = new Map()
+const menuReports = []
 const client = bedrock.createClient({ host: '127.0.0.1', port: 19132,
   version: '1.26.51', username: 'InvTest', offline: true, transport: 'raknet', conLog: () => {} })
 client.prependOnceListener('session', profile => { profile.xuid = '30101' })
@@ -27,6 +28,7 @@ client.on('item_registry', packet => { for (const item of packet.itemstates) ite
 client.on('inventory_content', packet => contents.push(packet))
 client.on('inventory_slot', packet => slots.push(packet))
 client.on('item_stack_response', packet => replies.push(packet))
+client.on('text', packet => { if (typeof packet.message === 'string' && packet.message.includes('MENU_INTEGRITY')) menuReports.push(packet.message) })
 async function until(label, f, timeout = 15000) {
   const deadline = Date.now() + timeout
   while (Date.now() < deadline) {
@@ -135,6 +137,12 @@ async function main() {
   await until('player inventory opens after different-size transitions', () => opens.length > beforeFinalInventory)
   assert.equal(opens.at(-1).window_type, 'inventory')
   console.log('PASS 27 -> 54 -> 9 slot transitions and player inventory recovery')
+  await pause(1200)
+  client.queue('command_request', { command: '/integrityfixture menucheck',
+    origin: { type: 'player', uuid: randomUUID(), request_id: '', player_entity_id: 0n }, internal: false, version: '' })
+  await until('authoritative cancelled menu item report', () => menuReports.length > 0)
+  console.log(menuReports.at(-1))
+  assert(menuReports.at(-1).includes('owned=0 ground=0'), 'cancelled menu clicks leaked icons')
 }
 main().then(() => { process.exitCode = 0 }).catch(e => { console.error(e); process.exitCode = 1 })
   .finally(async () => { client.close(); await pause(300); process.exit(process.exitCode) })
