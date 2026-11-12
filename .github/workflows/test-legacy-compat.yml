@@ -81,7 +81,11 @@ jobs:
                   testdir = root / 'purpurbedrock-completions/tests/bedrock'
                   result = subprocess.run(['node','legacy-sulfur.cjs'],cwd=testdir,env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=125)
                   print(label, result.stdout, flush=True)
+                  report = result.stdout[-3000:].replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+                  print('::notice title=Client test ' + label + '::' + report, flush=True)
                   text = (d / 'server.log').read_text(errors='replace')
+                  selected = '\n'.join(line for line in text.splitlines() if any(marker in line for marker in ('LEGACY_FIXTURE', 'No id found', 'Exception caught', 'joined the game', 'logged in', 'Подключен игрок')))
+                  print('::notice title=Server test ' + label + '::' + selected[-2000:].replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A'), flush=True)
                   for marker in ('LEGACY_FIXTURE_SET_STONE',):
                       if marker not in text: raise RuntimeError(label + ' fixture did not create cube')
                   if 'LEGACY_FIXTURE_ERROR' in text: raise RuntimeError(label + ' fixture error')
