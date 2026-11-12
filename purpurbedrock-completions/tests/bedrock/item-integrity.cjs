@@ -4,19 +4,24 @@ const assert = require('node:assert/strict')
 const { randomUUID } = require('node:crypto')
 const bedrock = require('bedrock-protocol')
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms))
-const client = bedrock.createClient({ host: '127.0.0.1', port: 19132,
-  version: '1.26.51', username: 'InvTest', offline: true, transport: 'raknet', conLog: () => {} })
-let spawned = false, error, closing = false
+let client, spawned = false, error, closing = false
 const opens = [], contents = [], responses = [], messages = []
-client.prependOnceListener('session', profile => { profile.xuid = '30101' })
-client.on('error', e => { error = e })
-client.on('disconnect', p => { if (!closing) error = new Error('disconnected: ' + JSON.stringify(p)) })
-client.on('spawn', () => { spawned = true; client.queue('request_chunk_radius', { chunk_radius: 4, max_radius: 4 }) })
-client.on('container_open', p => opens.push(p))
-client.on('container_close', p => { if (p.server) client.queue('container_close', { window_id: p.window_id, window_type: p.window_type, server: false }) })
-client.on('inventory_content', p => contents.push(p))
-client.on('item_stack_response', p => responses.push(...p.responses))
-client.on('text', p => { if (typeof p.message === 'string' && p.message.includes('INTEGRITY')) messages.push(p.message) })
+function connect() {
+  spawned = false
+  closing = false
+  const c = client = bedrock.createClient({ host: '127.0.0.1', port: 19132,
+    version: '1.26.51', username: 'InvTest', offline: true, transport: 'raknet', conLog: () => {} })
+  c.prependOnceListener('session', profile => { profile.xuid = '30101' })
+  c.on('error', e => { if (c === client) error = e })
+  c.on('disconnect', p => { if (c === client && !closing) error = new Error('disconnected: ' + JSON.stringify(p)) })
+  c.on('spawn', () => { if (c === client) spawned = true; c.queue('request_chunk_radius', { chunk_radius: 4, max_radius: 4 }) })
+  c.on('container_open', p => opens.push(p))
+  c.on('container_close', p => { if (p.server) c.queue('container_close', { window_id: p.window_id, window_type: p.window_type, server: false }) })
+  c.on('inventory_content', p => contents.push(p))
+  c.on('item_stack_response', p => responses.push(...p.responses))
+  c.on('text', p => { if (typeof p.message === 'string' && p.message.includes('INTEGRITY')) messages.push(p.message) })
+}
+connect()
 async function until(label, f, timeout = 15000) {
   const end = Date.now() + timeout
   while (Date.now() < end) { if (error) throw error; const value = f(); if (value) return value; await pause(25) }
@@ -72,6 +77,34 @@ async function main() {
   await pause(300)
   await check([0, 30, 0, 0, 30])
   console.log('PASS server-side item conservation, stale replay and menu close')
+
+  // Restart the fixture, leave 20 items on the cursor, disconnect and reconnect.
+  const opensBefore = opens.length, contentBefore = contents.length
+  await command('/integrityfixture start')
+  await until('second chest open', () => opens.length > opensBefore)
+  const secondMenu = opens.at(-1)
+  const secondPacket = await until('second chest contents', () => contents.slice(contentBefore).find(p => p.window_id === secondMenu.window_id && p.input?.[0]?.count === 20))
+  const secondId = secondPacket.input[0].stack_id
+  assert(Number.isInteger(secondId) && secondId > 0)
+  request(-107, 'take', 20, slot('container', 0, secondId), slot('cursor', 0, 0))
+  const secondTake = await until('take before disconnect', () => responses.find(r => r.request_id === -107))
+  assert.equal(secondTake.status, 'ok')
+  await check([0, 10, 20, 0, 30])
+  closing = true
+  client.close()
+  await pause(3000)
+  connect()
+  await until('player reconnected', () => spawned && client.entityId, 90000)
+  await pause(2000)
+  const before = messages.length
+  await command('/integrityfixture check')
+  await until('conservation after reconnect', () => messages.length > before)
+  console.log(messages.at(-1))
+  const values = messages.at(-1).match(/chest=(\d+) inventory=(\d+) cursor=(\d+) ground=(\d+) total=(\d+)/)
+  assert(values, 'missing reconnect report')
+  assert.equal(Number(values[5]), 30, 'items lost or duplicated after disconnect')
+  assert.equal(Number(values[3]), 0, 'cursor should not remain populated after reconnect')
+  console.log('PASS disconnect/reconnect with items on cursor')
 }
 main().then(() => { process.exitCode = 0 }).catch(e => { console.error(e); process.exitCode = 1 })
   .finally(async () => { closing = true; client.close(); await pause(300); process.exit(process.exitCode) })
