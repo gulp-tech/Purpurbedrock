@@ -1,0 +1,107 @@
+name: Test legacy sulfur cube compatibility
+on:
+  push:
+    branches: ['arena/**']
+    paths:
+      - '.github/workflows/test-legacy-compat.yml'
+      - 'purpurbedrock-completions/tests/bedrock/legacy-sulfur.cjs'
+      - 'scripts/tests/legacy-compat-fixture/**'
+permissions:
+  actions: read
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - run: gradle -p scripts/tests/legacy-compat-fixture clean jar --no-daemon
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install packet client
+        working-directory: purpurbedrock-completions/tests/bedrock
+        run: npm ci --no-audit --no-fund
+      - name: Verify build provenance
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          for pair in '43067647804 1e6a6a207a65ab9ab83faaf693d8c8af64274422' '43244439277 7ba8f081aa9c97b9ec42d57ea51c49070113d7a4'; do
+            read -r run sha <<< "$pair"
+            test "$(gh run view "$run" --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)" = success
+            test "$(gh run view "$run" --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha)" = "$sha"
+            test "$(gh run view "$run" --repo "$GITHUB_REPOSITORY" --json workflowDatabaseId --jq .workflowDatabaseId)" = "$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/build.yml" --jq .id)"
+          done
+      - uses: actions/download-artifact@v4
+        with:
+          name: purpurbedrock-26.2
+          path: /tmp/old-core
+          repository: ${{ github.repository }}
+          run-id: 43067647804
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: purpurbedrock-26.2
+          path: /tmp/new-core
+          repository: ${{ github.repository }}
+          run-id: 43244439277
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Compare old and new protocols using real server entity
+        run: |
+          set -euo pipefail
+          (cd /tmp/old-core && sha256sum -c purpurbedrock-26.2.jar.sha256)
+          (cd /tmp/new-core && sha256sum -c purpurbedrock-26.2.jar.sha256)
+          python3 -u - <<'PY'
+          import os, pathlib, shutil, signal, subprocess, time
+          root = pathlib.Path(os.environ['GITHUB_WORKSPACE'])
+          reports = []
+          for label, artifact, version, failure in [('baseline', '/tmp/old-core', '1.21.90', True), ('fixed-old', '/tmp/new-core', '1.21.90', False), ('fixed-new', '/tmp/new-core', '1.26.51', False)]:
+              d = pathlib.Path('/tmp/legacy-' + label); (d / 'plugins').mkdir(parents=True)
+              shutil.copy(artifact + '/purpurbedrock-26.2.jar', d / 'server.jar')
+              shutil.copy(root / 'scripts/tests/legacy-compat-fixture/build/libs/legacy-compat-fixture.jar', d / 'plugins/fixture.jar')
+              (d / 'eula.txt').write_text('eula=true\n')
+              (d / 'server.properties').write_text('online-mode=false\nserver-port=25565\nlevel-type=minecraft\\:flat\ngenerate-structures=false\ndifficulty=peaceful\nspawn-protection=0\nenforce-secure-profile=false\n')
+              log = open(d / 'server.log','w',encoding='utf8')
+              server = subprocess.Popen(['java','-Xms1G','-Xmx3G','-jar','server.jar','--nogui'],cwd=d,stdin=subprocess.PIPE,stdout=log,stderr=subprocess.STDOUT,text=True,start_new_session=True)
+              try:
+                  for _ in range(600):
+                      if server.poll() is not None: raise RuntimeError(label + ' server exited')
+                      if 'Done (' in (d / 'server.log').read_text(errors='replace'): break
+                      time.sleep(1)
+                  else: raise RuntimeError(label + ' startup timeout')
+                  env = dict(os.environ, TEST_VERSION=version, EXPECT_FAILURE=str(failure).lower())
+                  testdir = root / 'purpurbedrock-completions/tests/bedrock'
+                  result = subprocess.run(['node','legacy-sulfur.cjs'],cwd=testdir,env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=125)
+                  print(label, result.stdout, flush=True)
+                  text = (d / 'server.log').read_text(errors='replace')
+                  for marker in ('LEGACY_FIXTURE_SET_STONE',):
+                      if marker not in text: raise RuntimeError(label + ' fixture did not create cube')
+                  if 'LEGACY_FIXTURE_ERROR' in text: raise RuntimeError(label + ' fixture error')
+                  if failure:
+                      if 'No id found for ABSORB_BLOCK' not in text: raise RuntimeError('baseline did not reproduce logged sound failure')
+                  else:
+                      if 'LEGACY_FIXTURE_SET_AIR' not in text or 'LEGACY_FIXTURE_SET_STONE_AGAIN' not in text: raise RuntimeError(label + ' did not exercise both sounds')
+                      if 'No id found for ABSORB_BLOCK' in text or 'No id found for EJECT_BLOCK' in text: raise RuntimeError(label + ' incompatible sound error')
+                  result.check_returncode(); reports.append(label + ':PASS')
+                  server.stdin.write('stop\n');server.stdin.flush();server.wait(timeout=30)
+              finally:
+                  try: os.killpg(server.pid, signal.SIGKILL)
+                  except ProcessLookupError: pass
+                  log.close()
+                  print('\n'.join((d/'server.log').read_text(errors='replace').splitlines()[-30:]))
+          print('::notice title=Legacy compatibility::' + ' '.join(reports))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: legacy-compat-logs
+          path: /tmp/legacy-*/server.log
+          if-no-files-found: ignore

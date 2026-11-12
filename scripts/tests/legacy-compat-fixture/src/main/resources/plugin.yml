@@ -1,0 +1,4 @@
+name: LegacyCompatFixture
+version: '1.0'
+main: org.purpurmc.legacyfixture.LegacyCompatFixture
+api-version: '26.2'
