@@ -38,8 +38,8 @@ jobs:
       - name: Verify selected build
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RUN_ID: ${{ inputs.run_id || '42377212084' }}
-          EXPECTED_SHA: ${{ inputs.head_sha || '58174b20e9eca7908db7c7059fd38bce8f1617be' }}
+          RUN_ID: ${{ inputs.run_id || '43428188536' }}
+          EXPECTED_SHA: ${{ inputs.head_sha || '73777dd54c8286d6e911e52e468da9ccb7720ef8' }}
         run: |
           set -euo pipefail
           [[ "$RUN_ID" =~ ^[0-9]+$ ]]
@@ -54,7 +54,7 @@ jobs:
           name: purpurbedrock-26.2
           path: /tmp/coverage-artifacts
           repository: gulp-tech/Purpurbedrock
-          run-id: ${{ inputs.run_id || '42377212084' }}
+          run-id: ${{ inputs.run_id || '43428188536' }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Compare plugin, typed and vanilla command coverage
         run: |
@@ -105,8 +105,8 @@ jobs:
           if-no-files-found: ignore
       - name: Record tested build
         env:
-          RUN_ID: ${{ inputs.run_id || '42377212084' }}
-          SHA: ${{ inputs.head_sha || '58174b20e9eca7908db7c7059fd38bce8f1617be' }}
+          RUN_ID: ${{ inputs.run_id || '43428188536' }}
+          SHA: ${{ inputs.head_sha || '73777dd54c8286d6e911e52e468da9ccb7720ef8' }}
         run: printf '%s\n%s\n' "$RUN_ID" "$SHA" > tested-core.txt
       - uses: actions/upload-artifact@v4
         with:
