@@ -1,0 +1,28 @@
+name: Static inventory of supplied Android client
+on:
+  push:
+    branches: ['arena/**']
+    paths: ['.github/workflows/analyze-apollon-apk.yml', 'scripts/tests/apk_static_inventory.py']
+permissions:
+  contents: read
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download user-supplied APK (never execute)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/apk-inventory
+          gh release download cheat --repo "$GITHUB_REPOSITORY" --pattern 'MCPE_Apollon_Client_1.26.60_v6.71_64Bit.1.apk' --dir /tmp/apk-inventory
+      - name: Verify digest and inspect archive and strings offline
+        run: python3 scripts/tests/apk_static_inventory.py /tmp/apk-inventory/MCPE_Apollon_Client_1.26.60_v6.71_64Bit.1.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apollon-static-inventory
+          path: apollon-static-report.json
+          if-no-files-found: error
+          retention-days: 7
