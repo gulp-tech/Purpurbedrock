@@ -1,0 +1,44 @@
+name: Package console warning fixes candidate
+on:
+  push:
+    branches: ['arena/**']
+    paths: ['.github/workflows/package-console-fixes.yml']
+permissions:
+  actions: read
+  contents: write
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify exact build and completion coverage
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          for spec in \
+            '43428188536 73777dd54c8286d6e911e52e468da9ccb7720ef8 build.yml' \
+            '43430375836 cd687ff2f6ece4c0e845102fba2e8ca1d73da88c test-completion-coverage.yml'; do
+            read -r run sha workflow <<< "$spec"
+            test "$(gh run view "$run" --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)" = success
+            test "$(gh run view "$run" --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha)" = "$sha"
+            test "$(gh run view "$run" --repo "$GITHUB_REPOSITORY" --json workflowDatabaseId --jq .workflowDatabaseId)" = "$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow" --jq .id)"
+          done
+      - uses: actions/download-artifact@v4
+        with:
+          name: purpurbedrock-26.2
+          path: artifacts
+          repository: ${{ github.repository }}
+          run-id: 43428188536
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Prepare separate candidate
+        run: |
+          set -euo pipefail
+          (cd artifacts && sha256sum -c purpurbedrock-26.2.jar.sha256)
+          cp artifacts/purpurbedrock-26.2.jar purpurbedrock-26.2-console-fixes-test.jar
+          sha256sum purpurbedrock-26.2-console-fixes-test.jar | tee purpurbedrock-26.2-console-fixes-test.jar.sha256
+          echo "::notice title=Candidate SHA256::$(cat purpurbedrock-26.2-console-fixes-test.jar.sha256)"
+      - name: Publish candidate without replacing main core
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload v26.2.0-bedrock purpurbedrock-26.2-console-fixes-test.jar purpurbedrock-26.2-console-fixes-test.jar.sha256 --repo "$GITHUB_REPOSITORY" --clobber
