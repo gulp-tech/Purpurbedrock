@@ -73,6 +73,34 @@ class NativeArgumentScanTest {
         assertTrue(new JavaSuggestions<>(dispatcher, true).complete("native ", "choice").join().isEmpty());
         assertEquals(List.of("secret"), new JavaSuggestions<>(dispatcher, true).complete("native 1 ", "choice").join());
     }
+    @Test void nativeQueryDoesNotInvokeUnrelatedSiblingProviders() {
+        var dispatcher = new CommandDispatcher<Boolean>();
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        dispatcher.register(LiteralArgumentBuilder.<Boolean>literal("scoreboard")
+                .then(RequiredArgumentBuilder.<Boolean, String>argument("objective", StringArgumentType.word())
+                        .suggests((context, builder) -> builder.suggest("kills").buildFuture()))
+                .then(RequiredArgumentBuilder.<Boolean, String>argument("unrelated", StringArgumentType.word())
+                        .suggests((context, builder) -> {
+                            calls.incrementAndGet();
+                            throw new IllegalStateException("unrelated provider was called");
+                        })));
+        assertEquals(List.of("kills"), new JavaSuggestions<>(dispatcher, true).complete("scoreboard ", "objective").join());
+        assertEquals(0, calls.get());
+    }
+    @Test void nativeQuerySupportsAsynchronousTargetAndChecksPermission() {
+        var dispatcher = new CommandDispatcher<Boolean>();
+        var pending = new CompletableFuture<com.mojang.brigadier.suggestion.Suggestions>();
+        dispatcher.register(LiteralArgumentBuilder.<Boolean>literal("scoreboard")
+                .then(RequiredArgumentBuilder.<Boolean, String>argument("objective", StringArgumentType.word())
+                        .requires(Boolean::booleanValue).suggests((context, builder) -> pending)));
+        var denied = new JavaSuggestions<>(dispatcher, false).complete("scoreboard ", "objective");
+        assertTrue(denied.join().isEmpty());
+        var result = new JavaSuggestions<>(dispatcher, true).complete("scoreboard ", "objective");
+        assertFalse(result.isDone());
+        var builder = new com.mojang.brigadier.suggestion.SuggestionsBuilder("scoreboard ", 11);
+        pending.complete(builder.suggest("kills").build());
+        assertEquals(List.of("kills"), result.join());
+    }
     @Test void pendingSuggestionsDoNotBlockAndUnsafeOrExcessValuesAreFiltered() {
         var future = new CompletableFuture<List<String>>();
         var scan = new NativeArgumentScan(command(), new Limits(3, 32, 2, 8, 12), (input, name) -> future);

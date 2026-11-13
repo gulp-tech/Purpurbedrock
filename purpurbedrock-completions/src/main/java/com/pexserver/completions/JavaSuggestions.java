@@ -2,6 +2,8 @@ package com.pexserver.completions;
 
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.tree.ArgumentCommandNode;
+import com.mojang.brigadier.exceptions.CommandSyntaxException;
+import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
@@ -18,8 +20,15 @@ final class JavaSuggestions<S> implements NativeArgumentScan.Provider {
         var child = context.parent.getChild(argument);
         if (context.startPos != input.length() || !(child instanceof ArgumentCommandNode<?, ?>) || !child.canUse(source))
             return CompletableFuture.completedFuture(List.of());
-        return dispatcher.getCompletionSuggestions(parsed).thenApply(suggestions -> suggestions.getList().stream()
-                .filter(s -> s.getRange().getStart() == input.length())
-                .map(s -> s.getText()).distinct().toList());
+        // Brigadier's dispatcher queries every sibling, including unrelated expensive providers.
+        // Only the requested argument's choices belong to this sampled Bedrock argument.
+        try {
+            return child.listSuggestions(parsed.getContext().build(input), new SuggestionsBuilder(input, input.length()))
+                    .thenApply(suggestions -> suggestions.getList().stream()
+                            .filter(s -> s.getRange().getStart() == input.length())
+                            .map(s -> s.getText()).distinct().toList());
+        } catch (CommandSyntaxException invalid) {
+            return CompletableFuture.completedFuture(List.of());
+        }
     }
 }

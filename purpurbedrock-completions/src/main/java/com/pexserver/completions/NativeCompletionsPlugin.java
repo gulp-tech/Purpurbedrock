@@ -220,7 +220,8 @@ public final class NativeCompletionsPlugin extends JavaPlugin implements Listene
                         return java.util.concurrent.CompletableFuture.completedFuture(List.of());
                     long start = System.nanoTime();
                     var future = delegate.complete(input, argument);
-                    if (System.nanoTime() - start > settings.slowNanos) throw new SlowCompleterException(label);
+                    long elapsed = System.nanoTime() - start;
+                    if (elapsed > settings.slowNanos) throw new SlowCompleterException(label, elapsed);
                     return future;
                 };
                 round.pending.add(new ScanTask(label, new NativeArgumentScan(nativeData, settings.limits, bounded)));
@@ -257,7 +258,8 @@ public final class NativeCompletionsPlugin extends JavaPlugin implements Listene
                 if (values == null) values = List.of();
                 TabCompleteEvent event = new TabCompleteEvent(player, completionBuffer(label, prefix, partial), values, true, null);
                 event.callEvent();
-                if (System.nanoTime() - start > settings.slowNanos) throw new SlowCompleterException(label);
+                long elapsed = System.nanoTime() - start;
+                if (elapsed > settings.slowNanos) throw new SlowCompleterException(label, elapsed);
                 return event.isCancelled() ? List.of() : event.getCompletions();
             };
             CompletionScan scan = new CompletionScan(label, settings.limits, async, resolver,
@@ -287,7 +289,11 @@ public final class NativeCompletionsPlugin extends JavaPlugin implements Listene
             } catch (RuntimeException e) {
                 state.cooldowns.put(task.label, tick + 1200);
                 round.dirty |= round.progress.update(new CompletionModel.Command(task.label, List.of()), true);
-                getLogger().warning("Skipping completer /" + task.label + " for 60s: " + e.getClass().getSimpleName());
+                if (e instanceof SlowCompleterException) {
+                    getLogger().warning("Skipping completer /" + task.label + " for 60s: " + e.getMessage());
+                } else {
+                    getLogger().log(Level.WARNING, "Skipping completer /" + task.label + " for 60s", e);
+                }
             }
         }
         if ((round.pending.isEmpty() || tick >= round.nextPublish) && round.dirty) {
@@ -427,6 +433,8 @@ public final class NativeCompletionsPlugin extends JavaPlugin implements Listene
     }
     private record ScanTask(String label, CompletionTask scan) {}
     private static final class SlowCompleterException extends RuntimeException {
-        SlowCompleterException(String label) { super(label); }
+        SlowCompleterException(String label, long elapsedNanos) {
+            super(String.format(Locale.ROOT, "SlowCompleterException (%.2f ms)", elapsedNanos / 1_000_000.0));
+        }
     }
 }

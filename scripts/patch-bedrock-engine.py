@@ -862,6 +862,68 @@ project(":spigot").projectDir = file("bootstrap/spigot")""",
         "AssetUtils.downloadAndRunClientJarTasks",
     )
 
+    # Install real bundled vanilla default skins when the offline asset cache is empty.
+    # Keep pre-existing files untouched; errors still surface instead of being suppressed.
+    skin_assets = Path(__file__).resolve().parent / "assets/default_player_skins"
+    skin_resources = root / "core/src/main/resources/purpurbedrock/default_player_skins"
+    for model in ("slim", "wide"):
+        for name in ("alex", "ari", "efe", "kai", "makena", "noor", "steve", "sunny", "zuri"):
+            source = skin_assets / model / (name + ".png")
+            target = skin_resources / model / source.name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(source.read_bytes())
+    provided_skins = root / "core/src/main/java/org/geysermc/geyser/skin/ProvidedSkins.java"
+    replace_exact(
+        provided_skins,
+        """            Path location = folder.resolve(assetName);
+            AssetUtils.addTask(!Files.exists(location), new AssetUtils.ClientJarTask("assets/minecraft/" + asset,""",
+        """            Path location = folder.resolve(assetName);
+            if (!Files.exists(location)) {
+                String resource = "purpurbedrock/default_player_skins/" + (slim ? "slim/" : "wide/") + assetName;
+                try (InputStream bundled = ProvidedSkins.class.getClassLoader().getResourceAsStream(resource)) {
+                    if (bundled == null) throw new IOException("Bundled default skin missing: " + resource);
+                    Files.createDirectories(folder);
+                    try {
+                        Files.copy(bundled, location);
+                    } catch (java.nio.file.FileAlreadyExistsException ignored) {
+                        // Another initializer supplied the file after our existence check.
+                    }
+                } catch (IOException | SecurityException e) {
+                    GeyserImpl.getInstance().getLogger().error("Cannot initialize default skin " + location, e);
+                }
+            }
+            AssetUtils.addTask(!Files.exists(location), new AssetUtils.ClientJarTask("assets/minecraft/" + asset,""",
+        "ProvidedSkins.seedOfflineDefaults",
+    )
+    replace_exact(
+        provided_skins,
+        """                                image = ImageIO.read(stream);
+                            }
+
+                            byte[] byteData""",
+        """                                image = ImageIO.read(stream);
+                            }
+                            if (image == null) throw new IOException("Invalid default skin image: " + location);
+
+                            byte[] byteData""",
+        "ProvidedSkins.validateImage",
+    )
+
+    # Some extensions include an optional human-readable description in their YAML.
+    # Accept this metadata without relaxing validation of other unknown fields or API compatibility.
+    extension_description = root / "core/src/main/java/org/geysermc/geyser/extension/GeyserExtensionDescription.java"
+    replace_exact(
+        extension_description,
+        """        String version;
+        String author;
+        List<String> authors;""",
+        """        String version;
+        String author;
+        String description;
+        List<String> authors;""",
+        "GeyserExtensionDescription.optionalDescription",
+    )
+
     minecraft_locale = root / "core/src/main/java/org/geysermc/geyser/text/MinecraftLocale.java"
     replace_exact(
         minecraft_locale,
