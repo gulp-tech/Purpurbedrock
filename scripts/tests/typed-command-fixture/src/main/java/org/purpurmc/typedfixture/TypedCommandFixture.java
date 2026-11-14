@@ -16,8 +16,12 @@ public final class TypedCommandFixture extends JavaPlugin implements Listener {
         java.util.Objects.requireNonNull(getCommand("typedsecret")).setTabCompleter((sender, command, alias, args) -> List.of("private_fixture_value"));
     }
     @EventHandler public void onJoin(PlayerJoinEvent event) {
-        event.getPlayer().addAttachment(this, "typedfixture.secret", event.getPlayer().getName().equals("RealTabA"));
-        event.getPlayer().updateCommands();
+        var player = event.getPlayer();
+        player.addAttachment(this, "typedfixture.secret", player.getName().equals("RealTabA"));
+        getServer().getScheduler().runTaskLater(this, () -> {
+            getLogger().info("TYPED_FIXTURE_PERMISSION " + player.getName() + "=" + player.hasPermission("typedfixture.secret"));
+            player.updateCommands();
+        }, 40L);
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
@@ -25,6 +29,7 @@ public final class TypedCommandFixture extends JavaPlugin implements Listener {
         if (event.isAsynchronous()) return;
         for (String name : List.of("home", "warp", "tpa", "typedsecret")) {
             CommandNode root = event.getCommandNode().getChild(name);
+            if (name.equals("typedsecret")) getLogger().info("TYPED_FIXTURE_TREE " + event.getPlayer().getName() + "=" + (root != null));
             if (root != null) {
                 // The advertised root has no STRING parameter. The server-side command
                 // and its real Bukkit completer remain unchanged.

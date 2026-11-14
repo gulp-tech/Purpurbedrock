@@ -103,7 +103,7 @@ jobs:
               except ProcessLookupError: pass
               output.close()
               lines = pathlib.Path('/tmp/ess-server.log').read_text(errors='replace').splitlines()
-              relevant = [line for line in lines if any(term in line for term in ('Essentials','issued server command','PurpurBedrockCompletions','WARN','ERROR'))]
+              relevant = [line for line in lines if any(term in line for term in ('Essentials','issued server command','PurpurBedrockCompletions','TYPED_FIXTURE','WARN','ERROR'))]
               text = '\n'.join(relevant[-25:]).replace('%','%25').replace('\r','%0D').replace('\n','%0A')
               print('::notice title=Essentials server excerpt::' + text[-7000:])
           PY
