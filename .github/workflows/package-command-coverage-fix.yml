@@ -1,0 +1,44 @@
+name: Package large command coverage candidate
+on:
+  push:
+    branches: ['arena/**']
+    paths: ['.github/workflows/package-command-coverage-fix.yml']
+permissions:
+  actions: read
+  contents: write
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify exact core and command tests
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          for spec in \
+            '43581423312 3e5d79a1af6857f3428f440c9be228d8b0ab2b5c build.yml' \
+            '43582697845 d104c5d1160ef4e35efed431b75401a56b59b1e8 test-completion-coverage.yml'; do
+            read -r run sha workflow <<< "$spec"
+            test "$(gh run view "$run" --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)" = success
+            test "$(gh run view "$run" --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha)" = "$sha"
+            test "$(gh run view "$run" --repo "$GITHUB_REPOSITORY" --json workflowDatabaseId --jq .workflowDatabaseId)" = "$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow" --jq .id)"
+          done
+      - uses: actions/download-artifact@v4
+        with:
+          name: purpurbedrock-26.2
+          path: artifacts
+          repository: ${{ github.repository }}
+          run-id: 43581423312
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Prepare candidate
+        run: |
+          set -euo pipefail
+          (cd artifacts && sha256sum -c purpurbedrock-26.2.jar.sha256)
+          cp artifacts/purpurbedrock-26.2.jar purpurbedrock-26.2-tab-coverage-test.jar
+          sha256sum purpurbedrock-26.2-tab-coverage-test.jar | tee purpurbedrock-26.2-tab-coverage-test.jar.sha256
+          echo "::notice title=Candidate SHA256::$(cat purpurbedrock-26.2-tab-coverage-test.jar.sha256)"
+      - name: Publish separate test candidate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload v26.2.0-bedrock purpurbedrock-26.2-tab-coverage-test.jar purpurbedrock-26.2-tab-coverage-test.jar.sha256 --repo "$GITHUB_REPOSITORY" --clobber
