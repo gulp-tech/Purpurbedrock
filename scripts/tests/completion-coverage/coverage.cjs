@@ -37,7 +37,15 @@ async function main() {
     if (a.spawned && b.spawned && a.enums.get(enumName('home'))?.includes('TabTestA_home')) break
     await pause(100)
   }
-  await pause(30000)
+  // The production ticker is deliberately limited to two shared steps per tick.
+  // Allow large command registries to be scanned without raising that budget.
+  for (let i = 0; i < 1200; i++) {
+    if (a.error || b.error) throw Error(`${a.error || ''} ${b.error || ''}`)
+    if (a.enums.get(enumName('vac'))?.includes('TabTestA_vac') &&
+        a.enums.get(enumName('zzcoverage'))?.includes('TabTestA_zzcoverage') &&
+        allChoices(a, 'damage').some(x => /(^|:)fall$/.test(x))) break
+    await pause(100)
+  }
   if (!a.spawned || !b.spawned) throw Error('Synthetic clients did not spawn')
   for (const label of ['gamemode', 'warp', 'damage']) {
     const definition = root(a, label)
@@ -55,7 +63,9 @@ async function main() {
     many_commands_vac: Boolean(a.enums.get(enumName('vac'))?.includes('TabTestA_vac')),
     many_commands_tail: Boolean(a.enums.get(enumName('zzcoverage'))?.includes('TabTestA_zzcoverage')),
   }
-  for (const [key, value] of Object.entries(checks)) console.log(`::notice title=Completion coverage::${key}=${value}`)
+  console.log('::notice title=Completion coverage summary::' + JSON.stringify({checks,
+    roots: Object.fromEntries(['home', 'warp', 'tpa', 'vac', 'zzcoverage'].map(label => [label, Boolean(root(a, label))])),
+    enums: a.enums.size, packets: a.packets.length}))
   for (const label of ['home', 'warp', 'wild', 'gamemode', 'damage', 'give']) {
     const def = root(a, label)
     console.log(`::notice title=Advertised command::${label}=${Boolean(def)} args=${def?.overloads.length || 0} choices=${allChoices(a, label).length}`)

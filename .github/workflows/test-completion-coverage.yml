@@ -91,7 +91,7 @@ jobs:
                   time.sleep(1)
               else: raise RuntimeError('Timed out waiting for server')
               testdir = pathlib.Path(os.environ['GITHUB_WORKSPACE']) / 'scripts/tests/completion-coverage'
-              subprocess.run(['node', 'coverage.cjs'], cwd=testdir, check=True, timeout=180)
+              subprocess.run(['node', 'coverage.cjs'], cwd=testdir, check=True, timeout=240)
               server.stdin.write('stop\n'); server.stdin.flush(); server.wait(timeout=30)
           finally:
               try: os.killpg(server.pid, signal.SIGKILL)
