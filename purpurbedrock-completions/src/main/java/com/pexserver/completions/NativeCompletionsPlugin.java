@@ -201,7 +201,10 @@ public final class NativeCompletionsPlugin extends JavaPlugin implements Listene
         }
         // Give existing plugin completions priority under the shared per-player candidate cap.
         List<CommandData> definitions = new ArrayList<>(baseline.getCommands());
-        definitions.sort(Comparator.comparing(data -> !PacketComposer.generic(data)));
+        definitions.sort(Comparator.comparing((CommandData data) -> !PacketComposer.generic(data))
+                // Namespaced aliases can otherwise consume the cap before normal commands.
+                .thenComparing(data -> data.getName().contains(":"))
+                .thenComparing(CommandData::getName, String.CASE_INSENSITIVE_ORDER));
         for (CommandData data : definitions) {
             String label = data.getName().toLowerCase(Locale.ROOT);
             boolean generic = PacketComposer.generic(data);
@@ -383,6 +386,11 @@ public final class NativeCompletionsPlugin extends JavaPlugin implements Listene
                     .map(s -> s.strip().isEmpty() ? List.<String>of() : List.of(s.strip().split("\\s+"))).toList();
             extra.put(label.toLowerCase(Locale.ROOT), contexts);
         }
+        CompletionCapacity.Values capacity = CompletionCapacity.effective(
+                clamp(c.getInt("max-commands-per-player", 512), 1, 1024),
+                clamp(c.getInt("max-total-nodes-per-player", 512), 1, 4096),
+                clamp(c.getInt("max-total-candidates-per-player", 4096), 1, 65536),
+                c.getBoolean("upgrade-legacy-default-capacity", true));
         return new Settings(clamp(c.getInt("refresh-ticks", 100), 20, 12000),
                 clamp(c.getInt("queries-per-tick", 8), 1, 128),
                 nanos(c.getDouble("budget-millis-per-tick", 2), 0.1, 10),
@@ -392,9 +400,7 @@ public final class NativeCompletionsPlugin extends JavaPlugin implements Listene
                         clamp(c.getInt("max-candidates-per-node", 64), 1, 512),
                         clamp(c.getInt("max-branches-per-command", 64), 1, 256),
                         clamp(c.getInt("max-candidate-length", 96), 1, 256)),
-                clamp(c.getInt("max-commands-per-player", 512), 1, 1024),
-                clamp(c.getInt("max-total-nodes-per-player", 512), 1, 4096),
-                clamp(c.getInt("max-total-candidates-per-player", 8192), 1, 65536),
+                capacity.commands(), capacity.nodes(), capacity.candidates(),
                 names(c.getStringList("include-commands")), names(c.getStringList("exclude-commands")),
                 c.getStringList("prefix-probes").stream().filter(s -> !s.isBlank() && s.length() <= 16).limit(16).toList(),
                 Map.copyOf(extra),

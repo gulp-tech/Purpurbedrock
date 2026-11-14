@@ -7,9 +7,13 @@ slow-query-millis: 10.0
 max-depth: 3
 max-nodes-per-command: 16
 max-candidates-per-node: 32
-max-commands-per-player: 128
-max-total-nodes-per-player: 128
-max-total-candidates-per-player: 1024
+# Old unmodified 128/128/1024 defaults are used as 512/512/4096 at runtime.
+# Set this to false to keep the old limits, or customize any of the three values.
+# Query/tick budgets and slow-completer protection remain unchanged.
+upgrade-legacy-default-capacity: true
+max-commands-per-player: 512
+max-total-nodes-per-player: 512
+max-total-candidates-per-player: 4096
 max-branches-per-command: 16
 max-candidate-length: 96
 include-commands: []
