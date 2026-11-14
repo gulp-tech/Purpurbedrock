@@ -2,7 +2,7 @@ name: Investigate Bedrock completion coverage
 on:
   push:
     branches: ['arena/**']
-    paths: ['.github/workflows/test-completion-coverage.yml']
+    paths: ['.github/workflows/test-completion-coverage.yml', 'scripts/tests/completion-coverage/**']
   workflow_dispatch:
     inputs:
       run_id:

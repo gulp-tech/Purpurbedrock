@@ -51,6 +51,9 @@ async function main() {
     typed_paper: allChoices(a, 'wild').includes('TabTestA_typed'),
     vanilla_gamemode: ['survival', 'creative'].every(x => allChoices(a, 'gamemode').includes(x)),
     vanilla_damage: allChoices(a, 'damage').some(x => /(^|:)fall$/.test(x)),
+    many_commands_tpa: Boolean(a.enums.get(enumName('tpa'))?.includes('TabTestA_tpa')),
+    many_commands_vac: Boolean(a.enums.get(enumName('vac'))?.includes('TabTestA_vac')),
+    many_commands_tail: Boolean(a.enums.get(enumName('zzcoverage'))?.includes('TabTestA_zzcoverage')),
   }
   for (const [key, value] of Object.entries(checks)) console.log(`::notice title=Completion coverage::${key}=${value}`)
   for (const label of ['home', 'warp', 'wild', 'gamemode', 'damage', 'give']) {

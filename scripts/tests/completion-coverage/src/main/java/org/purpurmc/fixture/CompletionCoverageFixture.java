@@ -20,6 +20,10 @@ public final class CompletionCoverageFixture extends JavaPlugin implements Liste
         Objects.requireNonNull(getCommand("home")).setTabCompleter((sender, command, label, args) ->
                 sender instanceof Player p && args.length == 1 ? List.of(p.getName() + "_home") : List.of());
         Objects.requireNonNull(getCommand("warp")).setTabCompleter((sender, command, label, args) -> List.of());
+        // Simulate a plugin-heavy server, including namespaced registrations and commands
+        // sorted after the first 128 slots. This fixture must never ship in the core.
+        for (int i = 0; i < 180; i++) registerGeneric(String.format(Locale.ROOT, "bulk%03d", i));
+        for (String label : List.of("tpa", "vac", "zzcoverage")) registerGeneric(label);
         getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event -> {
             var root = Commands.literal("wild")
                 .then(Commands.argument("amount", IntegerArgumentType.integer())
@@ -29,6 +33,14 @@ public final class CompletionCoverageFixture extends JavaPlugin implements Liste
                             return builder.buildFuture();
                         }).executes(ctx -> 1)));
             event.registrar().register(root.build(), "Test typed command");
+        });
+    }
+    private void registerGeneric(String label) {
+        Bukkit.getCommandMap().register("coverage", new org.bukkit.command.Command(label) {
+            @Override public boolean execute(org.bukkit.command.CommandSender sender, String alias, String[] args) { return true; }
+            @Override public List<String> tabComplete(org.bukkit.command.CommandSender sender, String alias, String[] args) {
+                return sender instanceof Player p && args.length == 1 ? List.of(p.getName() + "_" + label) : List.of();
+            }
         });
     }
     @EventHandler public void join(PlayerJoinEvent event) {
