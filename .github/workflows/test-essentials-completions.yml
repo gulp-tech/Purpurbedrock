@@ -37,8 +37,8 @@ jobs:
       - name: Verify selected core build
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RUN_ID: ${{ inputs.run_id || '43581423312' }}
-          EXPECTED_SHA: ${{ inputs.head_sha || '3e5d79a1af6857f3428f440c9be228d8b0ab2b5c' }}
+          RUN_ID: ${{ inputs.run_id || '43615861086' }}
+          EXPECTED_SHA: ${{ inputs.head_sha || '021097fbc49fcf804614cf4766ea74395f186017' }}
         run: |
           set -euo pipefail
           [[ "$RUN_ID" =~ ^[0-9]+$ ]]
@@ -51,7 +51,7 @@ jobs:
           name: purpurbedrock-26.2
           path: /tmp/ess-core
           repository: ${{ github.repository }}
-          run-id: ${{ inputs.run_id || '43581423312' }}
+          run-id: ${{ inputs.run_id || '43615861086' }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Download official EssentialsX fixture
         env:

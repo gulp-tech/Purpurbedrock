@@ -144,6 +144,16 @@ public final class InventoryFixture extends JavaPlugin implements Listener {
         }
         @Override public Inventory getInventory() { return inventory; }
     }
+    private static final class CloseOpenHolder implements InventoryHolder {
+        final int page;
+        final Inventory inventory;
+        CloseOpenHolder(int page) {
+            this.page = page;
+            inventory = Bukkit.createInventory(this, 27, Component.text("Close-open page " + page));
+            inventory.setItem(0, new ItemStack(ITEMS[page]));
+        }
+        @Override public Inventory getInventory() { return inventory; }
+    }
     private int openContainerId(Player player) throws ReflectiveOperationException {
         Object handle = player.getClass().getMethod("getHandle").invoke(player);
         Object menu = handle.getClass().getField("containerMenu").get(handle);
@@ -192,12 +202,24 @@ public final class InventoryFixture extends JavaPlugin implements Listener {
         Objects.requireNonNull(getCommand("inventoryfixture")).setExecutor((sender, command, label, args) -> {
             if (sender instanceof Player player) {
                 if (args.length > 0 && args[0].equals("stale")) player.openInventory(new StaleHolder(0).inventory);
+                else if (args.length > 0 && args[0].equals("closeopen")) player.openInventory(new CloseOpenHolder(0).inventory);
                 else player.openInventory(new Holder(0).inventory);
             }
             return true;
         });
     }
     @EventHandler public void click(InventoryClickEvent event) {
+        if (event.getView().getTopInventory().getHolder() instanceof CloseOpenHolder holder) {
+            event.setCancelled(true);
+            if (event.getRawSlot() != 0 || !(event.getWhoClicked() instanceof Player player) || holder.page >= 2) return;
+            // Equivalent Bukkit operations to a close followed by opening another menu,
+            // not an assertion about a specific plugin's action scheduling.
+            Bukkit.getScheduler().runTask(this, () -> {
+                player.closeInventory();
+                player.openInventory(new CloseOpenHolder(holder.page + 1).inventory);
+            });
+            return;
+        }
         if (event.getView().getTopInventory().getHolder() instanceof StaleHolder stale) {
             event.setCancelled(true);
             if (event.getRawSlot() != 0 || !(event.getWhoClicked() instanceof Player player) || stale.page >= 2) return;

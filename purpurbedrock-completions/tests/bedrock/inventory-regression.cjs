@@ -13,6 +13,7 @@ const replies = []
 const items = new Map()
 const menuReports = []
 const staleReports = []
+const modes = []
 const client = bedrock.createClient({ host: '127.0.0.1', port: 19132,
   version: '1.26.51', username: 'InvTest', offline: true, transport: 'raknet', conLog: () => {} })
 client.prependOnceListener('session', profile => { profile.xuid = '30101' })
@@ -29,6 +30,7 @@ client.on('item_registry', packet => { for (const item of packet.itemstates) ite
 client.on('inventory_content', packet => contents.push(packet))
 client.on('inventory_slot', packet => slots.push(packet))
 client.on('item_stack_response', packet => replies.push(packet))
+client.on('set_player_game_type', packet => modes.push(packet))
 client.on('text', packet => {
   if (typeof packet.message !== 'string') return
   if (packet.message.includes('MENU_INTEGRITY')) menuReports.push(packet.message)
@@ -169,6 +171,41 @@ async function main() {
   click(0, -53)
   await until('stale fixture third page remains clickable', () => contents.slice(beforeThird).some(p => p.input?.[0]?.network_id === items.get('minecraft:gold_ingot')))
   console.log('PASS stale Java close does not break the next submenu')
+  const afterStale = opens.at(-1), beforeClose = closes.length
+  client.queue('container_close', { window_id: afterStale.window_id, window_type: afterStale.window_type, server: false })
+  await until('stale fixture closes normally', () => closes.length > beforeClose)
+  await pause(1200)
+  const start = contents.length
+  client.queue('command_request', { command: '/inventoryfixture closeopen',
+    origin: { type: 'player', uuid: randomUUID(), request_id: '', player_entity_id: 0n }, internal: false, version: '' })
+  await until('close-open first page', () => contents.slice(start).some(p => p.input?.[0]?.network_id === items.get('minecraft:diamond')))
+  for (const [id, item] of [[-61, 'emerald'], [-63, 'gold_ingot']]) {
+    const before = contents.length
+    click(0, id)
+    await until('close-open next page ' + item, () => contents.slice(before).some(p => p.input?.[0]?.network_id === items.get('minecraft:' + item)))
+  }
+  const beforeReport = menuReports.length
+  client.queue('command_request', { command: '/integrityfixture menucheck',
+    origin: { type: 'player', uuid: randomUUID(), request_id: '', player_entity_id: 0n }, internal: false, version: '' })
+  await until('post-transition conservation report', () => menuReports.length > beforeReport)
+  assert(menuReports.at(-1).includes('owned=0 ground=0'), 'transition clicks leaked menu icons')
+  console.log('PASS close-then-open transitions and post-transition conservation')
+  const endMenu = opens.at(-1), closesBeforeMode = closes.length
+  client.queue('container_close', { window_id: endMenu.window_id, window_type: endMenu.window_type, server: false })
+  await until('close menu before changing gamemode', () => closes.length > closesBeforeMode)
+  let priorModes = modes.length
+  client.queue('command_request', { command: '/gamemode creative',
+    origin: { type: 'player', uuid: randomUUID(), request_id: '', player_entity_id: 0n }, internal: false, version: '' })
+  await until('creative mode packet', () => modes.length > priorModes)
+  priorModes = modes.length
+  client.queue('command_request', { command: '/gamemode survival',
+    origin: { type: 'player', uuid: randomUUID(), request_id: '', player_entity_id: 0n }, internal: false, version: '' })
+  await until('survival mode packet', () => modes.length > priorModes)
+  const opensBeforeRecovery = opens.length
+  openPlayerInventory()
+  await until('player inventory opens after creative to survival', () => opens.length > opensBeforeRecovery)
+  assert.equal(opens.at(-1).window_type, 'inventory')
+  console.log('PASS mode packets and player inventory recovery (creative UI not tested)')
 }
 main().then(() => { process.exitCode = 0 }).catch(e => { console.error(e); process.exitCode = 1 })
   .finally(async () => { client.close(); await pause(300); process.exit(process.exitCode) })
