@@ -45,7 +45,8 @@ async function main() {
     if (choices(a, 'home').includes('alicebase') && choices(b, 'home').includes('bobbase') && choices(a, 'warp').includes('plaza') && choices(a, 'tpa').includes('RealTabB') && choices(a, 'typedsecret').includes('private_fixture_value')) break
     await pause(200)
   }
-  const detail = Object.fromEntries(['home', 'warp', 'tpa'].map(name => {
+  command(a, '/pbtabs inspect RealTabA typedsecret'); await pause(1000)
+  const detail = Object.fromEntries(['home', 'warp', 'tpa', 'typedsecret'].map(name => {
     const d = root(a, name)
     return [name, { root: d?.name, overloads: d?.overloads.map(o => o.parameters.map(p => ({ name: p.parameter_name, enum: p.enum_type, type: p.value_type }))), choices: choices(a, name).slice(0, 20) }]
   }))
