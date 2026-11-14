@@ -68,6 +68,13 @@ jobs:
           cp /tmp/ess-core/purpurbedrock-26.2.jar /tmp/ess-server/server.jar
           cp scripts/tests/typed-command-fixture/build/libs/typed-command-fixture.jar /tmp/ess-server/plugins/
           echo 'eula=true' > /tmp/ess-server/eula.txt
+          # Essentials registers a large tree. Avoid the advertisement cap in
+          # this permissions-focused fixture; the separate coverage job tests 512.
+          cat > /tmp/ess-server/bedrock.yml <<'CONFIG'
+          gameplay:
+            max-client-commands: 1024
+          config-schema: 6
+          CONFIG
           cat > /tmp/ess-server/ops.json <<'JSON'
           [{"uuid":"968cbe2f-be26-3edd-b0d8-8da553f92feb","name":"RealTabA","level":4,"bypassesPlayerLimit":false},{"uuid":"337d2c30-aba9-3266-8ed4-f2b5fd319c64","name":"RealTabB","level":4,"bypassesPlayerLimit":false}]
           JSON

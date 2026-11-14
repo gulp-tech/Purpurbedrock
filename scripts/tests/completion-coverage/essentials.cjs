@@ -62,7 +62,7 @@ async function main() {
       o.parameters[0].enum_type === 'valid' && o.parameters[0].value_type === 70)),
     noDuplicateRoots: ['home','warp','tpa'].every(name => root(a, name)?.overloads.filter(o =>
       o.parameters.length === 1 && o.parameters[0].enum_type === 'soft_enum').length === 1) }
-  console.log('::notice title=Real Essentials completion test::' + JSON.stringify({ checks, detail, messages: a.texts.slice(-8) }))
+  console.log('::notice title=Real Essentials completion test::' + JSON.stringify({ checks, detail, commandCount: a.latest?.command_data.length, matches: a.latest?.command_data.filter(d => /typedsecret/i.test(d.name)).map(d => d.name), messages: a.texts.slice(-8) }))
   assert(Object.values(checks).every(Boolean), 'Missing real EssentialsX completions or privacy violation')
   command(a, '/home alicebase')
   await until('typed plugin command still executes on server', () => a.texts.some(t => /Teleporting to.*alicebase/i.test(t)), 15000)
