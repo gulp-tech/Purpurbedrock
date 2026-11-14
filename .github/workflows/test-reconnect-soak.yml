@@ -56,7 +56,7 @@ jobs:
           enforce-secure-profile=false
           PROPS
           python3 -u - <<'PY'
-          import os, pathlib, select, signal, subprocess, time
+          import os, pathlib, re, select, signal, subprocess, time
           root = pathlib.Path(os.environ['GITHUB_WORKSPACE'])
           directory = pathlib.Path('/tmp/soak-server')
           results = pathlib.Path('/tmp/soak-results')
@@ -73,7 +73,7 @@ jobs:
                   # This command triggers a full GC on an isolated CI server, never production.
                   result = subprocess.run(['jcmd',str(server.pid),'GC.class_histogram'], text=True, capture_output=True, timeout=90, check=True)
                   (results / (label + '.txt')).write_text(result.stdout)
-                  selected = [line for line in result.stdout.splitlines() if 'org.geysermc.geyser.session.GeyserSession ' in line]
+                  selected = [line for line in result.stdout.splitlines() if re.search(r'\sorg\.geysermc\.geyser\.session\.GeyserSession(?:\s|$)', line)]
                   print('::notice title=Reconnect heap sample::' + label + ' session histogram: ' + ('; '.join(selected) if selected else 'none'), flush=True)
                   return selected
               snapshot('baseline')
