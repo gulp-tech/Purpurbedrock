@@ -6,16 +6,24 @@ import com.mojang.brigadier.tree.CommandNode;
 import java.util.List;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
 /** Test-only: alter the advertised tree without changing Essentials' actual Bukkit completer. */
 public final class TypedCommandFixture extends JavaPlugin implements Listener {
-    @Override public void onEnable() { getServer().getPluginManager().registerEvents(this, this); }
+    @Override public void onEnable() {
+        getServer().getPluginManager().registerEvents(this, this);
+        java.util.Objects.requireNonNull(getCommand("typedsecret")).setTabCompleter((sender, command, alias, args) -> List.of("private_fixture_value"));
+    }
+    @EventHandler public void onJoin(PlayerJoinEvent event) {
+        event.getPlayer().addAttachment(this, "typedfixture.secret", event.getPlayer().getName().equals("RealTabA"));
+        event.getPlayer().updateCommands();
+    }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
     @EventHandler public void onCommands(AsyncPlayerSendCommandsEvent<?> event) {
         if (event.isAsynchronous()) return;
-        for (String name : List.of("home", "warp", "tpa")) {
+        for (String name : List.of("home", "warp", "tpa", "typedsecret")) {
             CommandNode root = event.getCommandNode().getChild(name);
             if (root != null) {
                 // The advertised root has no STRING parameter. The server-side command

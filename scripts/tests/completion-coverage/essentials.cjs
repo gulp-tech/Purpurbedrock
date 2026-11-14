@@ -42,7 +42,7 @@ async function main() {
   // Execution changes trigger a per-player refresh; avoid changing state while scanning.
   const untilTime = Date.now() + 100000
   while (Date.now() < untilTime) {
-    if (choices(a, 'home').includes('alicebase') && choices(b, 'home').includes('bobbase') && choices(a, 'warp').includes('plaza') && choices(a, 'tpa').includes('RealTabB')) break
+    if (choices(a, 'home').includes('alicebase') && choices(b, 'home').includes('bobbase') && choices(a, 'warp').includes('plaza') && choices(a, 'tpa').includes('RealTabB') && choices(a, 'typedsecret').includes('private_fixture_value')) break
     await pause(200)
   }
   const detail = Object.fromEntries(['home', 'warp', 'tpa'].map(name => {
@@ -52,6 +52,8 @@ async function main() {
   const checks = { alice: choices(a, 'home').includes('alicebase'), bob: choices(b, 'home').includes('bobbase'),
     isolated: !choices(b, 'home').includes('alicebase') && !choices(a, 'home').includes('bobbase'),
     warp: choices(a, 'warp').includes('plaza'), tpa: choices(a, 'tpa').includes('RealTabB'),
+    permittedTyped: choices(a, 'typedsecret').includes('private_fixture_value'),
+    restrictedTyped: !root(b, 'typedsecret') && ![...b.enums.values()].flat().includes('private_fixture_value'),
     original: ['home','warp','tpa'].every(name => choices(a, name).includes('fixturebranch')),
     // Protocol 1.26.51 encodes Cloudburst TEXT as parser ID 70; older
     // minecraft-data parser names still use an earlier numeric mapping.
