@@ -296,6 +296,21 @@ class PacketComposerTest {
             assertEquals(original, captured.get());
         } finally { channel.finishAndReleaseAll(); }
     }
+    @Test void generatedTypedPluginPacketIsNotPatchedTwice() {
+        var model = new Command("home", List.of(new Node(List.of(), List.of("private_home")))).asTypedPlugin();
+        AvailableCommandsPacket source = new AvailableCommandsPacket();
+        source.getCommands().add(original("home", CommandParam.TARGET));
+        AvailableCommandsPacket generated = PacketComposer.patch(source, Map.of("home", model));
+        CommandPacketInterceptor hook = new CommandPacketInterceptor(() -> Map.of("home", model), p -> fail(), e -> fail(e));
+        EmbeddedChannel channel = new EmbeddedChannel(hook);
+        try {
+            hook.markGenerated(generated);
+            channel.writeOutbound(BedrockPacketWrapper.create(0, 0, 0, generated, null));
+            BedrockPacketWrapper written = channel.readOutbound();
+            assertEquals(3, ((AvailableCommandsPacket) written.getPacket()).getCommands().getFirst().getOverloads().length);
+            written.release();
+        } finally { channel.finishAndReleaseAll(); }
+    }
     @Test void subclientsAndAlreadyEncodedPacketsPassThrough() {
         CommandPacketInterceptor hook = new CommandPacketInterceptor(() -> Map.of("home", model("base")),
                 p -> fail("Must not capture subclient"), e -> fail(e));

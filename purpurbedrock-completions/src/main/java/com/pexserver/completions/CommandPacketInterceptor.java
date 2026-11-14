@@ -31,7 +31,9 @@ public final class CommandPacketInterceptor extends ChannelOutboundHandlerAdapte
             try {
                 AvailableCommandsPacket split = PacketComposer.splitGenericCommands(available);
                 if (!owned) baselineReceived.accept(PacketComposer.copy(split));
-                AvailableCommandsPacket patched = PacketComposer.patch(split, models.get());
+                // Generated packets have already been composed (or deliberately
+                // restore the baseline on shutdown); never append their hints twice.
+                AvailableCommandsPacket patched = owned ? split : PacketComposer.patch(split, models.get());
                 wrapper.setPacket(PacketComposer.uniqueHardEnums(patched));
             } catch (RuntimeException | LinkageError e) {
                 failure.accept(e); // Leave the original packet intact and continue transmission.

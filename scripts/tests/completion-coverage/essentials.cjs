@@ -53,8 +53,12 @@ async function main() {
     isolated: !choices(b, 'home').includes('alicebase') && !choices(a, 'home').includes('bobbase'),
     warp: choices(a, 'warp').includes('plaza'), tpa: choices(a, 'tpa').includes('RealTabB'),
     original: ['home','warp','tpa'].every(name => choices(a, name).includes('fixturebranch')),
+    // Protocol 1.26.51 encodes Cloudburst TEXT as parser ID 70; older
+    // minecraft-data parser names still use an earlier numeric mapping.
     freeTail: ['home','warp','tpa'].every(name => root(a, name)?.overloads.some(o => o.parameters.length === 1 &&
-      !['enum', 'soft_enum'].includes(o.parameters[0].enum_type) && index(o.parameters[0].value_type) === parserIds.raw_text)) }
+      o.parameters[0].enum_type === 'valid' && o.parameters[0].value_type === 70)),
+    noDuplicateRoots: ['home','warp','tpa'].every(name => root(a, name)?.overloads.filter(o =>
+      o.parameters.length === 1 && o.parameters[0].enum_type === 'soft_enum').length === 1) }
   console.log('::notice title=Real Essentials completion test::' + JSON.stringify({ checks, detail, messages: a.texts.slice(-8) }))
   assert(Object.values(checks).every(Boolean), 'Missing real EssentialsX completions or privacy violation')
   command(a, '/home alicebase')
