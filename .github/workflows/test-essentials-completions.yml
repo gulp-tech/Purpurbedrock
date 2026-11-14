@@ -75,6 +75,10 @@ jobs:
             max-client-commands: 1024
           config-schema: 6
           CONFIG
+          mkdir -p /tmp/ess-server/plugins/PurpurBedrockCompletions
+          cat > /tmp/ess-server/plugins/PurpurBedrockCompletions/config.yml <<'CONFIG'
+          include-commands: [home, warp, tpa, typedsecret]
+          CONFIG
           cat > /tmp/ess-server/ops.json <<'JSON'
           [{"uuid":"968cbe2f-be26-3edd-b0d8-8da553f92feb","name":"RealTabA","level":4,"bypassesPlayerLimit":false},{"uuid":"337d2c30-aba9-3266-8ed4-f2b5fd319c64","name":"RealTabB","level":4,"bypassesPlayerLimit":false}]
           JSON
