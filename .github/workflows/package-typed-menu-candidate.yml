@@ -1,0 +1,46 @@
+name: Package typed command and menu candidate
+on:
+  push:
+    branches: ['arena/**']
+    paths: ['.github/workflows/package-typed-menu-candidate.yml']
+permissions:
+  actions: read
+  contents: write
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify exact build and independent regressions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          for spec in \
+            '43617740404 b4a0a9229fa3855b10ba227dc878d72f81f15d11 build.yml' \
+            '43619142530 0ba2bfc83b7308fe51d2ea1c6291e9a8fbf07b01 test-inventory-regression.yml' \
+            '43619142588 0ba2bfc83b7308fe51d2ea1c6291e9a8fbf07b01 test-completion-coverage.yml' \
+            '43620804023 649ff4df0f686ff3f2e92c994b646dbc64d07527 test-essentials-completions.yml'; do
+            read -r run sha workflow <<< "$spec"
+            test "$(gh run view "$run" --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)" = success
+            test "$(gh run view "$run" --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha)" = "$sha"
+            test "$(gh run view "$run" --repo "$GITHUB_REPOSITORY" --json workflowDatabaseId --jq .workflowDatabaseId)" = "$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow" --jq .id)"
+          done
+      - uses: actions/download-artifact@v4
+        with:
+          name: purpurbedrock-26.2
+          path: artifacts
+          repository: ${{ github.repository }}
+          run-id: 43617740404
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Prepare test candidate
+        run: |
+          set -euo pipefail
+          (cd artifacts && sha256sum -c purpurbedrock-26.2.jar.sha256)
+          cp artifacts/purpurbedrock-26.2.jar purpurbedrock-26.2-typed-menu-test.jar
+          sha256sum purpurbedrock-26.2-typed-menu-test.jar | tee purpurbedrock-26.2-typed-menu-test.jar.sha256
+          echo "::notice title=Candidate SHA256::$(cat purpurbedrock-26.2-typed-menu-test.jar.sha256)"
+      - name: Publish separate test candidate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload v26.2.0-bedrock purpurbedrock-26.2-typed-menu-test.jar purpurbedrock-26.2-typed-menu-test.jar.sha256 --repo "$GITHUB_REPOSITORY" --clobber
