@@ -74,7 +74,7 @@ jobs:
                   result = subprocess.run(['jcmd',str(server.pid),'GC.class_histogram'], text=True, capture_output=True, timeout=90, check=True)
                   (results / (label + '.txt')).write_text(result.stdout)
                   selected = [line for line in result.stdout.splitlines() if 'org.geysermc.geyser.session.GeyserSession ' in line]
-                  print(label + ' session histogram: ' + ('; '.join(selected) if selected else 'none'), flush=True)
+                  print('::notice title=Reconnect heap sample::' + label + ' session histogram: ' + ('; '.join(selected) if selected else 'none'), flush=True)
               snapshot('baseline')
               testdir = root / 'purpurbedrock-completions/tests/bedrock'
               for phase, version in [('A','1.21.90'), ('B','1.26.51')]:
