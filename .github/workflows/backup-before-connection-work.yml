@@ -1,0 +1,34 @@
+name: Back up cores before connection investigation
+on:
+  push:
+    branches: ['arena/**']
+    paths: ['.github/workflows/backup-before-connection-work.yml']
+permissions:
+  contents: write
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Back up exact public cores and source
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir backup
+          gh release download v26.2.0-bedrock --repo "$GITHUB_REPOSITORY" --pattern 'purpurbedrock-26.2.jar' --dir backup
+          gh release download v26.2.0-bedrock --repo "$GITHUB_REPOSITORY" --pattern 'purpurbedrock-26.2-typed-menu-test.jar' --dir backup
+          echo '78b6f0e58298c1ef059b48608a82138e45848e56bdef3831b316266e133bafd6  backup/purpurbedrock-26.2.jar' | sha256sum -c
+          echo '3420f6f906dd54b51406d7bee14c616a7c0d4d47e18a5b78a56d4dbbe597c242  backup/purpurbedrock-26.2-typed-menu-test.jar' | sha256sum -c
+          unzip -t backup/purpurbedrock-26.2.jar >/dev/null
+          unzip -t backup/purpurbedrock-26.2-typed-menu-test.jar >/dev/null
+          mv backup/purpurbedrock-26.2.jar backup/purpurbedrock-26.2-before-connection-work.jar
+          mv backup/purpurbedrock-26.2-typed-menu-test.jar backup/purpurbedrock-26.2-typed-menu-before-connection-work.jar
+          git archive --format=tar 5a9ef7c3f944fdc8cd0758da053bb7c8d8a0d20e | gzip > backup/purpurbedrock-source-before-connection-work.tar.gz
+          gzip -t backup/purpurbedrock-source-before-connection-work.tar.gz
+          (cd backup && sha256sum *.jar *.tar.gz > SHA256-before-connection-work.txt)
+          cat backup/SHA256-before-connection-work.txt
+          gh release upload v26.2.0-bedrock backup/purpurbedrock-26.2-before-connection-work.jar backup/purpurbedrock-26.2-typed-menu-before-connection-work.jar backup/purpurbedrock-source-before-connection-work.tar.gz backup/SHA256-before-connection-work.txt --repo "$GITHUB_REPOSITORY"
