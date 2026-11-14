@@ -34,20 +34,22 @@ class PacketComposerTest {
             assertEquals(0, buffer.readableBytes());
         } finally { buffer.release(); }
     }
-    @Test void addsPluginHintsToTypedTreeWithoutRemovingOrBroadeningItsGrammar() {
+    @Test void addsPluginHintsAndFreeTextToTypedTreeWithoutRemovingOriginalGrammar() {
         CommandData base = original("home", CommandParam.TARGET);
         var input = new AvailableCommandsPacket(); input.getCommands().add(base);
-        var model = new Command("home", List.of(new Node(List.of(), List.of("private_home"))));
+        var model = new Command("home", List.of(new Node(List.of(), List.of("private_home")))).asTypedPlugin();
         CommandData patched = PacketComposer.patch(input, Map.of("home", model)).getCommands().getFirst();
-        assertEquals(2, patched.getOverloads().length);
+        assertEquals(3, patched.getOverloads().length);
         assertSame(base.getOverloads()[0], patched.getOverloads()[0]);
         assertEquals(CommandParam.TARGET, patched.getOverloads()[0].getOverloads()[0].getType());
-        var hint = patched.getOverloads()[1].getOverloads()[0];
+        var hint = patched.getOverloads()[2].getOverloads()[0];
         assertTrue(hint.getEnumData().isSoft());
         assertEquals(Set.of("private_home"), hint.getEnumData().getValues().keySet());
-        assertFalse(Arrays.stream(patched.getOverloads()).anyMatch(o -> o.getOverloads().length == 1 &&
+        assertTrue(Arrays.stream(patched.getOverloads()).anyMatch(o -> o.getOverloads().length == 1 &&
                 o.getOverloads()[0].getEnumData() == null && o.getOverloads()[0].getType() == CommandParam.TEXT));
         assertEquals(1, base.getOverloads().length);
+        assertFalse(PacketComposer.sameStructure(Map.of("home", model), Map.of("home", new Command("home", model.nodes()))));
+        assertTrue(CompletionBudget.bound(Map.of("home", model), 8, 8, 8).get("home").typedPlugin());
     }
     @Test void separatesIdenticalPluginRootsBeforeApplyingTheirOwnSuggestions() {
         CommandData original = original("home", CommandParam.STRING);

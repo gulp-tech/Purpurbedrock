@@ -232,7 +232,7 @@ public final class NativeCompletionsPlugin extends JavaPlugin implements Listene
                     if (elapsed > settings.slowNanos) throw new SlowCompleterException(label, elapsed);
                     return future;
                 };
-                round.pending.add(new ScanTask(label, new NativeArgumentScan(nativeData, settings.limits, bounded)));
+                round.pending.add(new ScanTask(label, new NativeArgumentScan(nativeData, settings.limits, bounded), false));
                 continue;
             }
             CompletionScan.AsyncProvider async = (prefix, partial) -> {
@@ -272,7 +272,7 @@ public final class NativeCompletionsPlugin extends JavaPlugin implements Listene
             };
             CompletionScan scan = new CompletionScan(label, settings.limits, async, resolver,
                     settings.prefixProbes, settings.extra.getOrDefault(label, List.of()));
-            round.pending.add(new ScanTask(label, scan));
+            round.pending.add(new ScanTask(label, scan, !generic));
         }
         return round;
     }
@@ -292,7 +292,8 @@ public final class NativeCompletionsPlugin extends JavaPlugin implements Listene
             try {
                 task.scan.step();
                 boolean done = task.scan.done();
-                round.dirty |= round.progress.update(done ? task.scan.result() : task.scan.snapshot(), done);
+                CompletionModel.Command observed = done ? task.scan.result() : task.scan.snapshot();
+                round.dirty |= round.progress.update(task.typedPlugin ? observed.asTypedPlugin() : observed, done);
                 if (!done) round.pending.add(task); // Give every command a chance before exploring deep branches.
             } catch (RuntimeException e) {
                 state.cooldowns.put(task.label, tick + 1200);
@@ -448,7 +449,7 @@ public final class NativeCompletionsPlugin extends JavaPlugin implements Listene
         RoundProgress progress; boolean dirty; long nextPublish;
         Round(long revision) { this.revision = revision; }
     }
-    private record ScanTask(String label, CompletionTask scan) {}
+    private record ScanTask(String label, CompletionTask scan, boolean typedPlugin) {}
     private static final class SlowCompleterException extends RuntimeException {
         SlowCompleterException(String label, long elapsedNanos) {
             super(String.format(Locale.ROOT, "SlowCompleterException (%.2f ms)", elapsedNanos / 1_000_000.0));

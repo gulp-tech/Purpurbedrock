@@ -12,14 +12,14 @@ final class RoundProgress {
     boolean update(Command observed, boolean finished) {
         Command previous = commands.get(observed.label());
         Command next = observed;
-        if (!finished && previous != null) {
+        if (!finished && previous != null && previous.typedPlugin() == observed.typedPlugin()) {
             Map<List<String>, Node> nodes = new LinkedHashMap<>();
             previous.nodes().forEach(node -> nodes.put(node.prefix(), node));
             observed.nodes().forEach(node -> nodes.put(node.prefix(), node));
             Map<ArgumentKey, Argument> args = new LinkedHashMap<>();
             previous.arguments().forEach(arg -> args.put(arg.key(), arg));
             observed.arguments().forEach(arg -> args.put(arg.key(), arg));
-            next = new Command(observed.label(), List.copyOf(nodes.values()), List.copyOf(args.values()));
+            next = new Command(observed.label(), List.copyOf(nodes.values()), List.copyOf(args.values()), observed.typedPlugin());
         }
         if (!next.hasCandidates()) next = null;
         if (Objects.equals(previous, next)) return false;

@@ -3,6 +3,14 @@ on:
   push:
     branches: ['arena/**']
     paths: ['.github/workflows/test-essentials-completions.yml', 'scripts/tests/completion-coverage/essentials.cjs', 'scripts/tests/typed-command-fixture/**']
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful core build run ID
+        required: true
+      head_sha:
+        description: Expected commit SHA of core build
+        required: true
 permissions:
   actions: read
   contents: read
@@ -29,17 +37,21 @@ jobs:
       - name: Verify selected core build
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ inputs.run_id || '43581423312' }}
+          EXPECTED_SHA: ${{ inputs.head_sha || '3e5d79a1af6857f3428f440c9be228d8b0ab2b5c' }}
         run: |
           set -euo pipefail
-          test "$(gh run view 43581423312 --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)" = success
-          test "$(gh run view 43581423312 --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha)" = '3e5d79a1af6857f3428f440c9be228d8b0ab2b5c'
-          test "$(gh run view 43581423312 --repo "$GITHUB_REPOSITORY" --json workflowDatabaseId --jq .workflowDatabaseId)" = "$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/build.yml" --jq .id)"
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)" = success
+          test "$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha)" = "$EXPECTED_SHA"
+          test "$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json workflowDatabaseId --jq .workflowDatabaseId)" = "$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/build.yml" --jq .id)"
       - uses: actions/download-artifact@v4
         with:
           name: purpurbedrock-26.2
           path: /tmp/ess-core
           repository: ${{ github.repository }}
-          run-id: 43581423312
+          run-id: ${{ inputs.run_id || '43581423312' }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Download official EssentialsX fixture
         env:

@@ -131,14 +131,13 @@ public final class PacketComposer {
             CommandData original = JavaArgumentHints.knownChoices(base);
             Command model = models.get(original.getName().toLowerCase(Locale.ROOT));
             if (model != null) original = arguments(original, model);
-            if (model == null || model.nodes().isEmpty()) {
+            if (model == null || model.nodes().isEmpty() || (!generic(original) && !model.typedPlugin())) {
                 result.getCommands().add(original); continue;
             }
-            boolean generic = generic(original);
             List<CommandOverloadData> overloads = new ArrayList<>(Arrays.asList(original.getOverloads()));
-            // Add a free-text tail only for generic roots. For typed plugin commands,
-            // preserve every original overload and add suggestion-only branches.
-            if (generic && overloads.stream().noneMatch(o -> o.getOverloads().length == 1 &&
+            // Preserve the typed tree while allowing arbitrary plugin arguments; Java
+            // still validates the actual command. Native trees never take this path.
+            if (overloads.stream().noneMatch(o -> o.getOverloads().length == 1 &&
                     o.getOverloads()[0].getEnumData() == null && o.getOverloads()[0].getType() == CommandParam.TEXT)) {
                 CommandParamData tail = new CommandParamData();
                 // MESSAGE is an intermediate grammar symbol on current Bedrock clients;
@@ -261,6 +260,7 @@ public final class PacketComposer {
     public static boolean sameStructure(Map<String, Command> old, Map<String, Command> next) {
         if (!old.keySet().equals(next.keySet())) return false;
         for (String key : old.keySet()) {
+            if (old.get(key).typedPlugin() != next.get(key).typedPlugin()) return false;
             if (!old.get(key).contexts().keySet().equals(next.get(key).contexts().keySet())) return false;
             if (!old.get(key).argumentContexts().keySet().equals(next.get(key).argumentContexts().keySet())) return false;
             if (!argumentEnumNames(old.get(key)).equals(argumentEnumNames(next.get(key)))) return false;

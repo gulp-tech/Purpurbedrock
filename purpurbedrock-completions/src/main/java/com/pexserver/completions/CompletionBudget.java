@@ -43,7 +43,7 @@ final class CompletionBudget {
         Map<String, Command> result = new LinkedHashMap<>();
         for (Command command : commands) {
             Command bounded = new Command(command.label(), nodesByCommand.getOrDefault(command.label(), List.of()),
-                    argsByCommand.getOrDefault(command.label(), List.of()));
+                    argsByCommand.getOrDefault(command.label(), List.of()), command.typedPlugin());
             if (bounded.hasCandidates()) result.put(command.label(), bounded);
         }
         return Map.copyOf(result);

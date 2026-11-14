@@ -12,9 +12,11 @@ public final class CompletionModel {
     public record Argument(ArgumentKey key, List<String> candidates) {
         public Argument { candidates = List.copyOf(candidates); }
     }
-    public record Command(String label, List<Node> nodes, List<Argument> arguments) {
+    public record Command(String label, List<Node> nodes, List<Argument> arguments, boolean typedPlugin) {
         public Command { nodes = List.copyOf(nodes); arguments = List.copyOf(arguments); }
-        public Command(String label, List<Node> nodes) { this(label, nodes, List.of()); }
+        public Command(String label, List<Node> nodes, List<Argument> arguments) { this(label, nodes, arguments, false); }
+        public Command(String label, List<Node> nodes) { this(label, nodes, List.of(), false); }
+        public Command asTypedPlugin() { return new Command(label, nodes, arguments, true); }
         public boolean hasCandidates() { return !nodes.isEmpty() || !arguments.isEmpty(); }
         public Map<List<String>, List<String>> contexts() {
             Map<List<String>, List<String>> result = new LinkedHashMap<>();
