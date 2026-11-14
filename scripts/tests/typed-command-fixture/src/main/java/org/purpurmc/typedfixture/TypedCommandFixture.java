@@ -17,7 +17,12 @@ public final class TypedCommandFixture extends JavaPlugin implements Listener {
         if (event.isAsynchronous()) return;
         for (String name : List.of("home", "warp", "tpa")) {
             CommandNode root = event.getCommandNode().getChild(name);
-            if (root != null) root.addChild(LiteralArgumentBuilder.literal("fixturebranch").executes(context -> 1).build());
+            if (root != null) {
+                // The advertised root has no STRING parameter. The server-side command
+                // and its real Bukkit completer remain unchanged.
+                root.getChildren().clear();
+                root.addChild(LiteralArgumentBuilder.literal("fixturebranch").executes(context -> 1).build());
+            }
         }
     }
 }

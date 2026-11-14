@@ -2,7 +2,7 @@ name: Test real Essentials command completions
 on:
   push:
     branches: ['arena/**']
-    paths: ['.github/workflows/test-essentials-completions.yml', 'scripts/tests/completion-coverage/essentials.cjs']
+    paths: ['.github/workflows/test-essentials-completions.yml', 'scripts/tests/completion-coverage/essentials.cjs', 'scripts/tests/typed-command-fixture/**']
 permissions:
   actions: read
   contents: read
