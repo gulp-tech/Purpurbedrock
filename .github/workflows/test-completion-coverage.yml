@@ -38,8 +38,8 @@ jobs:
       - name: Verify selected build
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RUN_ID: ${{ inputs.run_id || '43579741310' }}
-          EXPECTED_SHA: ${{ inputs.head_sha || '457a11cca8ef635ce336666411dd3c06cfc0ae13' }}
+          RUN_ID: ${{ inputs.run_id || '43581423312' }}
+          EXPECTED_SHA: ${{ inputs.head_sha || '3e5d79a1af6857f3428f440c9be228d8b0ab2b5c' }}
         run: |
           set -euo pipefail
           [[ "$RUN_ID" =~ ^[0-9]+$ ]]
@@ -54,7 +54,7 @@ jobs:
           name: purpurbedrock-26.2
           path: /tmp/coverage-artifacts
           repository: gulp-tech/Purpurbedrock
-          run-id: ${{ inputs.run_id || '43579741310' }}
+          run-id: ${{ inputs.run_id || '43581423312' }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Compare plugin, typed and vanilla command coverage
         run: |
@@ -66,6 +66,13 @@ jobs:
           max-commands-per-player: 128
           max-total-nodes-per-player: 128
           max-total-candidates-per-player: 1024
+          CONFIG
+          cat > /tmp/coverage-server/bedrock.yml <<'CONFIG'
+          gameplay:
+            max-client-commands: 96
+            command-suggestions: true
+            dynamic-command-completions: true
+          config-schema: 6
           CONFIG
           cp /tmp/coverage-artifacts/purpurbedrock-26.2.jar /tmp/coverage-server/server.jar
           cp scripts/tests/completion-coverage/build/libs/completion-coverage-fixture.jar /tmp/coverage-server/plugins/fixture.jar
@@ -111,8 +118,8 @@ jobs:
           if-no-files-found: ignore
       - name: Record tested build
         env:
-          RUN_ID: ${{ inputs.run_id || '43579741310' }}
-          SHA: ${{ inputs.head_sha || '457a11cca8ef635ce336666411dd3c06cfc0ae13' }}
+          RUN_ID: ${{ inputs.run_id || '43581423312' }}
+          SHA: ${{ inputs.head_sha || '3e5d79a1af6857f3428f440c9be228d8b0ab2b5c' }}
         run: printf '%s\n%s\n' "$RUN_ID" "$SHA" > tested-core.txt
       - uses: actions/upload-artifact@v4
         with:

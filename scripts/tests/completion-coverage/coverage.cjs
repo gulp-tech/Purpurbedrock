@@ -65,7 +65,10 @@ async function main() {
   }
   console.log('::notice title=Completion coverage summary::' + JSON.stringify({checks,
     roots: Object.fromEntries(['home', 'warp', 'tpa', 'vac', 'zzcoverage'].map(label => [label, Boolean(root(a, label))])),
-    enums: a.enums.size, packets: a.packets.length}))
+    enums: a.enums.size, packets: a.packets.length,
+    matchingValues: a.latest?.enum_values.filter(v => /^(?:vac|zzcoverage|tpa|coverage:vac)$/.test(v)),
+    matchingNames: a.latest?.command_data.filter(d => /vac|zzcoverage|tpa/.test(d.name)).map(d => d.name),
+    commandCount: a.latest?.command_data.length}))
   for (const label of ['home', 'warp', 'wild', 'gamemode', 'damage', 'give']) {
     const def = root(a, label)
     console.log(`::notice title=Advertised command::${label}=${Boolean(def)} args=${def?.overloads.length || 0} choices=${allChoices(a, label).length}`)
