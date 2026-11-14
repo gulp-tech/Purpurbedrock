@@ -5,7 +5,9 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms))
 const version = process.env.TEST_VERSION || '1.26.51'
 const phase = process.env.TEST_PHASE || 'A'
 const count = Number(process.env.TEST_COUNT || '6')
+const holdMs = Number(process.env.TEST_HOLD_MS || '0')
 assert(/^[AB]$/.test(phase) && Number.isInteger(count) && count > 0 && count <= 20)
+assert(Number.isInteger(holdMs) && holdMs >= 0 && holdMs <= 30000)
 async function connect(index) {
   // Reuse the same identity within each phase to exercise reconnect cleanup.
   const username = `Soak${phase}`
@@ -28,6 +30,7 @@ async function connect(index) {
     clearTimeout(timer)
     await pause(750)
     console.log(`SPAWNED ${username} ${version} attempt=${index + 1}`)
+    if (holdMs) await pause(holdMs)
   } finally {
     clearTimeout(timer)
     if (client) client.close()

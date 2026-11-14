@@ -56,7 +56,7 @@ jobs:
           enforce-secure-profile=false
           PROPS
           python3 -u - <<'PY'
-          import os, pathlib, signal, subprocess, time
+          import os, pathlib, select, signal, subprocess, time
           root = pathlib.Path(os.environ['GITHUB_WORKSPACE'])
           directory = pathlib.Path('/tmp/soak-server')
           results = pathlib.Path('/tmp/soak-results')
@@ -75,8 +75,25 @@ jobs:
                   (results / (label + '.txt')).write_text(result.stdout)
                   selected = [line for line in result.stdout.splitlines() if 'org.geysermc.geyser.session.GeyserSession ' in line]
                   print('::notice title=Reconnect heap sample::' + label + ' session histogram: ' + ('; '.join(selected) if selected else 'none'), flush=True)
+                  return selected
               snapshot('baseline')
               testdir = root / 'purpurbedrock-completions/tests/bedrock'
+              # Positive control: prove the histogram lookup can see a live session.
+              env = dict(os.environ, TEST_PHASE='A', TEST_VERSION='1.26.51', TEST_COUNT='1', TEST_HOLD_MS='20000')
+              client = subprocess.Popen(['node','reconnect-soak.cjs'], cwd=testdir, env=env,
+                                        text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
+              try:
+                  if not select.select([client.stdout], [], [], 90)[0]: raise RuntimeError('control client timed out')
+                  line = client.stdout.readline()
+                  if not line.startswith('SPAWNED '): raise RuntimeError('control client failed: ' + line)
+                  if not snapshot('active-control'): raise RuntimeError('histogram did not detect a live session')
+                  remaining, _ = client.communicate(timeout=60)
+                  print(line + remaining, flush=True)
+                  if client.returncode: raise RuntimeError('control client failed')
+              finally:
+                  try: os.killpg(client.pid, signal.SIGKILL)
+                  except ProcessLookupError: pass
+              time.sleep(10)
               for phase, version in [('A','1.21.90'), ('B','1.26.51')]:
                   env = dict(os.environ, TEST_PHASE=phase, TEST_VERSION=version, TEST_COUNT='6')
                   result = subprocess.run(['node','reconnect-soak.cjs'], cwd=testdir, env=env,
