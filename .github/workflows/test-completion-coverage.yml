@@ -38,8 +38,8 @@ jobs:
       - name: Verify selected build
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RUN_ID: ${{ inputs.run_id || '43428188536' }}
-          EXPECTED_SHA: ${{ inputs.head_sha || '73777dd54c8286d6e911e52e468da9ccb7720ef8' }}
+          RUN_ID: ${{ inputs.run_id || '43579741310' }}
+          EXPECTED_SHA: ${{ inputs.head_sha || '457a11cca8ef635ce336666411dd3c06cfc0ae13' }}
         run: |
           set -euo pipefail
           [[ "$RUN_ID" =~ ^[0-9]+$ ]]
@@ -54,13 +54,19 @@ jobs:
           name: purpurbedrock-26.2
           path: /tmp/coverage-artifacts
           repository: gulp-tech/Purpurbedrock
-          run-id: ${{ inputs.run_id || '43428188536' }}
+          run-id: ${{ inputs.run_id || '43579741310' }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Compare plugin, typed and vanilla command coverage
         run: |
           set -euo pipefail
           (cd /tmp/coverage-artifacts && sha256sum -c purpurbedrock-26.2.jar.sha256)
-          mkdir -p /tmp/coverage-server/plugins
+          mkdir -p /tmp/coverage-server/plugins/PurpurBedrockCompletions
+          # Exercise existing installations with the original persisted default capacities.
+          cat > /tmp/coverage-server/plugins/PurpurBedrockCompletions/config.yml <<'CONFIG'
+          max-commands-per-player: 128
+          max-total-nodes-per-player: 128
+          max-total-candidates-per-player: 1024
+          CONFIG
           cp /tmp/coverage-artifacts/purpurbedrock-26.2.jar /tmp/coverage-server/server.jar
           cp scripts/tests/completion-coverage/build/libs/completion-coverage-fixture.jar /tmp/coverage-server/plugins/fixture.jar
           echo 'eula=true' > /tmp/coverage-server/eula.txt
@@ -105,8 +111,8 @@ jobs:
           if-no-files-found: ignore
       - name: Record tested build
         env:
-          RUN_ID: ${{ inputs.run_id || '43428188536' }}
-          SHA: ${{ inputs.head_sha || '73777dd54c8286d6e911e52e468da9ccb7720ef8' }}
+          RUN_ID: ${{ inputs.run_id || '43579741310' }}
+          SHA: ${{ inputs.head_sha || '457a11cca8ef635ce336666411dd3c06cfc0ae13' }}
         run: printf '%s\n%s\n' "$RUN_ID" "$SHA" > tested-core.txt
       - uses: actions/upload-artifact@v4
         with:
