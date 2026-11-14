@@ -134,6 +134,29 @@ public final class InventoryFixture extends JavaPlugin implements Listener {
         }
         @Override public Inventory getInventory() { return inventory; }
     }
+    private static final class StaleHolder implements InventoryHolder {
+        final int page;
+        final Inventory inventory;
+        StaleHolder(int page) {
+            this.page = page;
+            inventory = Bukkit.createInventory(this, 27, Component.text("Stale page " + page));
+            inventory.setItem(0, new ItemStack(ITEMS[page]));
+        }
+        @Override public Inventory getInventory() { return inventory; }
+    }
+    private int openContainerId(Player player) throws ReflectiveOperationException {
+        Object handle = player.getClass().getMethod("getHandle").invoke(player);
+        Object menu = handle.getClass().getField("containerMenu").get(handle);
+        return menu.getClass().getField("containerId").getInt(menu);
+    }
+    private void sendStaleClose(Player player, int javaId) throws ReflectiveOperationException {
+        Object handle = player.getClass().getMethod("getHandle").invoke(player);
+        Object connection = handle.getClass().getField("connection").get(handle);
+        Class<?> packet = Class.forName("net.minecraft.network.protocol.Packet");
+        Object close = Class.forName("net.minecraft.network.protocol.game.ClientboundContainerClosePacket")
+                .getConstructor(int.class).newInstance(javaId);
+        connection.getClass().getMethod("send", packet).invoke(connection, close);
+    }
     @Override public void onEnable() {
         marker = new NamespacedKey(this, "test_id");
         getServer().getPluginManager().registerEvents(this, this);
@@ -167,11 +190,29 @@ public final class InventoryFixture extends JavaPlugin implements Listener {
             return true;
         });
         Objects.requireNonNull(getCommand("inventoryfixture")).setExecutor((sender, command, label, args) -> {
-            if (sender instanceof Player player) player.openInventory(new Holder(0).inventory);
+            if (sender instanceof Player player) {
+                if (args.length > 0 && args[0].equals("stale")) player.openInventory(new StaleHolder(0).inventory);
+                else player.openInventory(new Holder(0).inventory);
+            }
             return true;
         });
     }
     @EventHandler public void click(InventoryClickEvent event) {
+        if (event.getView().getTopInventory().getHolder() instanceof StaleHolder stale) {
+            event.setCancelled(true);
+            if (event.getRawSlot() != 0 || !(event.getWhoClicked() instanceof Player player) || stale.page >= 2) return;
+            try {
+                int oldId = openContainerId(player);
+                Bukkit.getScheduler().runTask(this, () -> {
+                    player.openInventory(new StaleHolder(stale.page + 1).inventory);
+                    if (stale.page == 0) Bukkit.getScheduler().runTaskLater(this, () -> {
+                        try { sendStaleClose(player, oldId); getLogger().info("STALE_MENU_CLOSE_SENT"); }
+                        catch (ReflectiveOperationException e) { getLogger().log(java.util.logging.Level.SEVERE, "Stale close fixture failed", e); }
+                    }, 5L);
+                });
+            } catch (ReflectiveOperationException e) { getLogger().log(java.util.logging.Level.SEVERE, "Stale menu fixture failed", e); }
+            return;
+        }
         if (!(event.getView().getTopInventory().getHolder() instanceof Holder holder)) return;
         event.setCancelled(true);
         if (event.getRawSlot() != 0 || !(event.getWhoClicked() instanceof Player player)) return;

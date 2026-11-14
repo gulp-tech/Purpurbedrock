@@ -143,6 +143,26 @@ async function main() {
   await until('authoritative cancelled menu item report', () => menuReports.length > 0)
   console.log(menuReports.at(-1))
   assert(menuReports.at(-1).includes('owned=0 ground=0'), 'cancelled menu clicks leaked icons')
+
+  // Java may send a delayed close for the previous window after a same-size
+  // submenu has opened. The new menu must remain usable, not lose its holder.
+  const playerInventory = opens.at(-1)
+  const prevClose = closes.length
+  client.queue('container_close', { window_id: playerInventory.window_id, window_type: playerInventory.window_type, server: false })
+  await until('player inventory closed before stale menu test', () => closes.length > prevClose)
+  await pause(1200)
+  client.queue('command_request', { command: '/inventoryfixture stale',
+    origin: { type: 'player', uuid: randomUUID(), request_id: '', player_entity_id: 0n }, internal: false, version: '' })
+  const initialContents = contents.length
+  await until('stale fixture first page', () => contents.slice(initialContents).some(p => p.input?.[0]?.network_id === items.get('minecraft:diamond')))
+  const beforeTransition = contents.length
+  click(0, -51)
+  await until('stale fixture second page', () => contents.slice(beforeTransition).some(p => p.input?.[0]?.network_id === items.get('minecraft:emerald')))
+  await pause(1000) // Fixture sends the previous Java window's stale close after 5 ticks.
+  const beforeThird = contents.length
+  click(0, -53)
+  await until('stale fixture third page remains clickable', () => contents.slice(beforeThird).some(p => p.input?.[0]?.network_id === items.get('minecraft:gold_ingot')))
+  console.log('PASS stale Java close does not break the next submenu')
 }
 main().then(() => { process.exitCode = 0 }).catch(e => { console.error(e); process.exitCode = 1 })
   .finally(async () => { client.close(); await pause(300); process.exit(process.exitCode) })

@@ -44,8 +44,8 @@ jobs:
       - name: Verify tested build
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RUN_ID: ${{ inputs.run_id || '43244753888' }}
-          EXPECTED_SHA: ${{ inputs.head_sha || 'de1e2255e74dea8f80a315066f05b0fa61962440' }}
+          RUN_ID: ${{ inputs.run_id || '43581423312' }}
+          EXPECTED_SHA: ${{ inputs.head_sha || '3e5d79a1af6857f3428f440c9be228d8b0ab2b5c' }}
         run: |
           set -euo pipefail
           [[ "$RUN_ID" =~ ^[0-9]+$ ]]
@@ -58,7 +58,7 @@ jobs:
           name: purpurbedrock-26.2
           path: /tmp/inventory-artifacts
           repository: ${{ github.repository }}
-          run-id: ${{ inputs.run_id || '43244753888' }}
+          run-id: ${{ inputs.run_id || '43581423312' }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Run isolated player-inventory packet test
         run: |
