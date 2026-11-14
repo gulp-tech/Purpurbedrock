@@ -214,8 +214,13 @@ public final class BedrockBridgeBootstrap {
             System.setProperty("purpurbedrock.offlineAssets",
                 bedrockCfg.getBoolean("advanced.download-mojang-assets", false) ? "false" : "true");
             if (System.getProperty("purpurbedrock.maxClientCommands") == null) {
-                int maxCommands = Math.max(32, Math.min(256, bedrockCfg.getInt("gameplay.max-client-commands", 96)));
+                int configured = bedrockCfg.getInt("gameplay.max-client-commands", 512);
+                int maxCommands = BedrockCommandLimits.advertised(configured,
+                    bedrockCfg.getBoolean("gameplay.upgrade-legacy-command-limit", true));
                 System.setProperty("purpurbedrock.maxClientCommands", Integer.toString(maxCommands));
+                if (configured != maxCommands) {
+                    Bukkit.getLogger().info("[Purpurbedrock] Bedrock advertised command limit: " + maxCommands + " (configured " + configured + ")");
+                }
             }
 
             boolean lanEnabled = bedrockCfg.getBoolean("lan-discovery.enabled", true);
@@ -504,7 +509,8 @@ public final class BedrockBridgeBootstrap {
         cfg.addDefault("max-players", Math.max(20, server.getMaxPlayers()));
         cfg.addDefault("gameplay.command-suggestions", true);
         cfg.addDefault("gameplay.dynamic-command-completions", true);
-        cfg.addDefault("gameplay.max-client-commands", 96);
+        cfg.addDefault("gameplay.max-client-commands", 512);
+        cfg.addDefault("gameplay.upgrade-legacy-command-limit", true);
         cfg.addDefault("gameplay.show-cooldown", "false");
         cfg.addDefault("gameplay.disable-bedrock-scaffolding", false);
         cfg.addDefault("gameplay.allow-vibrant-visuals", false);

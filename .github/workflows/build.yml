@@ -61,6 +61,8 @@ jobs:
           mkdir -p /tmp/block-drop-merge-test
           javac -d /tmp/block-drop-merge-test purpur-server/src/main/java/org/purpurmc/purpur/bedrock/BlockDropMergeRadius.java scripts/tests/BlockDropMergeRadiusTest.java
           java -cp /tmp/block-drop-merge-test BlockDropMergeRadiusTest
+          javac -d /tmp/block-drop-merge-test purpur-server/src/main/java/org/purpurmc/purpur/bedrock/BedrockCommandLimits.java scripts/tests/BedrockCommandLimitsTest.java
+          java -cp /tmp/block-drop-merge-test BedrockCommandLimitsTest
 
       - name: Build Self-Contained Bedrock 26.2 Protocol Engine (Zero External Dependencies)
         id: build_bedrock_engine
