@@ -16,6 +16,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Build typed command tree fixture
+        run: gradle -p scripts/tests/typed-command-fixture clean jar --no-daemon
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -49,6 +54,7 @@ jobs:
           set -euo pipefail
           (cd /tmp/ess-core && sha256sum -c purpurbedrock-26.2.jar.sha256)
           cp /tmp/ess-core/purpurbedrock-26.2.jar /tmp/ess-server/server.jar
+          cp scripts/tests/typed-command-fixture/build/libs/typed-command-fixture.jar /tmp/ess-server/plugins/
           echo 'eula=true' > /tmp/ess-server/eula.txt
           cat > /tmp/ess-server/ops.json <<'JSON'
           [{"uuid":"968cbe2f-be26-3edd-b0d8-8da553f92feb","name":"RealTabA","level":4,"bypassesPlayerLimit":false},{"uuid":"337d2c30-aba9-3266-8ed4-f2b5fd319c64","name":"RealTabB","level":4,"bypassesPlayerLimit":false}]

@@ -1,0 +1,5 @@
+name: TypedCommandFixture
+version: '1.0'
+main: org.purpurmc.typedfixture.TypedCommandFixture
+api-version: '26.2'
+depend: [Essentials]
