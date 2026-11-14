@@ -1,0 +1,102 @@
+name: Investigate repeated Bedrock reconnects
+on:
+  push:
+    branches: ['arena/**']
+    paths:
+      - '.github/workflows/test-reconnect-soak.yml'
+      - 'purpurbedrock-completions/tests/bedrock/reconnect-soak.cjs'
+permissions:
+  actions: read
+  contents: read
+jobs:
+  reconnect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install synthetic packet client
+        working-directory: purpurbedrock-completions/tests/bedrock
+        run: npm ci --no-audit --no-fund
+      - name: Verify candidate provenance
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          test "$(gh run view 43617740404 --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)" = success
+          test "$(gh run view 43617740404 --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha)" = b4a0a9229fa3855b10ba227dc878d72f81f15d11
+          test "$(gh run view 43617740404 --repo "$GITHUB_REPOSITORY" --json workflowDatabaseId --jq .workflowDatabaseId)" = "$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/build.yml" --jq .id)"
+      - uses: actions/download-artifact@v4
+        with:
+          name: purpurbedrock-26.2
+          path: /tmp/soak-artifact
+          repository: ${{ github.repository }}
+          run-id: 43617740404
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Reconnect clients and sample aggregate class histograms
+        run: |
+          set -euo pipefail
+          (cd /tmp/soak-artifact && sha256sum -c purpurbedrock-26.2.jar.sha256)
+          mkdir -p /tmp/soak-server /tmp/soak-results
+          cp /tmp/soak-artifact/purpurbedrock-26.2.jar /tmp/soak-server/server.jar
+          echo 'eula=true' > /tmp/soak-server/eula.txt
+          cat > /tmp/soak-server/server.properties <<'PROPS'
+          online-mode=false
+          server-port=25565
+          level-type=minecraft\:flat
+          generate-structures=false
+          difficulty=peaceful
+          spawn-protection=0
+          enforce-secure-profile=false
+          PROPS
+          python3 -u - <<'PY'
+          import os, pathlib, signal, subprocess, time
+          root = pathlib.Path(os.environ['GITHUB_WORKSPACE'])
+          directory = pathlib.Path('/tmp/soak-server')
+          results = pathlib.Path('/tmp/soak-results')
+          logfile = open(results / 'server.log', 'w', encoding='utf-8')
+          server = subprocess.Popen(['java','-Xms1G','-Xmx3G','-jar','server.jar','--nogui'], cwd=directory,
+                                    stdin=subprocess.PIPE, stdout=logfile, stderr=subprocess.STDOUT, text=True, start_new_session=True)
+          try:
+              for _ in range(600):
+                  if server.poll() is not None: raise RuntimeError('server exited')
+                  if 'Done (' in (results / 'server.log').read_text(errors='replace'): break
+                  time.sleep(1)
+              else: raise RuntimeError('server startup timed out')
+              def snapshot(label):
+                  # This command triggers a full GC on an isolated CI server, never production.
+                  result = subprocess.run(['jcmd',str(server.pid),'GC.class_histogram'], text=True, capture_output=True, timeout=90, check=True)
+                  (results / (label + '.txt')).write_text(result.stdout)
+                  selected = [line for line in result.stdout.splitlines() if 'org.geysermc.geyser.session.GeyserSession ' in line]
+                  print(label + ' session histogram: ' + ('; '.join(selected) if selected else 'none'), flush=True)
+              snapshot('baseline')
+              testdir = root / 'purpurbedrock-completions/tests/bedrock'
+              for phase, version in [('A','1.21.90'), ('B','1.26.51')]:
+                  env = dict(os.environ, TEST_PHASE=phase, TEST_VERSION=version, TEST_COUNT='6')
+                  result = subprocess.run(['node','reconnect-soak.cjs'], cwd=testdir, env=env,
+                                          text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=240)
+                  print(result.stdout, flush=True)
+                  (results / ('clients-' + phase + '.txt')).write_text(result.stdout)
+                  result.check_returncode()
+                  time.sleep(10) # Allow clean disconnects and queued session cleanup to settle.
+                  snapshot('after-' + phase)
+              print('Reconnects completed; histogram snapshots are observations, not leak proof.', flush=True)
+              server.stdin.write('stop\n'); server.stdin.flush(); server.wait(timeout=30)
+          finally:
+              try: os.killpg(server.pid, signal.SIGKILL)
+              except ProcessLookupError: pass
+              logfile.close()
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reconnect-soak-synthetic-results
+          path: /tmp/soak-results
+          if-no-files-found: ignore
+          retention-days: 7
