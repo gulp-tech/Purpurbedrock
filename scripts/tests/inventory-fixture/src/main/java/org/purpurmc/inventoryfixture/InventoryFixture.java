@@ -206,7 +206,13 @@ public final class InventoryFixture extends JavaPlugin implements Listener {
                 Bukkit.getScheduler().runTask(this, () -> {
                     player.openInventory(new StaleHolder(stale.page + 1).inventory);
                     if (stale.page == 0) Bukkit.getScheduler().runTaskLater(this, () -> {
-                        try { sendStaleClose(player, oldId); getLogger().info("STALE_MENU_CLOSE_SENT"); }
+                        try {
+                            int currentId = openContainerId(player);
+                            if (currentId == oldId) throw new IllegalStateException("fixture Java IDs must differ");
+                            sendStaleClose(player, oldId);
+                            player.sendMessage("STALE_MENU_CLOSE_SENT");
+                            getLogger().info("STALE_MENU_CLOSE_SENT");
+                        }
                         catch (ReflectiveOperationException e) { getLogger().log(java.util.logging.Level.SEVERE, "Stale close fixture failed", e); }
                     }, 5L);
                 });

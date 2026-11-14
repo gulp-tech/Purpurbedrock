@@ -12,6 +12,7 @@ const slots = []
 const replies = []
 const items = new Map()
 const menuReports = []
+const staleReports = []
 const client = bedrock.createClient({ host: '127.0.0.1', port: 19132,
   version: '1.26.51', username: 'InvTest', offline: true, transport: 'raknet', conLog: () => {} })
 client.prependOnceListener('session', profile => { profile.xuid = '30101' })
@@ -28,7 +29,11 @@ client.on('item_registry', packet => { for (const item of packet.itemstates) ite
 client.on('inventory_content', packet => contents.push(packet))
 client.on('inventory_slot', packet => slots.push(packet))
 client.on('item_stack_response', packet => replies.push(packet))
-client.on('text', packet => { if (typeof packet.message === 'string' && packet.message.includes('MENU_INTEGRITY')) menuReports.push(packet.message) })
+client.on('text', packet => {
+  if (typeof packet.message !== 'string') return
+  if (packet.message.includes('MENU_INTEGRITY')) menuReports.push(packet.message)
+  if (packet.message.includes('STALE_MENU_CLOSE_SENT')) staleReports.push(packet.message)
+})
 async function until(label, f, timeout = 15000) {
   const deadline = Date.now() + timeout
   while (Date.now() < deadline) {
@@ -158,7 +163,8 @@ async function main() {
   const beforeTransition = contents.length
   click(0, -51)
   await until('stale fixture second page', () => contents.slice(beforeTransition).some(p => p.input?.[0]?.network_id === items.get('minecraft:emerald')))
-  await pause(1000) // Fixture sends the previous Java window's stale close after 5 ticks.
+  await until('fixture sent close for previous Java window', () => staleReports.length > 0)
+  await pause(500)
   const beforeThird = contents.length
   click(0, -53)
   await until('stale fixture third page remains clickable', () => contents.slice(beforeThird).some(p => p.input?.[0]?.network_id === items.get('minecraft:gold_ingot')))
