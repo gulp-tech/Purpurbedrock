@@ -1,0 +1,97 @@
+name: Test real Essentials command completions
+on:
+  push:
+    branches: ['arena/**']
+    paths: ['.github/workflows/test-essentials-completions.yml', 'scripts/tests/completion-coverage/essentials.cjs']
+permissions:
+  actions: read
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --no-audit --no-fund
+        working-directory: scripts/tests/completion-coverage
+      - name: Verify selected core build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          test "$(gh run view 43581423312 --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)" = success
+          test "$(gh run view 43581423312 --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha)" = '3e5d79a1af6857f3428f440c9be228d8b0ab2b5c'
+          test "$(gh run view 43581423312 --repo "$GITHUB_REPOSITORY" --json workflowDatabaseId --jq .workflowDatabaseId)" = "$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/build.yml" --jq .id)"
+      - uses: actions/download-artifact@v4
+        with:
+          name: purpurbedrock-26.2
+          path: /tmp/ess-core
+          repository: ${{ github.repository }}
+          run-id: 43581423312
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download official EssentialsX fixture
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ess-server/plugins
+          gh release download 2.22.0 --repo EssentialsX/Essentials --pattern 'EssentialsX-2.22.0.jar' --dir /tmp/ess-server/plugins
+          echo 'bda4685105977fca2e209820a9f0ad24275bd103390a03236f38e59bfdac58e6  /tmp/ess-server/plugins/EssentialsX-2.22.0.jar' | sha256sum -c
+      - name: Run real plugin against disposable offline server
+        run: |
+          set -euo pipefail
+          (cd /tmp/ess-core && sha256sum -c purpurbedrock-26.2.jar.sha256)
+          cp /tmp/ess-core/purpurbedrock-26.2.jar /tmp/ess-server/server.jar
+          echo 'eula=true' > /tmp/ess-server/eula.txt
+          cat > /tmp/ess-server/ops.json <<'JSON'
+          [{"uuid":"968cbe2f-be26-3edd-b0d8-8da553f92feb","name":"RealTabA","level":4,"bypassesPlayerLimit":false},{"uuid":"337d2c30-aba9-3266-8ed4-f2b5fd319c64","name":"RealTabB","level":4,"bypassesPlayerLimit":false}]
+          JSON
+          cat > /tmp/ess-server/server.properties <<'PROPS'
+          online-mode=false
+          server-port=25565
+          level-type=minecraft\:flat
+          generate-structures=false
+          difficulty=peaceful
+          spawn-protection=0
+          enforce-secure-profile=false
+          PROPS
+          python3 -u - <<'PY'
+          import os, pathlib, signal, subprocess, time
+          directory = pathlib.Path('/tmp/ess-server')
+          output = open('/tmp/ess-server.log', 'w', encoding='utf-8')
+          server = subprocess.Popen(['java','-Xms1G','-Xmx3G','-jar','server.jar','--nogui'], cwd=directory, stdin=subprocess.PIPE, stdout=output, stderr=subprocess.STDOUT, text=True, start_new_session=True)
+          try:
+              for i in range(600):
+                  if server.poll() is not None: raise RuntimeError('server stopped')
+                  if 'Done (' in pathlib.Path('/tmp/ess-server.log').read_text(errors='replace'): break
+                  time.sleep(1)
+              else: raise RuntimeError('server startup timed out')
+              testdir = pathlib.Path(os.environ['GITHUB_WORKSPACE']) / 'scripts/tests/completion-coverage'
+              proc = subprocess.run(['node', 'essentials.cjs'], cwd=testdir, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=180)
+              print(proc.stdout, flush=True)
+              report = proc.stdout[-5000:].replace('%','%25').replace('\r','%0D').replace('\n','%0A')
+              print('::notice title=Essentials packet test::' + report, flush=True)
+              proc.check_returncode()
+              server.stdin.write('stop\n'); server.stdin.flush(); server.wait(timeout=30)
+          finally:
+              try: os.killpg(server.pid, signal.SIGKILL)
+              except ProcessLookupError: pass
+              output.close()
+              lines = pathlib.Path('/tmp/ess-server.log').read_text(errors='replace').splitlines()
+              relevant = [line for line in lines if any(term in line for term in ('Essentials','issued server command','PurpurBedrockCompletions','WARN','ERROR'))]
+              text = '\n'.join(relevant[-25:]).replace('%','%25').replace('\r','%0D').replace('\n','%0A')
+              print('::notice title=Essentials server excerpt::' + text[-7000:])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: essentials-completion-log
+          path: /tmp/ess-server.log
+          if-no-files-found: ignore
