@@ -209,14 +209,19 @@ public final class NativeCompletionsPlugin extends JavaPlugin implements Listene
             String label = data.getName().toLowerCase(Locale.ROOT);
             boolean generic = PacketComposer.generic(data);
             CommandData nativeData = JavaArgumentHints.knownChoices(data);
-            if ((!generic && (nativeProvider == null || !NativeArgumentScan.supported(nativeData))) || settings.excluded.contains(label) ||
+            if (settings.excluded.contains(label) ||
                     (!settings.included.isEmpty() && !settings.included.contains(label))) continue;
             org.bukkit.command.Command command = Bukkit.getCommandMap().getCommand(label);
             if (command == null || !command.testPermissionSilent(player) ||
                     state.cooldowns.getOrDefault(label, 0L) > tick) continue;
+            // Plugins may publish a typed or multi-overload Java tree while retaining
+            // their Bukkit completer. Sampling that completer also covers non-STRING
+            // roots which the native argument scanner cannot query.
+            boolean bukkitCompleter = generic || command instanceof org.bukkit.command.PluginCommand;
+            if (!bukkitCompleter && (nativeProvider == null || !NativeArgumentScan.supported(nativeData))) continue;
             if (round.labels.size() >= settings.maxCommands) break;
             if (!round.labels.add(label)) continue;
-            if (!generic) {
+            if (!bukkitCompleter) {
                 var delegate = nativeProvider;
                 NativeArgumentScan.Provider bounded = (input, argument) -> {
                     if (!player.isOnline() || !command.testPermissionSilent(player))
@@ -363,7 +368,13 @@ public final class NativeCompletionsPlugin extends JavaPlugin implements Listene
                 int contexts = model == null ? 0 : model.nodes().size() + model.arguments().size();
                 int candidates = model == null ? 0 : model.nodes().stream().mapToInt(n -> n.candidates().size()).sum()
                         + model.arguments().stream().mapToInt(a -> a.candidates().size()).sum();
-                sender.sendMessage("Подсказки /" + root + ": в_исходном_списке=true, тип=" + (PacketComposer.generic(data) ? "plugin" : "typed")
+                sender.sendMessage("Подсказки /" + root + ": в_исходном_списке=true, тип=" + (PacketComposer.generic(data) ? "generic" : "typed")
+                        + ", корень=" + labelForModel
+                        + ", класс=" + (commandForModel == null ? "none" : commandForModel.getClass().getSimpleName())
+                        + ", сигнатуры=" + Arrays.stream(data.getOverloads()).limit(6).map(overload ->
+                            Arrays.stream(overload.getOverloads()).limit(6)
+                                .map(p -> p.getName() + ":" + (p.getEnumData() != null ? "enum" : String.valueOf(p.getType())))
+                                .toList().toString()).toList()
                         + ", зарегистрирована=" + (commandForModel != null) + ", разрешена=" + permitted
                         + ", поиск=" + pending + ", списков_в_модели=" + contexts + ", значений_в_модели=" + candidates
                         + ", пауза=" + (state.cooldowns.getOrDefault(labelForModel, 0L) > tick));

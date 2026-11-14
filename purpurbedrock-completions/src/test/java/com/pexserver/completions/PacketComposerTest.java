@@ -34,6 +34,21 @@ class PacketComposerTest {
             assertEquals(0, buffer.readableBytes());
         } finally { buffer.release(); }
     }
+    @Test void addsPluginHintsToTypedTreeWithoutRemovingOrBroadeningItsGrammar() {
+        CommandData base = original("home", CommandParam.TARGET);
+        var input = new AvailableCommandsPacket(); input.getCommands().add(base);
+        var model = new Command("home", List.of(new Node(List.of(), List.of("private_home"))));
+        CommandData patched = PacketComposer.patch(input, Map.of("home", model)).getCommands().getFirst();
+        assertEquals(2, patched.getOverloads().length);
+        assertSame(base.getOverloads()[0], patched.getOverloads()[0]);
+        assertEquals(CommandParam.TARGET, patched.getOverloads()[0].getOverloads()[0].getType());
+        var hint = patched.getOverloads()[1].getOverloads()[0];
+        assertTrue(hint.getEnumData().isSoft());
+        assertEquals(Set.of("private_home"), hint.getEnumData().getValues().keySet());
+        assertFalse(Arrays.stream(patched.getOverloads()).anyMatch(o -> o.getOverloads().length == 1 &&
+                o.getOverloads()[0].getEnumData() == null && o.getOverloads()[0].getType() == CommandParam.TEXT));
+        assertEquals(1, base.getOverloads().length);
+    }
     @Test void separatesIdenticalPluginRootsBeforeApplyingTheirOwnSuggestions() {
         CommandData original = original("home", CommandParam.STRING);
         CommandData grouped = new CommandData("home", original.getDescription(), original.getFlags(), original.getPermission(),

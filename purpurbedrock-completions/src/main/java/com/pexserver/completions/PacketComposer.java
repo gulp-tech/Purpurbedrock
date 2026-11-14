@@ -131,12 +131,14 @@ public final class PacketComposer {
             CommandData original = JavaArgumentHints.knownChoices(base);
             Command model = models.get(original.getName().toLowerCase(Locale.ROOT));
             if (model != null) original = arguments(original, model);
-            if (model == null || model.nodes().isEmpty() || !generic(original)) {
+            if (model == null || model.nodes().isEmpty()) {
                 result.getCommands().add(original); continue;
             }
+            boolean generic = generic(original);
             List<CommandOverloadData> overloads = new ArrayList<>(Arrays.asList(original.getOverloads()));
-            // Always accept arbitrary tails, even if the original tree carried no args.
-            if (overloads.stream().noneMatch(o -> o.getOverloads().length == 1 &&
+            // Add a free-text tail only for generic roots. For typed plugin commands,
+            // preserve every original overload and add suggestion-only branches.
+            if (generic && overloads.stream().noneMatch(o -> o.getOverloads().length == 1 &&
                     o.getOverloads()[0].getEnumData() == null && o.getOverloads()[0].getType() == CommandParam.TEXT)) {
                 CommandParamData tail = new CommandParamData();
                 // MESSAGE is an intermediate grammar symbol on current Bedrock clients;

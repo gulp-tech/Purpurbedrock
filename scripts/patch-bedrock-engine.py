@@ -6714,6 +6714,23 @@ import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataTypes;""",
         "JavaGameEventTranslator.clearVirtualMenuOnGameModeChange",
     )
 
+    java_close = root / "core/src/main/java/org/geysermc/geyser/translator/protocol/java/inventory/JavaContainerCloseTranslator.java"
+    replace_exact(
+        java_close,
+        """        InventoryUtils.closeInventory(session, packet.getContainerId(), confirm);""",
+        """        // A delayed close for the previous Java window must not clear the new
+        // holder (including a spurious player-inventory close while a chest is open).
+        // Matching closes and the lectern special case above retain normal behavior.
+        if (holder != null && holder.javaId() != packet.getContainerId()) {
+            return;
+        }
+        if (holder == null && packet.getContainerId() != 0) {
+            return;
+        }
+        InventoryUtils.closeInventory(session, packet.getContainerId(), confirm);""",
+        "JavaContainerCloseTranslator.ignoreStaleJavaWindowClose",
+    )
+
     inventory_utils = root / "core/src/main/java/org/geysermc/geyser/util/InventoryUtils.java"
     replace_exact(
         inventory_utils,
